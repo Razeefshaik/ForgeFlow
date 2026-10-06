@@ -1,8 +1,9 @@
 # ForgeFlow architecture
 
-## Source and active workspace
-The original folder contains only AGENTS.md and SPECS.md. SPEC.md here is an exact copy of SPECS.md, the supplied authoritative specification. The requested product name is ForgeFlow; the specification's Open Source Autopilot name refers to this same product.
-This isolated repository and its contribution/forgeflow-foundation branch are the active foundation workspace. Original inputs and the enclosing unrelated Git repository are preserved.
+## Application root and external workspaces
+ForgeFlow's apps, internal packages, scripts, documentation and runtime directories live directly in the main repository root. SPEC.md is the canonical specification, normalized from the identical supplied SPECS.md. The requested ForgeFlow name refers to the specification's Open Source Autopilot product.
+The root .git owns the application. External repositories belong only under <ForgeFlowRoot>/contributions/<contribution-id>/repo after Proceed to Contribute. The directory initially contains only .gitkeep. The earlier nested application was relocated intact; its history is retained in archive/forgeflow-foundation and ignored recovery backups.
+Startup scripts derive the root from their own location. The server locates it from an explicit --root, its executable location, or its working directory. Relative database/frontend flags resolve against this root. Embedded SQLite migrations remain packaged with the server. The external workspace path helper uses the same absolute project root; it does not create or execute contributions.
 
 ## Implemented foundation
 React + TypeScript + Vite frontend, Tailwind v4, TanStack Query, TanStack Table, React Router, Lucide, accessible Radix primitives following shadcn conventions. A single Go net/http service owns SQLite migrations, domain services, configuration versions, append-only events and SSE replay. No Docker or microservices.

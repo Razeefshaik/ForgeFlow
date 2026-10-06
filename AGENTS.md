@@ -1,4 +1,5 @@
 - SPEC.md is the authoritative product specification.
+- ForgeFlow application source lives directly in the project root. contributions/<id>/repo is reserved for approved external open-source workspaces.
 - Never auto-submit or auto-merge PRs.
 - Never let Codex-effort estimation affect opportunity ranking.
 - Every contribution must have an isolated workspace.

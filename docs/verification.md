@@ -7,7 +7,7 @@
 - With `FORGEFLOW_LIVE_TEST_URL=http://127.0.0.1:8081`, all six browser checks passed against actual Go servers and installed Edge in 44.6 seconds. The default suite runs four demo checks and skips two opt-in live checks.
 - New tests cover caching/ETag, credential isolation/precedence, budgets, redirects/size bounds, rate-limit backoff/error redaction, incomplete evidence, quality factors, single-flight cancellation, retained scan history, interruption recovery and durable scheduling controls.
 - Live browser checks inspect real GitHub evidence and run another scan while execution stays disabled. Desktop/mobile artifacts were visually inspected, with no document overflow at 390px. Captures wait for completed state and disable animations.
-- Git whitespace validation passed. All changes remain inside the active contribution repository.
+- Git whitespace validation passed. This describes the earlier discovery delivery; see repository-layout.md for subsequent relocation verification.
 - Actual server smoke check: pause persisted through a process restart, resume succeeded, and scan history remained intact. Temporary QA servers were stopped after verification.
 
 The initial unauthenticated live scan accepted three real issues across two repositories using 22 GitHub requests. A repeat scan succeeded with zero network requests from cached responses. After rebuilding/restarting, the final browser Run check accepted two issues with 18 requests; five accumulated observations remained visible. Bounded searches preserve older observations rather than deleting unseen issues.
@@ -25,7 +25,7 @@ QA databases `data/qa-demo.db` and `data/qa-live.db` retain config versions, sca
 - npm --prefix apps/web test — 3 browser tests passed against actual Go APIs and installed Edge. Covers filtering/canonical rank, score details, disabled execution gate, Operator proposal waiting for Apply, actual configuration version creation, mobile navigation and light mode.
 - node apps/web/scripts/capture.mjs — four screenshots, no page errors and no document overflow at 390px.
 - Actual live server at 127.0.0.1:8081 returned mode=live, zero opportunities, zero contributions; /configuration served the built SPA with HTTP 200.
-- Original SPECS.md and AGENTS.md hashes match their copies here.
+- At initial delivery, supplied SPECS.md/AGENTS.md hashes matched their application copies. The specification has since been normalized to root SPEC.md and application layout guidance added to AGENTS.md.
 
 Tests ran against temporary SQLite files and separate QA demo/live databases. Browser tests preserve audit history and append configuration versions. No application contribution agent, external repository test or PR submission was run.
 

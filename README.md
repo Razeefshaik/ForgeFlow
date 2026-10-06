@@ -2,7 +2,7 @@
 
 A local-first open-source contribution control plane, built as a React/TypeScript dashboard and a Go modular monolith with SQLite.
 
-**Current delivery: working foundation and live GitHub discovery.** Contribution execution remains pending. Original rules and specification are preserved; this isolated repository lives at `contributions/forgeflow-foundation/repo` under the supplied ForgeFlow folder.
+**Current delivery: working foundation and live GitHub discovery.** Contribution execution remains pending. ForgeFlow lives directly in this repository root. `contributions/<contribution-id>/repo` is reserved for external repositories created after human approval.
 
 ## Run on Windows
 Requirements: Go 1.26+, Node 24 LTS, npm and Git. Docker is not required.
@@ -55,6 +55,7 @@ Plugin authentication in the build chat is separate from runtime authentication.
 ## Persistence and environment
 No credentials are required for demo mode or public discovery. Go flags:
 - `--demo`: labeled seed mode; default database `data/demo.db`.
+- `--root <directory>`: optional explicit ForgeFlow root. By default the server locates it from the executable or working directory. Relative database/frontend paths resolve against that root.
 - default live database: `data/forgeflow.db`.
 - `--db <path>`: explicit SQLite file. A database cannot switch modes.
 - `--listen 127.0.0.1:8080`: numeric loopback bind only.
@@ -62,7 +63,7 @@ No credentials are required for demo mode or public discovery. Go flags:
 - `--discovery-interval 15m`: automatic live scan interval; `0` disables scheduling while keeping Run available. Positive values must be at least one minute.
 
 GitHub credentials remain in server memory, outside SQLite, events and the browser. Restart the server after changing credentials. Codex authentication is not integrated yet.
-Contribution workspaces will live at `contributions/<id>/repo`; metadata will live alongside them under `.autopilot`.
+Contribution workspaces resolve as `<ForgeFlowRoot>/contributions/<id>/repo`; metadata will live alongside them under `.autopilot`. ForgeFlow itself is never a contribution workspace. See [repository layout](docs/repository-layout.md).
 
 ## Verification
 ```powershell

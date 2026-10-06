@@ -7,6 +7,7 @@ import (
 	"forgeflow/internal/api"
 	"forgeflow/internal/discovery"
 	"forgeflow/internal/github"
+	"forgeflow/internal/project"
 	"forgeflow/internal/seed"
 	"forgeflow/internal/storage"
 	"log/slog"
@@ -26,11 +27,24 @@ func main() {
 }
 func run() error {
 	demo := flag.Bool("demo", false, "use explicit demo mode and illustrative seed data")
+	rootFlag := flag.String("root", "", "ForgeFlow project directory (default: locate from working directory or executable)")
 	db := flag.String("db", "", "SQLite path (default depends on mode)")
 	listen := flag.String("listen", "127.0.0.1:8080", "loopback address")
 	web := flag.String("web", "apps/web/dist", "built frontend directory")
 	discoveryInterval := flag.Duration("discovery-interval", 15*time.Minute, "automatic GitHub scan interval (0 disables automatic scans)")
 	flag.Parse()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	root, err := project.Locate(*rootFlag, cwd, executable)
+	if err != nil {
+		return err
+	}
 	if *discoveryInterval < 0 || (*discoveryInterval > 0 && *discoveryInterval < time.Minute) {
 		return fmt.Errorf("discovery interval must be zero or at least one minute")
 	}
@@ -48,6 +62,10 @@ func run() error {
 			*db = "data/demo.db"
 		}
 	}
+	if *db != ":memory:" {
+		*db = project.Resolve(root, *db)
+	}
+	*web = project.Resolve(root, *web)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	s, err := storage.Open(ctx, *db, *demo)

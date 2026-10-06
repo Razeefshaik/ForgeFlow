@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const artifacts = fileURLToPath(new URL("../../../artifacts/", import.meta.url));
 
 test("demo discovery explains live mode and offers no scan action", async ({
   page,
@@ -46,7 +49,7 @@ test("live dashboard displays persisted GitHub evidence", async ({ page }) => {
     el.scrollTop = 0;
   });
   await page.screenshot({
-    path: "../../artifacts/discovery-evidence-desktop.png",
+    path: path.join(artifacts, "discovery-evidence-desktop.png"),
     fullPage: true,
     animations: "disabled",
   });
@@ -58,7 +61,7 @@ test("live dashboard displays persisted GitHub evidence", async ({ page }) => {
     ),
   ).toBeTruthy();
   await page.screenshot({
-    path: "../../artifacts/discovery-mobile.png",
+    path: path.join(artifacts, "discovery-mobile.png"),
     fullPage: true,
     animations: "disabled",
   });
@@ -101,7 +104,7 @@ test("live Run action appends scan history while execution stays unavailable", a
     page.locator(".discovery-history details").first(),
   ).toBeVisible();
   await page.screenshot({
-    path: "../../artifacts/discovery-desktop.png",
+    path: path.join(artifacts, "discovery-desktop.png"),
     fullPage: true,
   });
 });
