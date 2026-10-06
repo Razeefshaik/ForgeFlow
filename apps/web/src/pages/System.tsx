@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bot, GitBranch, ShieldCheck } from "lucide-react";
-import { useAPI } from "../api";
+import { request, useAPI } from "../api";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Contribution, Event, Opportunity } from "../types";
 import {
   Badge,
@@ -10,10 +11,22 @@ import {
   StateBadge,
 } from "../components/primitives";
 import { Dialog } from "../components/ui/dialog";
+import ExecutionPanel from "../components/ExecutionPanel";
+function CommandOutput({ event }: { event: Event }) {
+  const record = event.data as { arguments: string[]; exit_code: number; output: string; truncated: boolean };
+  return <details className="command-result">
+    <summary>Git command · exit {record.exit_code} · {new Date(event.created_at).toLocaleTimeString()}</summary>
+    <pre className="issue-body">{record.arguments.join(" ")}</pre>
+    <pre className="issue-body">{record.output || "No command output."}</pre>
+    {record.truncated && <p className="muted">Output truncated at 128 KiB.</p>}
+  </details>;
+}
 export function Contributions() {
   const cs = useAPI<Contribution[]>("/contributions");
   const events = useAPI<Event[]>("/events");
   const [selected, setSelected] = useState<Contribution | null>(null);
+  const current = cs.data?.find(c => c.id === selected?.id) ?? selected;
+  const timeline = useAPI<Event[]>("/events?entity=" + encodeURIComponent(current?.id ?? ""));
   return (
     <>
       <div className="page-intro">
@@ -29,7 +42,7 @@ export function Contributions() {
           <p className="error">{cs.error.message}</p>
         ) : !cs.data?.length ? (
           <Empty title="No contribution workspaces">
-            The workspace manager and contributor runner are later milestones.
+            Inspect a live opportunity and approve preparation to clone its repository into an isolated workspace.
           </Empty>
         ) : (
           cs.data.map((c) => (
@@ -56,14 +69,15 @@ export function Contributions() {
           if (!v) setSelected(null);
         }}
         title={selected?.repository ?? "Contribution"}
-        description="Persisted contribution record · no execution adapter connected"
+        description="Persisted workspace and command audit trail"
         wide
       >
-        {selected && (
+        {current && (
           <>
-            <StateBadge state={selected.state} />
-            <p className="summary">{selected.title}</p>
-            {selected.demo && (
+            <StateBadge state={current.state} />
+            <p className="summary">{current.title}</p>
+            {current.message && <p className="note">{current.message}</p>}
+            {current.demo && (
               <div className="note">
                 Illustrative demo state. No repository was cloned, no agent ran
                 and no contribution tests or reviews were performed.
@@ -72,26 +86,32 @@ export function Contributions() {
             <dl className="key-values">
               <div>
                 <dt>Contribution ID</dt>
-                <dd>{selected.id}</dd>
+                <dd>{current.id}</dd>
               </div>
               <div>
-                <dt>Branch (illustrative)</dt>
-                <dd>{selected.branch}</dd>
+                <dt>{current.demo ? "Branch (illustrative)" : "Branch"}</dt>
+                <dd>{current.branch}</dd>
               </div>
               <div>
                 <dt>Configuration snapshot</dt>
-                <dd>v{selected.config_version}</dd>
+                <dd>v{current.config_version}</dd>
               </div>
+              {current.workspace && <div><dt>Workspace</dt><dd><code>{current.workspace}</code></dd></div>}
+              {current.base_commit && <div><dt>Base commit</dt><dd><code>{current.base_commit}</code></dd></div>}
             </dl>
+            {!current.demo && <ExecutionPanel contribution={current} />}
             <h3>Persisted timeline</h3>
             <EventRows
-              events={(events.data ?? []).filter(
-                (e) => e.entity_id === selected.id,
+              events={(timeline.data ?? events.data ?? []).filter(
+                (e) => e.entity_id === current.id,
               )}
             />
+            {!current.demo && <>
+              <h3>Git command output</h3>
+              {(timeline.data ?? []).filter(e => e.type === "CommandFinished").map(e => <CommandOutput key={e.id} event={e} />)}
+            </>}
             <p className="muted">
-              Execution controls will be enabled when the workspace manager and
-              runner are available.
+              Git command output and snapshots are saved in this workspace's .autopilot directory. Contribution execution requires approval; PR submission has its own approval.
             </p>
           </>
         )}
@@ -125,7 +145,9 @@ export function Activity() {
   );
 }
 export function Agents() {
-  const agents = useAPI<unknown[]>("/agents");
+  const cache = useQueryClient();
+  const [controlError, setControlError] = useState("");
+  const agents = useAPI<{id: string; contribution_id: string; role: string; status: string; session_id: string; started_at: string; finished_at: string | null; output: string}[]>("/agents");
   return (
     <>
       <div className="page-intro">
@@ -140,12 +162,12 @@ export function Agents() {
       </div>
       <section className="surface">
         <SectionHeader title="Connected agents" extra={<Bot size={17} />} />
+        {controlError && <p className="error" role="alert">{controlError}</p>}
         {agents.error ? (
           <p className="error">{agents.error.message}</p>
-        ) : (
-          <Empty title="No execution adapter connected">
-            Codex contributor and independent reviewer integration are later
-            milestones. Demo contribution states do not represent active agents.
+        ) : agents.data?.length ? agents.data.map(a => <details key={a.id} className="command-result"><summary>{a.role} · {a.status} · {new Date(a.started_at).toLocaleString()}</summary><p>Contribution: {a.contribution_id}</p>{a.status === "RUNNING" && <button onClick={async () => { try { await request("/contributions/"+encodeURIComponent(a.contribution_id)+"/stop",{}); await cache.invalidateQueries(); } catch(e) { setControlError((e as Error).message); } }}>Stop this agent</button>}<p>Codex session: {a.session_id || "Starting"}</p><pre className="issue-body">{a.output || "Live activity is available in the contribution timeline."}</pre></details>) : (
+          <Empty title="No Codex sessions yet">
+            Approved contributions create real planner, contributor and independent reviewer sessions. Demo records do not launch agents.
           </Empty>
         )}
       </section>
@@ -153,10 +175,13 @@ export function Agents() {
   );
 }
 export function Usage() {
+	const [manualAllowance, setManualAllowance] = useState(() => localStorage.getItem("forgeflow-manual-allowance") || "");
   const usage = useAPI<{
     sessions: number;
     allowance_remaining: number | null;
     message: string;
+    observed_usage: Record<string,number>;
+    duration_seconds: number;
   }>("/usage");
   const opportunities = useAPI<Opportunity[]>("/opportunities");
   return (
@@ -171,6 +196,7 @@ export function Usage() {
           </p>
         </div>
       </div>
+      <div className="usage-summary"><div><span className="eyebrow">OBSERVED INPUT TOKENS</span><strong>{usage.data?.observed_usage?.input_tokens ?? 0}</strong></div><div><span className="eyebrow">OBSERVED OUTPUT TOKENS</span><strong>{usage.data?.observed_usage?.output_tokens ?? 0}</strong></div><div><span className="eyebrow">SESSION DURATION</span><strong>{Math.round((usage.data?.duration_seconds ?? 0)/60)}m</strong></div></div>
       <div className="usage-summary">
         <div>
           <span className="eyebrow">OBSERVED LOCAL SESSIONS</span>
@@ -180,6 +206,7 @@ export function Usage() {
           <span className="eyebrow">OFFICIAL REMAINING ALLOWANCE</span>
           <strong>Unavailable</strong>
           <p>No guessed percentages.</p>
+		  <label>User supplied remaining allowance<input aria-label="User supplied remaining allowance" value={manualAllowance} maxLength={200} placeholder="For example: 30%, checked at 7 PM" onChange={e => {setManualAllowance(e.target.value); localStorage.setItem("forgeflow-manual-allowance", e.target.value);}} /></label><p className="muted">Stored in this browser. Self reported; never used for ranking.</p>
         </div>
       </div>
       {usage.error && <p className="error">{usage.error.message}</p>}
@@ -221,6 +248,7 @@ export function Settings({
   theme: string;
   setTheme: (v: string) => void;
 }) {
+  const runtime = useAPI<{contributions_root: string; codex_available: boolean; codex_model: string}>("/runtime");
   return (
     <>
       <div className="page-intro">
@@ -246,6 +274,11 @@ export function Settings({
             <option value="light">Light</option>
           </select>
         </div>
+      </section>
+      <section className="surface settings-safety">
+        <SectionHeader title="Local runtime" />
+        <dl className="key-values"><div><dt>Contribution root</dt><dd>{runtime.data?.contributions_root ?? "Loading…"}</dd></div><div><dt>Codex CLI</dt><dd>{runtime.data?.codex_available ? "Installed · uses local Codex authentication" : "Unavailable · run codex login after installing"}</dd></div><div><dt>Model</dt><dd>{runtime.data?.codex_model || "Codex CLI default"}</dd></div></dl>
+        <p className="muted">Change the workspace root in configs/local.json or FORGEFLOW_CONTRIBUTIONS_DIR, then restart the server.</p>
       </section>
       <section className="surface settings-safety">
         <SectionHeader

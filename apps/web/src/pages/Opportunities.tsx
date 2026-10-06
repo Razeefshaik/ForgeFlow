@@ -14,6 +14,7 @@ import { Badge, Empty, Score } from "../components/primitives";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import Evidence from "../components/Evidence";
+import Proceed from "../components/Proceed";
 export function OpportunityDetail({
   opportunity: o,
   close,
@@ -114,15 +115,7 @@ export function OpportunityDetail({
               <li key={x}>{x}</li>
             ))}
           </ul>
-          <div className="dialog-footer">
-            <p>
-              Workspace manager and execution adapter are pending. No
-              contribution can start yet.
-            </p>
-            <Button disabled>
-              Proceed to Contribute <ArrowRight size={15} />
-            </Button>
-          </div>
+          <Proceed key={o.id} opportunity={o} />
         </>
       )}
     </Dialog>

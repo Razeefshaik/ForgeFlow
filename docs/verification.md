@@ -1,3 +1,31 @@
+# Verification - 2026-10-06
+
+## Current execution delivery
+
+- Contribution parent moved to S:/StudyResource/TechBoooo/Backend/Contriss. All 4020 pre-move SHA256 file hashes matched after relocation. Main contributions/ contains only .gitkeep. Source, branch, Git history, snapshots and artifacts were preserved.
+- Go formatting, full Go tests and vet passed. Production Go binary and TypeScript/Vite builds passed. Final affected checks and startup verification are recorded below.
+- Real authenticated native Codex CLI workflow on a disposable local Go repository passed in 429.31 seconds: read-only planner, contributor correction and positive/negative regression coverage, three actual sandboxed verification commands, independent reviewer APPROVE and persisted READY. Zero fixes were required for that actual model run. No existing external contribution was coded by QA.
+- Synthetic model fixtures with actual Git/Go commands exercised failing tests, bounded fixes, reviewer REQUEST_CHANGES, retesting/review, local commit preparation and separate submission approval. Diff evidence remained identical before/after committing new files. Repeated failures stopped at configured bounds.
+- Pause cancelled the active task while preserving workspace/evidence; unconfirmed resume/constraint/plan changes were rejected. Explicit plan approval made the saved plan resumable.
+- Actual authenticated AI Operator produced an expiring Rust/databases/distributed-systems proposal in 18.57 seconds. It changed no configuration before Apply. A prior malformed proposal was rejected; the input contract now supplies the plain configuration separately from its version.
+- Temporary-config integration tests verified restoration as a new version and protection of newer manual settings.
+- Edge/Playwright final suite: all eight checks passed in 21.1 seconds against a disposable production demo server and the live development server. This includes both opt-in real GitHub checks. Execution/approval UI fixtures are synthetic, not evidence of real remote PR submission. Desktop/mobile captures: execution-desktop.png and execution-mobile.png; 390px layout had no document overflow and was visually inspected.
+- GitHub write tests use a synthetic HTTP server and verify authentication/endpoint allowlists. No real fork/push/PR was created during QA. Remote submission remains gated by explicit user approval and runtime GitHub credentials.
+- Native sandbox positive/negative write probe passed. The profile permits host reads; it is a workspace write boundary rather than a confidentiality VM. See security.md.
+
+## Final startup and preservation checks
+
+- The production server serves HTTP 200 at / and /contributions. A regression test covers root/nested SPA routes, assets and missing assets. The root route previously returned 404 and was corrected.
+- Live /health returns mode live; /runtime resolves S:/StudyResource/TechBoooo/Backend/Contriss and the installed native Codex CLI. Discovery succeeded with 13 persisted opportunities across 10 repositories. These are a bounded sample, not a complete GitHub catalog.
+- Existing detent contribution remains BLOCKED at PLANNING awaiting explicit Start coding approval. WorkspaceRelocated event 79 updates its current location; immutable historical approvals retain their original paths. Branch remains autopilot/issue-4372 and HEAD remains 3e0e0aa9c255ae96d1835f8d45d7cec18dd0fa22. External Git status is clean.
+- Before schema updates, the live SQLite files were copied under ignored .cache/before-execution-20261006-214759. SQLite migration history and audit records remain intact.
+- Git operations pin validated local configuration outside the agent write root and reject subsequent changes or linked Git metadata; regression tests cover rejection and resumable plan/pause gates. Git whitespace validation passed. Main checkout remains master; changes are uncommitted and no remote push occurred.
+- npm run build completed the final Go tests/vet/binary and frontend checks. The live app is started through npm run dev; disposable QA servers are stopped.
+
+## Earlier delivery evidence (historical)
+
+The following records describe earlier phases. Their phase-specific limitations and counts are historical, not the current implementation status.
+
 # Verification — 2026-10-06
 
 ## Current discovery verification
@@ -46,5 +74,15 @@ Initial npm attempts encountered incomplete downloads and stale cached registry 
 
 ## Delivery boundary
 Phase 1 foundation and public discovery in Phase 2 are implemented, with bounded analysis and memory HTTP caching. Deterministic Operator inspection/proposals are included.
-Isolated external workspaces, enforceable command sandboxing, Codex execution, real contribution testing/fixing, independent review, AI Operator, final reports and PR preparation remain future milestones. The full acceptance scenario has not been achieved.
+Approved isolated Git workspace preparation is implemented. Enforceable repository command sandboxing, Codex coding, real contribution testing/fixing, independent review, AI Operator, final reports and PR preparation remain future milestones. The full acceptance scenario has not been achieved.
+
+## Workspace preparation verification (2026-10-06)
+
+- Go formatting, all 36 Go tests, go vet and Go build passed. Five workspace tests include actual Git clone/branch/commit verification, a full approved preparation pipeline using a synthetic GitHub server and real local Git, stale/closed inputs, exclusive/link boundaries, real failed command outcomes, duplicate approval and restart recovery.
+- Frontend TypeScript/production build passed. Five default browser checks passed; two opt-in live checks were skipped in that run. The live evidence browser check then passed separately against the running live server. The approval browser check uses a clearly labeled API fixture, not a live clone.
+- Actual npm run dev started live backend at 127.0.0.1:8080 and frontend at 127.0.0.1:5173 (HTTP 200). Automatic public GitHub discovery made 18 requests and accepted two observations. The run was PARTIAL because a separate response exceeded the four MiB bound; its warning remains persisted.
+- A real fresh approval preview succeeded for digitaldrywood/detent issue 4372 at commit 3e0e0aa9c255ae96d1835f8d45d7cec18dd0fa22. Preview created zero contributions. No approval was submitted for an external repository during QA; root contributions still contains only .gitkeep.
+- Approval desktop/mobile screenshots were generated and visually inspected. Git diff --check passed. Root Git remains the application repository; no external clone or nested application Git repository was created during QA. Changes remain uncommitted.
+
+The live development server is left running for interactive use. The disposable demo QA server was stopped. Real repository cloning requires the explicit in-app approval, and prepared contributions truthfully stop BLOCKED at PLANNING until the Codex adapter exists.
 

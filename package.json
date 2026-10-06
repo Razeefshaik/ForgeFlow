@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "setup": "npm --prefix apps/web ci",
-    "dev": "node scripts/dev.mjs --demo",
+    "dev": "node scripts/dev.mjs",
+    "dev:demo": "node scripts/dev.mjs --demo",
     "dev:live": "node scripts/dev.mjs",
     "build": "node scripts/check.mjs",
     "test": "go test ./..."

@@ -45,16 +45,20 @@ type Opportunity struct {
 	Evidence        *Evidence `json:"evidence,omitempty"`
 }
 type Contribution struct {
-	ID            string    `json:"id"`
-	OpportunityID string    `json:"opportunity_id"`
-	Repository    string    `json:"repository"`
-	Title         string    `json:"title"`
-	State         string    `json:"state"`
-	PreviousState string    `json:"previous_state,omitempty"`
-	Branch        string    `json:"branch"`
-	ConfigVersion int64     `json:"config_version"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Demo          bool      `json:"demo"`
+	ID                string    `json:"id"`
+	OpportunityID     string    `json:"opportunity_id"`
+	Repository        string    `json:"repository"`
+	Title             string    `json:"title"`
+	State             string    `json:"state"`
+	PreviousState     string    `json:"previous_state,omitempty"`
+	Branch            string    `json:"branch"`
+	ConfigVersion     int64     `json:"config_version"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	Demo              bool      `json:"demo"`
+	Workspace         string    `json:"workspace,omitempty"`
+	BaseCommit        string    `json:"base_commit,omitempty"`
+	Message           string    `json:"message,omitempty"`
+	ExecutionApproved bool      `json:"execution_approved,omitempty"`
 }
 type Event struct {
 	ID        int64     `json:"id"`
@@ -104,10 +108,11 @@ type ConfigVersion struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 type Proposal struct {
-	ID          string    `json:"id"`
-	BaseVersion int64     `json:"base_version"`
-	Config      Config    `json:"config"`
-	Reason      string    `json:"reason"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	BaseVersion int64      `json:"base_version"`
+	Config      Config     `json:"config"`
+	Reason      string     `json:"reason"`
+	Status      string     `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }

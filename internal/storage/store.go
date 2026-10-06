@@ -177,7 +177,14 @@ func insertConfig(ctx context.Context, tx *sql.Tx, c domain.Config, actor, reaso
 	return r.LastInsertId()
 }
 func (s *Store) Propose(ctx context.Context, base int64, c domain.Config, reason string) (domain.Proposal, error) {
+	return s.ProposeTimed(ctx, base, c, reason, nil)
+}
+func (s *Store) ProposeTimed(ctx context.Context, base int64, c domain.Config, reason string, expires *time.Time) (domain.Proposal, error) {
 	p := domain.Proposal{ID: ID(), BaseVersion: base, Config: c, Reason: reason, Status: "PENDING", CreatedAt: time.Now().UTC()}
+	p.ExpiresAt = expires
+	if expires != nil && (expires.Before(time.Now()) || expires.After(time.Now().Add(365*24*time.Hour))) {
+		return p, errors.New("expiration must be within the next year")
+	}
 	if err := config.Validate(c); err != nil {
 		return p, err
 	}
@@ -196,7 +203,11 @@ func (s *Store) Propose(ctx context.Context, base int64, c domain.Config, reason
 		if current != base {
 			return ErrConflict
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO config_proposals VALUES (?,?,?,?,?,?)", p.ID, base, string(body), reason, p.Status, p.CreatedAt.Format(time.RFC3339Nano)); err != nil {
+		expiry := ""
+		if expires != nil {
+			expiry = expires.UTC().Format(time.RFC3339Nano)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO config_proposals (id,base_version,config,reason,status,created_at,expires_at) VALUES (?,?,?,?,?,?,?)", p.ID, base, string(body), reason, p.Status, p.CreatedAt.Format(time.RFC3339Nano), expiry); err != nil {
 			return err
 		}
 		return s.event(ctx, tx, "ConfigChangeProposed", p.ID, "user", reason, map[string]int64{"base_version": base})
@@ -204,7 +215,7 @@ func (s *Store) Propose(ctx context.Context, base int64, c domain.Config, reason
 	return p, err
 }
 func (s *Store) Proposals(ctx context.Context) ([]domain.Proposal, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,base_version,config,reason,status,created_at FROM config_proposals ORDER BY created_at DESC")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,base_version,config,reason,status,created_at,expires_at FROM config_proposals ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -212,8 +223,8 @@ func (s *Store) Proposals(ctx context.Context) ([]domain.Proposal, error) {
 	result := []domain.Proposal{}
 	for rows.Next() {
 		var p domain.Proposal
-		var body, created string
-		if err = rows.Scan(&p.ID, &p.BaseVersion, &body, &p.Reason, &p.Status, &created); err != nil {
+		var body, created, expires string
+		if err = rows.Scan(&p.ID, &p.BaseVersion, &body, &p.Reason, &p.Status, &created, &expires); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal([]byte(body), &p.Config); err != nil {
@@ -222,15 +233,22 @@ func (s *Store) Proposals(ctx context.Context) ([]domain.Proposal, error) {
 		if p.CreatedAt, err = time.Parse(time.RFC3339Nano, created); err != nil {
 			return nil, err
 		}
+		if expires != "" {
+			v, e := time.Parse(time.RFC3339Nano, expires)
+			if e != nil {
+				return nil, e
+			}
+			p.ExpiresAt = &v
+		}
 		result = append(result, p)
 	}
 	return result, rows.Err()
 }
 func (s *Store) Apply(ctx context.Context, id string) (domain.ConfigVersion, error) {
 	err := s.transact(ctx, func(tx *sql.Tx) error {
-		var body, reason, status string
+		var body, reason, status, expires string
 		var base, current int64
-		err := tx.QueryRowContext(ctx, "SELECT config,reason,status,base_version FROM config_proposals WHERE id=?", id).Scan(&body, &reason, &status, &base)
+		err := tx.QueryRowContext(ctx, "SELECT config,reason,status,base_version,expires_at FROM config_proposals WHERE id=?", id).Scan(&body, &reason, &status, &base, &expires)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -239,6 +257,15 @@ func (s *Store) Apply(ctx context.Context, id string) (domain.ConfigVersion, err
 		}
 		if status != "PENDING" {
 			return errors.New("proposal is not pending")
+		}
+		if expires != "" {
+			deadline, e := time.Parse(time.RFC3339Nano, expires)
+			if e != nil {
+				return e
+			}
+			if !deadline.After(time.Now()) {
+				return errors.New("proposal has already expired")
+			}
 		}
 		if err = tx.QueryRowContext(ctx, "SELECT MAX(version) FROM config_versions").Scan(&current); err != nil {
 			return err
@@ -256,6 +283,11 @@ func (s *Store) Apply(ctx context.Context, id string) (domain.ConfigVersion, err
 		version, err := insertConfig(ctx, tx, c, "user", reason)
 		if err != nil {
 			return err
+		}
+		if expires != "" {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO config_expirations VALUES (?,?,?,'PENDING')", version, base, expires); err != nil {
+				return err
+			}
 		}
 		if _, err = tx.ExecContext(ctx, "UPDATE config_proposals SET status='APPLIED' WHERE id=?", id); err != nil {
 			return err

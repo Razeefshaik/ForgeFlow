@@ -1,15 +1,9 @@
 # Contribution workflow
 
-Discovery → analysis → quality ranking → human selection → Proceed to Contribute → isolated workspace → planning → coding → real testing → bounded fixing → independent review → READY FOR HUMAN REVIEW → PR preparation → explicit human submission.
+Discovery and ranking do not execute a contribution. Fresh preview binds approval to issue/repository/configuration/base commit and workspace root. Approval records the inputs before clone/branch preparation. Preparation-only legacy records await explicit coding approval.
 
-No external repository may be changed before Proceed. No automatic PR creation/merge. Codex effort never enters ranking.
+PLANNING saves JSON/Markdown before CODING. Optional human plan approval pauses here. TESTING records actual sandboxed commands, outputs, exit codes and durations. Failures enter bounded FIXING and retest. A fresh read-only REVIEWING context examines the issue, plan, diff and actual evidence. REQUEST_CHANGES enters bounded FIXING and retest/review. Passing verification plus APPROVE yields READY and a report.
 
-## Persisted lifecycle
-DISCOVERED → ANALYZING → RANKED → SELECTED → PREPARING → ANALYZING_REPOSITORY → PLANNING → CODING → TESTING → REVIEWING → READY → PR_PREPARED → PR_OPENED.
-TESTING/REVIEWING may enter FIXING; FIXING must return to TESTING.
-Active contributions may PAUSE or BLOCK, preserving the previous state for resume. FAILED and ABANDONED preserve history. Every transition is validated and recorded transactionally. READY is labeled READY FOR HUMAN REVIEW.
+Pause/stop cancels the owned process tree and retains source/evidence; restart interrupts running work into BLOCKED. Resume is explicit. Constraints may be changed before execution or while paused/blocked, and are audited. Abandon preserves the workspace and history.
 
-## Current delivery boundary
-The runnable foundation now includes public GitHub discovery and evidence-derived ranking in live mode. Seed data is illustrative and uses a separate demo database. State machine tests exercise lifecycle rules; they do not assert that any external contribution was tested or reviewed. Contribution execution, review and PR creation remain later milestones and are unavailable in the UI.
-Configuration proposals require Apply, are validated against their base version, and can be cancelled. Rollback adds a version rather than deleting history. Operator inspection and proposal support is deterministic and explicitly labeled; no unrestricted shell or hidden model call exists.
-
+READY can prepare a local commit and PR title/body. This does not push. PR_PREPARED requires a separate approval bound to commit/title/body before a fixed fork branch push and GitHub PR creation. Changed commits or dirty workspaces are refused. Existing matching open PRs are reused on retry. No merge action exists.

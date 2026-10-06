@@ -219,6 +219,7 @@ export default function Configuration() {
                 <div className="section-header">
                   <div>
                     <h3>{p.reason}</h3>
+                    {p.expires_at && <p className="muted">Temporary until {new Date(p.expires_at).toLocaleString()}. Expiration restores the prior version if no newer configuration has replaced this one.</p>}
                     <p className="muted">
                       Based on v{p.base_version}
                       {p.base_version !== current.data?.version

@@ -1,5 +1,5 @@
 - SPEC.md is the authoritative product specification.
-- ForgeFlow application source lives directly in the project root. contributions/<id>/repo is reserved for approved external open-source workspaces.
+- ForgeFlow application source lives directly in the project root. External contribution repositories live at <configured-contributions-root>/<id>/repo; this installation uses S:/StudyResource/TechBoooo/Backend/Contriss. Never store the ForgeFlow application there.
 - Never auto-submit or auto-merge PRs.
 - Never let Codex-effort estimation affect opportunity ranking.
 - Every contribution must have an isolated workspace.

@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forgeflow/internal/codex"
 	"forgeflow/internal/discovery"
 	"forgeflow/internal/domain"
+	"forgeflow/internal/execution"
 	"forgeflow/internal/github"
 	"forgeflow/internal/operator"
 	"forgeflow/internal/storage"
+	"forgeflow/internal/workspace"
 	"io"
 	"log/slog"
 	"mime"
@@ -23,9 +26,13 @@ import (
 )
 
 type Server struct {
-	Store     *storage.Store
-	WebDir    string
-	Discovery *discovery.Service
+	Store      *storage.Store
+	WebDir     string
+	Discovery  *discovery.Service
+	Workspaces *workspace.Service
+	Execution  *execution.Service
+	Runtime    map[string]any
+	OperatorAI codex.Runner
 }
 
 func (s Server) Handler() http.Handler {
@@ -34,6 +41,7 @@ func (s Server) Handler() http.Handler {
 		write(w, 200, map[string]any{"status": "ok", "mode": s.mode()})
 	})
 	m.HandleFunc("GET /api/overview", s.overview)
+	m.HandleFunc("GET /api/runtime", func(w http.ResponseWriter, r *http.Request) { write(w, 200, s.Runtime) })
 	m.HandleFunc("GET /api/discovery", func(w http.ResponseWriter, r *http.Request) {
 		if s.Discovery == nil {
 			write(w, 200, discovery.Status{Message: "Discovery adapter unavailable"})
@@ -92,18 +100,66 @@ func (s Server) Handler() http.Handler {
 		v, e := s.Store.Opportunity(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
+	m.HandleFunc("POST /api/opportunities/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
+		var b struct{}
+		if !decode(w, r, &b) {
+			return
+		}
+		if s.Workspaces == nil {
+			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
+			return
+		}
+		v, e := s.Workspaces.Preview(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	m.HandleFunc("POST /api/opportunities/{id}/proceed", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 501, map[string]string{"error": "Contribution execution is not implemented yet; no workspace or agent was created."})
+		var b struct {
+			Approved bool   `json:"approved"`
+			Token    string `json:"token"`
+			Execute  bool   `json:"execute"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		if s.Workspaces == nil {
+			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
+			return
+		}
+		v, e := s.Workspaces.ProceedWithExecution(r.Context(), r.PathValue("id"), b.Token, b.Approved, b.Execute)
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		write(w, 202, v)
+	})
+	m.HandleFunc("GET /api/contributions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.Store.Contribution(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
 	})
 	m.HandleFunc("GET /api/contributions", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Store.Contributions(r.Context())
 		respond(w, v, e)
 	})
-	m.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) { write(w, 200, []any{}) })
-	m.HandleFunc("GET /api/usage", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"sessions": 0, "allowance_remaining": nil, "source": "unavailable", "message": "No execution adapter connected; official plan allowance unavailable."})
-	})
+	m.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) { v, e := s.Store.Agents(r.Context()); respond(w, v, e) })
+	m.HandleFunc("GET /api/usage", func(w http.ResponseWriter,r *http.Request) { v,e:=s.Store.Usage(r.Context()); respond(w,v,e) })
 	m.HandleFunc("GET /api/events", s.events)
+	m.HandleFunc("GET /api/contributions/{id}/execution", func(w http.ResponseWriter, r *http.Request) {
+		if _, e := s.Store.Contribution(r.Context(), r.PathValue("id")); e != nil {
+			fail(w, e)
+			return
+		}
+		v, e := s.Store.Execution(r.Context(), r.PathValue("id"))
+		if errors.Is(e, storage.ErrNotFound) {
+			write(w, 200, map[string]string{"status": "NOT_STARTED"})
+			return
+		}
+		respond(w, v, e)
+	})
+	m.HandleFunc("GET /api/contributions/{id}/tests", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.Store.Tests(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
+	m.HandleFunc("POST /api/contributions/{id}/{action}", s.executionAction)
 	m.HandleFunc("GET /api/events/stream", s.stream)
 	m.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Store.CurrentConfig(r.Context())
@@ -152,7 +208,11 @@ func (s Server) Handler() http.Handler {
 		if !decode(w, r, &b) {
 			return
 		}
-		v, e := (operator.Service{Store: s.Store}).Chat(r.Context(), b.Message)
+		root := ""
+		if s.Execution != nil {
+			root = s.Execution.Root
+		}
+		v, e := (operator.Service{Store: s.Store, AI: s.OperatorAI, Execution: s.Execution, Root: root}).Chat(r.Context(), b.Message)
 		respond(w, v, e)
 	})
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +304,7 @@ func (s Server) overview(w http.ResponseWriter, r *http.Request) {
 			discoveryStatus = strings.ToLower(v.LastRun.Status)
 		}
 	}
-	write(w, 200, map[string]any{"mode": s.mode(), "repositories": len(repos), "opportunities": len(os), "high_quality": high, "active_contributions": active, "states": states, "config_version": c.Version, "discovery_status": discoveryStatus, "execution_available": false})
+	write(w, 200, map[string]any{"mode": s.mode(), "repositories": len(repos), "opportunities": len(os), "high_quality": high, "active_contributions": active, "states": states, "config_version": c.Version, "discovery_status": discoveryStatus, "execution_available": !s.Store.Demo && s.Execution != nil})
 }
 func (s Server) events(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("after") == "" && r.URL.Query().Get("entity") == "" {
@@ -390,6 +450,9 @@ func fail(w http.ResponseWriter, e error) {
 	if errors.Is(e, storage.ErrConflict) {
 		status = 409
 	}
+	if errors.Is(e, workspace.ErrChanged) {
+		status = 409
+	}
 	// Do not expose SQL, filesystem paths or credentials in infrastructure errors.
 	if strings.Contains(message, "SQL") || strings.Contains(message, "database") || strings.Contains(message, "context canceled") {
 		status = 500
@@ -419,7 +482,7 @@ func (s Server) spa(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, path)
 		return
 	}
-	if strings.Contains(filepath.Base(rel), ".") {
+	if rel != "" && rel != "." && strings.Contains(filepath.Base(rel), ".") {
 		http.NotFound(w, r)
 		return
 	}

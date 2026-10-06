@@ -89,6 +89,10 @@ export interface DiscoveryStatus {
   message: string;
 }
 export interface Contribution {
+
+  workspace?: string;
+  base_commit?: string;
+  message?: string;
   id: string;
   opportunity_id: string;
   repository: string;
@@ -139,6 +143,7 @@ export interface ConfigVersion {
   created_at: string;
 }
 export interface Proposal {
+  expires_at?: string;
   id: string;
   base_version: number;
   config: Config;
@@ -158,6 +163,7 @@ export interface Overview {
   execution_available: boolean;
 }
 export interface Reply {
+  confirmation?: {action: string; contribution_id: string; label: string; constraints?: string};
   message: string;
   action: string;
   proposal?: Proposal;

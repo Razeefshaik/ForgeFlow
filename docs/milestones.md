@@ -1,17 +1,7 @@
-# Milestones and continuation
+# Delivery status
 
-## Completed foundation
-Architecture/workflow docs, isolated branch, React dashboard, Go API, embedded SQLite migrations, config versions/proposals, immutable event history/SSE, lifecycle validation, explicit demo mode, independent ranking/effort domains and deterministic Operator.
-Real backend tests, vet/build, frontend production build and three browser tests pass. See verification.md for evidence and screenshots.
+Implemented: root application layout; live public GitHub discovery with evidence/ranking; configuration proposals/history/rollback; isolated approved clones; configurable external workspace root; finite Codex planning/coding sessions; real command verification; bounded fix and independent review loops; plans/diffs/reports; agent activity and observed usage; AI Operator proposals and confirmation controls; expiring configuration; local PR preparation and explicitly approved fork/push/PR submission.
 
-## Completed discovery
-Read-only public GitHub REST adapter, environment/GitHub CLI authentication, bounded scans, cache/ETag revalidation, rate-limit backoff, repository/issue evidence and eleven explained quality factors. Durable scan history/snapshots, Run/Cancel and automatic Pause/Resume. Real public scans and live browser evidence/Run checks passed; see discovery.md and verification.md.
+READY is produced by orchestration after actual verification and independent review, never by a raw state-setting endpoint. Contribution execution, plan approval when configured, configuration Apply and PR submission remain human gates. No auto merge or submission.
 
-## Next: isolated workspaces and command runner
-Allocate one workspace per approved contribution, snapshot issue/profile/ranking/plan and revalidate before starting. Resolve paths including junctions/symlinks. Require an enforceable sandbox, structured process arguments, deadlines, cancellation and real exit codes. Keep execution disabled until that boundary is implemented.
-
-## Then
-Workspace manager → sandboxed command runner → Codex contributor adapter → real testing/fix bounds → independent reviewer → AI Operator → final report/diff/PR preparation → human submission.
-
-Important: Go store Transition exists as a domain primitive, not a public endpoint allowing a user to skip verification. READY must eventually require persisted real test/reviewer evidence in the orchestration service. No raw state-setting API should be introduced.
-
+Validation distinguishes synthetic HTTP/model fixtures, actual local Git/Go commands, authenticated Codex fixture runs and read-only public GitHub checks. Remote submission is implemented but is not exercised against a real repository without human submission approval. See verification.md.

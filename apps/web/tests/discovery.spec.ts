@@ -42,7 +42,7 @@ test("live dashboard displays persisted GitHub evidence", async ({ page }) => {
   ).toHaveAttribute("href", /^https:\/\/github\.com\/.+\/issues\/\d+$/);
   await expect(
     page.getByRole("button", { name: "Proceed to Contribute" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.getByText("Full issue description", { exact: true }).click();
   await expect(page.locator(".issue-description")).toBeVisible();
   await page.locator(".dialog-content").evaluate((el) => {
@@ -67,7 +67,7 @@ test("live dashboard displays persisted GitHub evidence", async ({ page }) => {
   });
 });
 
-test("live Run action appends scan history while execution stays unavailable", async ({
+test("live Run action appends scan history without starting contributions", async ({
   page,
 }) => {
   test.skip(
@@ -75,6 +75,7 @@ test("live Run action appends scan history while execution stays unavailable", a
     "Live scan check is opt-in and performs read-only GitHub requests.",
   );
   await page.goto(liveURL + "/opportunities");
+	const beforeContributions = await (await page.request.get(liveURL + "/api/contributions")).json();
   const before = await (
     await page.request.get(liveURL + "/api/discovery/runs")
   ).json();
@@ -93,8 +94,9 @@ test("live Run action appends scan history while execution stays unavailable", a
   const overview = await (
     await page.request.get(liveURL + "/api/overview")
   ).json();
-  expect(overview.execution_available).toBe(false);
-  expect(overview.active_contributions).toBe(0);
+  expect(overview.execution_available).toBe(true);
+	const afterContributions = await (await page.request.get(liveURL + "/api/contributions")).json();
+	expect(afterContributions.map((c: {id:string}) => c.id)).toEqual(beforeContributions.map((c: {id:string}) => c.id));
   await expect(
     page.getByRole("button", { name: "Run discovery now" }),
   ).toBeEnabled();

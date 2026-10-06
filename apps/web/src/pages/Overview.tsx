@@ -63,7 +63,7 @@ export default function Overview() {
             detail:
               o?.mode === "demo"
                 ? "Illustrative lifecycle states"
-                : "No execution adapter connected",
+                : "Persisted contribution workflows",
           },
           {
             label: "Ready for review",

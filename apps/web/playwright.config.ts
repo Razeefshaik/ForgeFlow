@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 1,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: process.env.FORGEFLOW_TEST_URL || "http://127.0.0.1:5173",
     browserName: "chromium",
     channel: process.platform === "win32" ? "msedge" : undefined,
     viewport: { width: 1440, height: 1000 },

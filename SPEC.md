@@ -1,5 +1,7 @@
 # MASTER BUILD PROMPT — OPEN SOURCE AUTOPILOT
 
+Workspace location override (2026-10-06): external contribution repositories use the configurable contributions root. This installation uses `S:/StudyResource/TechBoooo/Backend/Contriss/<contribution-id>/repo`, with `.autopilot` and `artifacts` alongside `repo`. Examples below using `contributions/<id>` describe this workspace layout under the configured root; they do not require storing external clones inside ForgeFlow. ForgeFlow application source remains at its main project root.
+
 You are the principal engineer, product engineer, and UI engineer responsible for building this project end-to-end.
 
 Build a production-quality local application called:

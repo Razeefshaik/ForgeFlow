@@ -60,6 +60,7 @@ type Session struct {
 	Client      *Client
 	Requests    int
 	MaxRequests int
+	Fresh       bool // Revalidate with GitHub even when the discovery cache is unexpired.
 }
 
 func New(token string) *Client {
@@ -100,7 +101,7 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 	cached, exists := c.cache[key]
 	retry := c.retryAt
 	c.mu.Unlock()
-	if exists && time.Now().Before(cached.Until) {
+	if exists && !s.Fresh && time.Now().Before(cached.Until) {
 		return json.Unmarshal(cached.Body, target)
 	}
 	if time.Now().Before(retry) {

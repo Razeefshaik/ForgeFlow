@@ -2,23 +2,24 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, Bot, CornerDownLeft } from "lucide-react";
 import { Link } from "react-router-dom";
-import { request } from "../api";
+import { request, useAPI } from "../api";
 import type { Reply } from "../types";
 import { Badge } from "./primitives";
 import { Button } from "./ui/button";
 export default function Operator() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<
-    { role: string; text: string; proposal: boolean }[]
+    { role: string; text: string; proposal: boolean; confirmation?: Reply["confirmation"] }[]
   >([]);
   const client = useQueryClient();
+  const runtime = useAPI<{mode: string; codex_available: boolean}>("/runtime");
   const mutation = useMutation({
     mutationFn: (message: string) =>
       request<Reply>("/operator/chat", { message }),
     onSuccess: async (reply) => {
       setMessages((m) => [
         ...m,
-        { role: "operator", text: reply.message, proposal: !!reply.proposal },
+        { role: "operator", text: reply.message, proposal: !!reply.proposal, confirmation: reply.confirmation },
       ]);
       await client.invalidateQueries({ queryKey: ["/config/proposals"] });
     },
@@ -40,7 +41,7 @@ export default function Operator() {
           Inspect your system and propose changes through controlled application
           actions.
         </p>
-        <Badge>Foundation dispatcher · no AI connected</Badge>
+        <Badge>{runtime.data?.mode === "live" && runtime.data?.codex_available ? "Codex Operator · controlled actions" : "Deterministic Operator"}</Badge>
       </div>
       <div className="operator-suggestions">
         {[
@@ -64,6 +65,11 @@ export default function Operator() {
                 Review configuration proposal →
               </Link>
             )}
+            {m.confirmation && <Button onClick={async () => {
+              if (m.confirmation?.action === "abandon" && !window.confirm("Abandon this contribution? Workspace and history will be preserved.")) return;
+              try { await request("/contributions/" + encodeURIComponent(m.confirmation!.contribution_id) + "/" + m.confirmation!.action, {approved: true, constraints: m.confirmation!.constraints || ""}); await client.invalidateQueries(); setMessages(items => items.map((item,index) => index === i ? {...item, text: item.text + " Action accepted.", confirmation: undefined} : item)); }
+              catch(e) { setMessages(items => [...items, {role: "operator", text: (e as Error).message, proposal: false}]); }
+            }}>{m.confirmation.label}</Button>}
           </div>
         ))}
         {mutation.isPending && <p className="muted">Inspecting…</p>}

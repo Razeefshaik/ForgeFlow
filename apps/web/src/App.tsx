@@ -202,7 +202,7 @@ export default function App() {
                 ? "Backend unavailable. Start the Go server to connect."
                 : overview.data?.mode === "demo"
                   ? "DEMO WORKSPACE · Issues, scores and contribution states are illustrative."
-                  : "LIVE WORKSPACE · GitHub discovery available. Contribution execution is pending."}
+                  : "LIVE WORKSPACE · GitHub discovery, isolated Codex contributions and independent review. PR submission requires approval."}
           </span>
           {overview.data && (
             <Badge>Config v{overview.data.config_version}</Badge>
@@ -288,8 +288,8 @@ export default function App() {
         description="A local-first contribution control plane."
       >
         <p className="summary">
-          This foundation includes a persisted dashboard, quality ranking,
-          effort estimates, configuration proposals and replayable audit events.
+          ForgeFlow includes real GitHub discovery, approved Codex execution,
+          real verification, independent review, reports and replayable audit events.
         </p>
         <p>
           Use Opportunities to inspect quality factors. Use Configuration to

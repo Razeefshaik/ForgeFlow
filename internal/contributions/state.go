@@ -14,7 +14,7 @@ var forward = map[string][]string{
 	"TESTING":              {"FIXING", "REVIEWING"},
 	"FIXING":               {"TESTING"},
 	"REVIEWING":            {"FIXING", "READY"},
-	"READY":                {"PR_PREPARED"},
+	"READY":                {"PR_PREPARED", "FIXING"},
 	"PR_PREPARED":          {"PR_OPENED"},
 }
 

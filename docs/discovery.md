@@ -1,6 +1,6 @@
 # Live GitHub discovery
 
-Start `npm run dev:live`, open Opportunities and select Run discovery now. Public searches need no credentials. Authenticated public scans use GH_TOKEN, then GITHUB_TOKEN, then `gh auth token --hostname github.com` with a three-second timeout. Tokens never enter the browser, configuration, database or events. Private repositories are rejected; this phase supports public discovery only.
+Start `npm run dev` (or its `dev:live` alias). Automatic discovery starts after startup unless a saved Pause preference disables it. Open Opportunities and select Run discovery now for a manual scan. Public searches need no credentials. Authenticated public scans use GH_TOKEN, then GITHUB_TOKEN, then `gh auth token --hostname github.com` with a three-second timeout. Tokens never enter the browser, configuration, database or events. Private repositories are rejected; this phase supports public discovery only.
 
 ## Lifecycle and bounds
 A scan snapshots the applied profile version before starting. Only one scan runs at a time. Run returns HTTP 202 immediately; work uses the server context, not the request context. Cancellation retains fully analyzed observations. Bounds: three minutes per scan, 80 network requests, twelve seconds per request, four MiB per response. Reads are serial and do not follow redirects or execute repository content.
@@ -9,7 +9,7 @@ Search covers up to six highest-weight languages and six recent open issues per 
 
 Unauthenticated scans enrich up to two repositories, accepting two issues each. Authenticated scans enrich up to five, accepting three each. These are sampling limits, not complete coverage. Each run records snapshot version, outcome, request count, considered/accepted counts and warnings.
 
-Automatic scans default to fifteen-minute intervals, with the first scheduled scan fifteen minutes after startup. Run starts one immediately. Pause/Resume persists a preference and audit event. A zero interval disables automatic scheduling regardless of the stored preference. Cancel is separately audited and does not pause future scheduled scans. The server must remain running; no operating-system task is installed.
+Automatic scans default to fifteen-minute intervals, with the first scheduled scan immediately after startup. Run starts one immediately. Pause/Resume persists a preference and audit event. A zero interval disables automatic scheduling regardless of the stored preference. Cancel is separately audited and does not pause future scheduled scans. The server must remain running; no operating-system task is installed.
 
 ## Evidence
 Repository metadata includes topics, language, stars, forks, archive state and default branch. The latest default-branch commit SHA identifies the file tree checked for CONTRIBUTING, AGENTS, code of conduct, build manifests, CI and tests. A truncated/unavailable tree preserves unknown absence. Presence does not prove successful execution. Source file contents are not fetched or executed.

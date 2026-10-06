@@ -1,6 +1,6 @@
 # Application root and repository relocation
 
-ForgeFlow itself lives directly at the main project root. External open-source repositories are reserved for `contributions/<contribution-id>/repo`, created only after Proceed to Contribute. The initial directory contains only `.gitkeep`; execution is still unavailable.
+ForgeFlow itself lives directly at the main project root. External repositories use `<ConfiguredContributionsRoot>/<contribution-id>/repo`, created only after approval. This installation uses `S:/StudyResource/TechBoooo/Backend/Contriss`; the application contributions/ directory contains only .gitkeep.
 
 ```text
 ForgeFlow/
@@ -35,10 +35,10 @@ The obsolete gitlink was removed from the root index. No history was reset or pu
 ## Path rules
 Startup/build scripts derive the application root from their script file location. The server uses `--root` when specified, otherwise its executable location and working directory. Relative --db/--web arguments resolve against the root; absolute overrides are preserved. Data defaults are data/demo.db or data/forgeflow.db. Migrations are embedded, not loaded from the process working directory.
 
-Screenshot capture derives root/artifacts from its module path. External repository paths use `contributions.WorkspacePath(root, id)` and validate IDs before returning root/contributions/id/repo. This helper does not allocate a repository, approve work or replace future symlink/junction sandbox checks.
+Screenshot capture derives root/artifacts from its module path. External paths use `contributions.WorkspacePathAt(configuredRoot, id)` with validated IDs. Preparation/execution separately check resolved links, exclusive allocation and sandbox permissions. Current paths may change through audited relocation; historical approval paths remain intact.
 
 ## Run
-From the main repository root, run `npm run dev` and open http://127.0.0.1:5173. Use `npm run dev:live` for public GitHub discovery. On a fresh checkout run `npm run setup` first. The moved installed dependencies can be reused after this relocation.
+From the main repository root, run `npm run dev` and open http://127.0.0.1:5173. `npm run dev` uses live discovery; use `npm run dev:demo` for illustrative data. On a fresh checkout run `npm run setup` first. The moved installed dependencies can be reused after this relocation.
 
 ## Relocation verification — 2026-10-06
 - Go formatting completed. Root `npm run build` passed all 31 Go tests, vet, the server binary build, TypeScript and the Vite production build.

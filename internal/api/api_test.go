@@ -147,7 +147,7 @@ func TestAPIReadsAndHumanConfigApply(t *testing.T) {
 	}
 	r.Body.Close()
 	r = post(t, s, "/api/opportunities/demo-1/proceed", "{}", s.URL)
-	if r.StatusCode != 501 {
+	if r.StatusCode != 503 {
 		t.Fatal("execution unexpectedly available")
 	}
 	r.Body.Close()

@@ -46,7 +46,7 @@ type Service struct {
 }
 
 func New(ctx context.Context, s *storage.Store, c *github.Client, auth string, interval time.Duration) *Service {
-	return &Service{Store: s, Client: c, AuthSource: auth, Interval: interval, ctx: ctx, automatic: interval > 0, next: time.Now().Add(interval)}
+	return &Service{Store: s, Client: c, AuthSource: auth, Interval: interval, ctx: ctx, automatic: interval > 0, next: time.Now()}
 }
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	s.mu.Lock()

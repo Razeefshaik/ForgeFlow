@@ -1563,3 +1563,29 @@ pre {
 .evidence-panel .issue-description {
   color: var(--text);
 }
+.issue-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  max-height: 240px;
+  overflow: auto;
+}
+.approval-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+}
+.key-values dd { overflow-wrap: anywhere; }
+.command-result { margin: 16px 0; }
+.command-result summary { cursor: pointer; }
+.execution-panel { margin: 28px 0; padding: 20px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.execution-controls, .execution-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.execution-tabs button { color: var(--muted); padding: 8px 12px; border-bottom: 2px solid transparent; }
+.execution-tabs button[aria-selected="true"] { color: var(--text); border-color: #818cf8; }
+.diff-view { font: 12px/1.7 Consolas, monospace; max-height: 480px; overflow: auto; padding: 14px; background: #101115; }
+.diff-view span { display: block; white-space: pre; color: #d4d4d8; }
+.diff-add { background: #14532d44; color: #86efac !important; }
+.diff-remove { background: #7f1d1d44; color: #fca5a5 !important; }
+.diff-section { color: #a5b4fc !important; }
+.review-finding { border-left: 2px solid #fbbf24; padding-left: 15px; margin: 16px 0; }

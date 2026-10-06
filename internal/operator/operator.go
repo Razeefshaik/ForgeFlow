@@ -5,22 +5,33 @@ package operator
 import (
 	"context"
 	"fmt"
+	"forgeflow/internal/codex"
 	"forgeflow/internal/domain"
+	"forgeflow/internal/execution"
 	"forgeflow/internal/storage"
 	"strings"
 )
 
 type Reply struct {
-	Message  string           `json:"message"`
-	Action   string           `json:"action"`
-	Proposal *domain.Proposal `json:"proposal,omitempty"`
+	Message      string           `json:"message"`
+	Action       string           `json:"action"`
+	Proposal     *domain.Proposal `json:"proposal,omitempty"`
+	Confirmation *Confirmation    `json:"confirmation,omitempty"`
 }
-type Service struct{ Store *storage.Store }
+type Service struct {
+	Store     *storage.Store
+	AI        codex.Runner
+	Execution *execution.Service
+	Root      string
+}
 
 func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 	m := strings.ToLower(strings.TrimSpace(message))
 	if m == "" || len(message) > 2000 {
 		return Reply{}, fmt.Errorf("enter a message of at most 2000 characters")
+	}
+	if s.AI != nil && (!s.Store.Demo) && m != "add rust" && m != "include rust" && m != "i want to contribute to rust" {
+		return s.aiChat(ctx, message)
 	}
 	c, err := s.Store.CurrentConfig(ctx)
 	if err != nil {
@@ -45,7 +56,17 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 		return Reply{Action: "getConfig", Message: fmt.Sprintf("Active configuration: v%d. Languages and weights: %v. PR submission and merge automation are disabled.", c.Version, c.Config.Profile.Languages)}, nil
 	}
 	if strings.Contains(m, "agent") {
-		return Reply{Action: "getAgentStatus", Message: "No execution agents are connected. Demo contribution states are illustrative; no Codex session is running."}, nil
+		agents, e := s.Store.Agents(ctx)
+		if e != nil {
+			return Reply{}, e
+		}
+		running := 0
+		for _, a := range agents {
+			if a.Status == "RUNNING" {
+				running++
+			}
+		}
+		return Reply{Action: "getAgentStatus", Message: fmt.Sprintf("%d recorded Codex sessions; %d currently running. Demo records do not start agents.", len(agents), running)}, nil
 	}
 	if strings.Contains(m, "discovery") || strings.Contains(m, "scan") {
 		if s.Store.Demo {
