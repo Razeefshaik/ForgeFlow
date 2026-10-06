@@ -1,0 +1,8 @@
+- SPEC.md is the authoritative product specification.
+- Never auto-submit or auto-merge PRs.
+- Never let Codex-effort estimation affect opportunity ranking.
+- Every contribution must have an isolated workspace.
+- Codex may modify only the active contribution workspace.
+- Real commands/tests determine pass/fail; never fabricate test results.
+- Preserve event/audit history.
+- Human approval is required before contribution execution and PR submission.
