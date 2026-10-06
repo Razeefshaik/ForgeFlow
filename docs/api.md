@@ -7,6 +7,11 @@ All JSON endpoints live under /api. Errors return {"error":"message"}. Mutations
 | GET | /health | Health and database mode |
 | GET | /overview | Counts, states, config version, execution availability |
 | GET | /discovery | Availability, auth source (never token), running/automatic state, retry deadline, last run |
+| GET | /auth/github | Account, public Client ID, pending user code and safe messages; never access/refresh/device tokens |
+| POST | /auth/github/configure | `{client_id:"..."}`; save public OAuth app identity once |
+| POST | /auth/github/login | `{}`; start GitHub device authorization; backend polls at GitHub's interval |
+| POST | /auth/github/logout | `{}`; clear saved/in-memory account; does not revoke GitHub authorization |
+| POST | /auth/github/cancel | `{}`; cancel pending sign-in |
 | GET | /discovery/runs | Latest 50 durable scan records |
 | POST | /discovery/run | {}; 202 accepted; 409 running; 429 backoff |
 | POST | /discovery/pause | {}; durable preference and audit event |

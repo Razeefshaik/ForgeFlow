@@ -107,9 +107,10 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	if c.State == "PR_OPENED" && r.PRURL != "" {
 		return r, nil
 	}
-	if c.State != "PR_PREPARED" || s.Client == nil || s.Client.Token == "" {
+	if c.State != "PR_PREPARED" || s.Client == nil || s.Client.Credential() == "" {
 		return r, errors.New("prepare PR first and authenticate GitHub with fork/push/PR permissions")
 	}
+	client := s.Client.Snapshot()
 	approval, err := s.Store.Approval(ctx, id)
 	if err != nil {
 		return r, err
@@ -132,7 +133,7 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	if err = s.Store.WorkspaceEvent(ctx, id, "PRSubmissionApproved", "Human approved fork, branch push and PR submission", map[string]string{"commit": r.HeadCommit}); err != nil {
 		return r, err
 	}
-	session := github.Session{Client: s.Client, MaxRequests: 20, Fresh: true}
+	session := github.Session{Client: client, MaxRequests: 20, Fresh: true}
 	var user github.User
 	if err = session.Get(ctx, "/user", &user); err != nil {
 		return r, err
@@ -156,7 +157,7 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 		err = session.Get(ctx, "/repos/"+forkName, &fork)
 		var apiError *github.APIError
 		if errors.As(err, &apiError) && apiError.Status == 404 {
-			err = s.Client.Write(ctx, "/repos/"+c.Repository+"/forks", map[string]any{}, &fork)
+			err = client.Write(ctx, "/repos/"+c.Repository+"/forks", map[string]any{}, &fork)
 			createdFork = err == nil
 		}
 		if err != nil {
@@ -196,7 +197,7 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 			}
 		}
 	}
-	header := "AUTHORIZATION: basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+s.Client.Token))
+	header := "AUTHORIZATION: basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+client.Credential()))
 	cmd := exec.CommandContext(ctx, "git", "-c", "credential.helper=", "-c", "core.hooksPath="+filepath.Join(filepath.Dir(repo), ".autopilot", "empty-hooks"), "push", "https://github.com/"+forkName+".git", "HEAD:refs/heads/"+c.Branch)
 	cmd.Dir = repo
 	cmd.Env = append(gitEnv(), "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_0="+header)
@@ -225,7 +226,7 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 		if err = json.Unmarshal(approval.Repository, &repository); err != nil {
 			return r, err
 		}
-		err = s.Client.Write(ctx, "/repos/"+c.Repository+"/pulls", map[string]any{"title": r.PRTitle, "body": r.PRBody, "head": user.Login + ":" + c.Branch, "base": repository.DefaultBranch, "maintainer_can_modify": true}, &created)
+		err = client.Write(ctx, "/repos/"+c.Repository+"/pulls", map[string]any{"title": r.PRTitle, "body": r.PRBody, "head": user.Login + ":" + c.Branch, "base": repository.DefaultBranch, "maintainer_can_modify": true}, &created)
 		if err != nil {
 			return r, err
 		}

@@ -18,7 +18,7 @@ For illustrative demo data:
 ```powershell
 npm run dev:demo
 ```
-Open Opportunities and select **Run discovery now**. In live mode, automatic scans start after startup, then run every 15 minutes while the server runs; Pause/Resume persists. Public discovery works without credentials, with smaller scan limits. Authenticated public scans use `GH_TOKEN`, `GITHUB_TOKEN`, or a previous `gh auth login`. Never paste tokens into configuration or Operator. The chat's GitHub plugin does not authenticate the running app.
+Open Opportunities and select **Run discovery now**. In live mode, automatic scans start after startup, then run every 15 minutes while the server runs; Pause/Resume persists. Public discovery works without credentials, with smaller scan limits. Open **GitHub account** to sign in through your browser and stay connected across restarts. A [one-time OAuth Client ID setup](docs/github-sign-in.md) identifies ForgeFlow to GitHub; no personal token or client secret is needed. Windows encrypts saved credentials for your account. Environment variables and an existing `gh auth login` remain supported as fallbacks. Never paste tokens into configuration or Operator. The chat's GitHub plugin does not authenticate the running app.
 
 Build and run the dashboard with a single Go process:
 ```powershell
@@ -55,7 +55,7 @@ npm --prefix apps/web run dev
 ## Execution and boundaries
 Inspect a real issue, select **Proceed to Contribute**, review fresh inputs and explicitly approve cloning, coding, verification and independent review. Existing preparation-only contributions require **Start coding** approval. Enabling plan approval pauses before edits; approve the plan, then resume. Dependency network access is off by default and can be explicitly enabled when starting/resuming.
 
-Passing commands and an independent APPROVE produce READY. Inspect the diff and report, prepare the local commit/PR, then separately approve submission. GitHub submission requires `GH_TOKEN`, `GITHUB_TOKEN` or `gh auth login` with fork/push/PR permissions. Build-chat plugin authentication does not authenticate the running application. No PR is automatically submitted or merged.
+Passing commands and an independent APPROVE produce READY. Inspect the diff and report, prepare the local commit/PR, then separately approve submission. GitHub submission requires a connected GitHub account with public repository contribution permissions (or an environment/CLI credential with fork/push/PR permissions). Build-chat plugin authentication does not authenticate the running application. No PR is automatically submitted or merged.
 
 Discovery is a bounded public-repository sample, and quality/acceptance signals are heuristics. Demo records are illustrative. Official remaining Codex plan allowance is unavailable; Usage shows observed local events and a clearly labeled manual entry. Codex effort never changes ranking.
 

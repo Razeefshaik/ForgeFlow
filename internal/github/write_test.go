@@ -23,7 +23,7 @@ func TestSubmissionWriteAuthAllowlistAndBoundedResponse(t *testing.T) {
 	if err := client.Write(context.Background(), "/repos/example/repo/pulls", map[string]string{}, nil); err == nil || calls != 0 {
 		t.Fatal("unauthenticated write was not rejected")
 	}
-	client.Token = "fixture-token"
+	client.SetCredential("fixture-token")
 	for _, p := range []string{"/repos/example/repo/issues", "/repos/example/repo/pulls/1", "/repos/../repo/pulls", "/user"} {
 		if err := client.Write(context.Background(), p, map[string]string{}, nil); err == nil {
 			t.Fatal("unapproved endpoint", p)

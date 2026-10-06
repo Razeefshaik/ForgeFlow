@@ -29,6 +29,7 @@ import { Badge, Empty } from "./components/primitives";
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
 import Discovery from "./components/Discovery";
+const Login = lazy(() => import("./pages/Login"));
 const Configuration = lazy(() => import("./pages/Configuration"));
 const Opportunities = lazy(() => import("./pages/Opportunities"));
 const Activity = lazy(() =>
@@ -55,6 +56,7 @@ const navigation = [
   { to: "/usage", label: "Usage & effort", icon: Zap },
   { to: "/configuration", label: "Configuration", icon: SlidersHorizontal },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
+  { to: "/login", label: "GitHub account", icon: GitBranch },
 ];
 export default function App() {
   const [theme, setTheme] = useState(
@@ -238,6 +240,7 @@ export default function App() {
                 }
               />
               <Route path="/contributions" element={<Contributions />} />
+              <Route path="/login" element={<Login />} />
               <Route path="/agents" element={<Agents />} />
               <Route path="/activity" element={<Activity />} />
               <Route path="/usage" element={<Usage />} />

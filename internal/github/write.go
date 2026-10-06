@@ -12,7 +12,8 @@ import (
 
 // Write is used only after the application's explicit PR submission approval.
 func (c *Client) Write(ctx context.Context, path string, body, target any) error {
-	if c.Token == "" {
+	token := c.Credential()
+	if token == "" {
 		return errors.New("authenticated GitHub credential required for submission")
 	}
 	if !strings.HasPrefix(path, "/repos/") || strings.Contains(path, "..") || strings.ContainsAny(path, "?#") {
@@ -30,7 +31,7 @@ func (c *Client) Write(ctx context.Context, path string, body, target any) error
 	if e != nil {
 		return errors.New("invalid GitHub write request")
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")

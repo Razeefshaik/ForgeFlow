@@ -48,6 +48,16 @@ type Service struct {
 func New(ctx context.Context, s *storage.Store, c *github.Client, auth string, interval time.Duration) *Service {
 	return &Service{Store: s, Client: c, AuthSource: auth, Interval: interval, ctx: ctx, automatic: interval > 0, next: time.Now()}
 }
+func (s *Service) CredentialChanged(source string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.AuthSource = source
+	s.retry = time.Time{}
+	s.next = time.Now()
+	if s.cancel != nil {
+		s.cancel()
+	}
+}
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	s.mu.Lock()
 	out := Status{Available: !s.Store.Demo, Running: s.running, Automatic: s.automatic, Authentication: s.AuthSource, IntervalSeconds: int(s.Interval.Seconds()), Message: "Public repositories only. Bounded samples; no repository code is executed."}
@@ -220,6 +230,7 @@ func preferredLabels(labels []string) string {
 	return " label:" + strings.Join(out, ",")
 }
 func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.ConfigVersion) {
+	credential := s.Client.Credential()
 	session := &github.Session{Client: s.Client, MaxRequests: 80}
 	opps := []domain.Opportunity{}
 	hadError := false
@@ -229,7 +240,9 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		var api *github.APIError
 		if errors.As(err, &api) && !api.RetryAt.IsZero() {
 			s.mu.Lock()
-			s.retry = api.RetryAt
+			if credential == s.Client.Credential() {
+				s.retry = api.RetryAt
+			}
 			s.mu.Unlock()
 		}
 	}
@@ -270,7 +283,7 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		}
 	}
 	maxRepos, maxPerRepo := 5, 3
-	if s.Client.Token == "" {
+	if s.Client.Credential() == "" {
 		maxRepos, maxPerRepo = 2, 2
 	}
 	run.Warnings = append(run.Warnings, fmt.Sprintf("Scan limited to %d repositories and %d accepted issues per repository; discovery does not exhaust all matching issues.", maxRepos, maxPerRepo))

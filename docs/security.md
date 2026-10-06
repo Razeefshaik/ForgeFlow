@@ -1,5 +1,7 @@
 # Local execution boundaries
 
+GitHub browser login uses device authorization with a registered public OAuth Client ID and explicit GitHub consent. Windows DPAPI encrypts credentials for the current Windows account outside the project. The backend verifies `/user`, saves refresh tokens encrypted, respects polling delays, and refreshes expiring tokens. Account endpoints use the existing loopback/origin/strict-JSON protections. Public account status is marked `no-store`. See [GitHub sign-in](github-sign-in.md).
+
 The HTTP server binds numeric loopback, validates Host, rejects cross-origin writes, requires JSON and bounds bodies. Vite proxies the API on the same origin. This is a personal local application, not a public multi-user service.
 
 Approved external clones use exclusive directories with resolved link checks, fixed public GitHub remotes, pinned commits/branches and clean Git configuration, empty hooks/templates and no submodules. Git/test/agent subprocesses use structured arguments, deadlines, bounded outputs and cancellation of the owned process tree. Partial work/evidence is retained.

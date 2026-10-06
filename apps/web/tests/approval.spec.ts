@@ -17,7 +17,7 @@ test("rate-limited preview shows local reset time and never permits execution", 
   await page.getByRole("button",{name:"Proceed to Contribute"}).click();
   await expect(page.getByRole("alert")).toContainText("2:36:19");
   await expect(page.getByRole("alert")).not.toContainText("2026-10-06T21:06:19Z");
-  await expect(page.getByText(/For authenticated access, set GH_TOKEN or GITHUB_TOKEN/)).toBeVisible();
+  await expect(page.getByText(/Sign in from the GitHub account page/)).toBeVisible();
   await expect(page.getByRole("button",{name:"Approve and start contribution"})).toHaveCount(0);
   expect(executions).toBe(0);
 });

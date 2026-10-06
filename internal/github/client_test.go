@@ -50,7 +50,7 @@ func TestCacheConditionalRequestsBudgetAndCredentialIsolation(t *testing.T) {
 	if n != 2 {
 		t.Fatal("conditional request missing")
 	}
-	c.Token = "different-secret"
+	c.SetCredential("different-secret")
 	if err := s.Get(context.Background(), "/issue", &v); err != nil {
 		t.Fatal(err)
 	}

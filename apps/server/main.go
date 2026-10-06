@@ -11,6 +11,7 @@ import (
 	"forgeflow/internal/domain"
 	"forgeflow/internal/execution"
 	"forgeflow/internal/github"
+	"forgeflow/internal/githubauth"
 	"forgeflow/internal/project"
 	"forgeflow/internal/seed"
 	"forgeflow/internal/storage"
@@ -143,6 +144,15 @@ func run() error {
 		token, auth = github.ResolveToken(ctx)
 	}
 	client := github.New(token)
+	var account *githubauth.Service
+	if !*demo {
+		account, err = githubauth.New(ctx, root, client, auth)
+		if err != nil {
+			return err
+		}
+		defer account.Close()
+		auth = account.Status().Source
+	}
 	workspaces := workspace.New(ctx, s, client, root)
 	workspaces.Base = settings.ContributionsDir
 	cli := codex.Resolve(settings.CodexBinary, settings.CodexModel)
@@ -160,6 +170,14 @@ func run() error {
 	discover := discovery.New(ctx, s, client, auth, *discoveryInterval)
 	if err = discover.RestoreSchedule(); err != nil {
 		return err
+	}
+	if account != nil {
+		account.SetChanged(func(source string) {
+			discover.CredentialChanged(source)
+			if e := s.WorkspaceEvent(ctx, "github-account", "GitHubAuthenticationChanged", "GitHub access updated", map[string]string{"source": source}); e != nil {
+				slog.Error("GitHub account audit event failed", "error", e)
+			}
+		})
 	}
 	discover.Schedule()
 	if err = s.ExpireConfigs(ctx, time.Now()); err != nil {
@@ -183,7 +201,7 @@ func run() error {
 	}()
 	defer func() { cancel(); <-expiryDone }()
 	defer func() { cancel(); discover.Cancel(); discover.Wait() }()
-	server := &http.Server{Addr: *listen, Handler: (api.Server{Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Runtime: map[string]any{"contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	server := &http.Server{Addr: *listen, Handler: (api.Server{Auth: account, Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Runtime: map[string]any{"contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	done := make(chan error, 1)
 	go func() {
 		slog.Info("ForgeFlow listening", "address", *listen, "demo", *demo)

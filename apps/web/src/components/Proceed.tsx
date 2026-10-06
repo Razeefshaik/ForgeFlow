@@ -43,7 +43,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
     <h3>Prepare a contribution workspace</h3>
     <p className="muted">Review fresh GitHub information, then approve an isolated clone, Codex implementation, real tests and independent review. Completed work stops for your review before PR submission.</p>
     {error && <p className="error" role="alert">{error}</p>}
-    {rateLimited && <p className="note">Wait until the displayed local time before trying again. GitHub access: {discovery.data?.authentication ?? "check Opportunities for authentication status"}.{discovery.data?.authentication === "public unauthenticated" && " For authenticated access, set GH_TOKEN or GITHUB_TOKEN in the terminal that starts ForgeFlow, then restart it. Never enter a token in this page or Operator."}</p>}
+    {rateLimited && <p className="note">Wait until the displayed local time before trying again. GitHub access: {discovery.data?.authentication ?? "check Opportunities for authentication status"}.{discovery.data?.authentication === "public unauthenticated" && " Sign in from the GitHub account page to enable authenticated access."}</p>}
     {preview && <>
       <h4>{preview.issue.title}</h4>
       <p><a href={preview.issue.html_url} target="_blank" rel="noreferrer">Open the current GitHub issue</a></p>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Radar, RefreshCw } from "lucide-react";
 import { request, useAPI } from "../api";
@@ -45,6 +46,7 @@ export default function Discovery() {
               <div className="discovery-meta">
                 <span>
                   Access: <b>{s.authentication}</b>
+                  {s.authentication === "public unauthenticated" && <> · <Link to="/login">Sign in with GitHub</Link></>}
                 </span>
                 <span>
                   Automatic scans: <b>{s.automatic ? "on" : "paused"}</b>

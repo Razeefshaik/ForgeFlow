@@ -86,3 +86,5 @@ Approved isolated Git workspace preparation is implemented. Enforceable reposito
 
 The live development server is left running for interactive use. The disposable demo QA server was stopped. Real repository cloning requires the explicit in-app approval, and prepared contributions truthfully stop BLOCKED at PLANNING until the Codex adapter exists.
 
+
+GitHub account verification: synthetic OAuth HTTP tests exercise device polling, pending/slow-down/denial, identity verification, Windows DPAPI encryption, restart recovery, refresh rotation, and logout. Browser fixtures exercise OAuth app setup, the GitHub challenge link/code, connected account after reload, and sign-out. No real GitHub account authorization or PR submission was performed by these tests.

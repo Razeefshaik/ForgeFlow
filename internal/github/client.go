@@ -50,7 +50,8 @@ type entry struct {
 type Client struct {
 	HTTP       *http.Client
 	BaseURL    string
-	Token      string
+	token      string
+	generation uint64
 	mu         sync.Mutex
 	cache      map[string]entry
 	cacheBytes int
@@ -64,7 +65,25 @@ type Session struct {
 }
 
 func New(token string) *Client {
-	return &Client{HTTP: &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, BaseURL: "https://api.github.com", Token: token, cache: map[string]entry{}}
+	return &Client{HTTP: &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, BaseURL: "https://api.github.com", token: token, cache: map[string]entry{}}
+}
+
+// Credential returns a synchronized server-side credential snapshot.
+func (c *Client) Credential() string { c.mu.Lock(); defer c.mu.Unlock(); return c.token }
+func (c *Client) SetCredential(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token = token
+	c.generation++
+	c.cache = map[string]entry{}
+	c.cacheBytes = 0
+	c.retryAt = time.Time{}
+}
+func (c *Client) Snapshot() *Client {
+	n := New(c.Credential())
+	n.HTTP = c.HTTP
+	n.BaseURL = c.BaseURL
+	return n
 }
 
 // ResolveToken never sends credentials to the browser, database or logs.
@@ -95,7 +114,10 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 		return errors.New("invalid GitHub endpoint")
 	}
 	// An auth-specific cache prevents reuse across credential changes. Secrets remain memory-only.
-	scope := sha256.Sum256([]byte(c.Token))
+	c.mu.Lock()
+	token, generation := c.token, c.generation
+	c.mu.Unlock()
+	scope := sha256.Sum256([]byte(token))
 	key := hex.EncodeToString(scope[:]) + ":" + u.String()
 	c.mu.Lock()
 	cached, exists := c.cache[key]
@@ -118,8 +140,8 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("User-Agent", "ForgeFlow/0.2")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	if exists && cached.ETag != "" {
 		req.Header.Set("If-None-Match", cached.ETag)
@@ -135,14 +157,18 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 	if resp.Header.Get("X-RateLimit-Remaining") == "0" {
 		if n, e := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); e == nil {
 			c.mu.Lock()
-			c.retryAt = time.Unix(n, 0)
+			if c.generation == generation {
+				c.retryAt = time.Unix(n, 0)
+			}
 			c.mu.Unlock()
 		}
 	}
 	if resp.StatusCode == 304 && exists {
 		cached.Until = time.Now().Add(15 * time.Minute)
 		c.mu.Lock()
-		c.cache[key] = cached
+		if c.generation == generation {
+			c.cache[key] = cached
+		}
 		c.mu.Unlock()
 		return json.Unmarshal(cached.Body, target)
 	}
@@ -158,7 +184,9 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 				e.RetryAt = time.Unix(n, 0)
 			}
 			c.mu.Lock()
-			c.retryAt = e.RetryAt
+			if c.generation == generation {
+				c.retryAt = e.RetryAt
+			}
 			c.mu.Unlock()
 		}
 		return e
@@ -174,6 +202,10 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 		return errors.New("GitHub returned invalid JSON")
 	}
 	c.mu.Lock()
+	if c.generation != generation {
+		c.mu.Unlock()
+		return nil
+	}
 	if previous, ok := c.cache[key]; ok {
 		c.cacheBytes -= len(previous.Body)
 		delete(c.cache, key)

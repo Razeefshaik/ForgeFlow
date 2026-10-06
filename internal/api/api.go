@@ -9,6 +9,7 @@ import (
 	"forgeflow/internal/domain"
 	"forgeflow/internal/execution"
 	"forgeflow/internal/github"
+	"forgeflow/internal/githubauth"
 	"forgeflow/internal/operator"
 	"forgeflow/internal/storage"
 	"forgeflow/internal/workspace"
@@ -26,6 +27,7 @@ import (
 )
 
 type Server struct {
+	Auth       *githubauth.Service
 	Store      *storage.Store
 	WebDir     string
 	Discovery  *discovery.Service
@@ -37,6 +39,44 @@ type Server struct {
 
 func (s Server) Handler() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /api/auth/github", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if s.Auth == nil {
+			write(w, 200, map[string]any{"available": false, "message": "GitHub sign-in is unavailable in demo mode"})
+			return
+		}
+		write(w, 200, s.Auth.Status())
+	})
+	m.HandleFunc("POST /api/auth/github/{action}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		var b struct {
+			ClientID string `json:"client_id"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		if s.Auth == nil {
+			write(w, 503, map[string]string{"error": "GitHub sign-in is unavailable in demo mode"})
+			return
+		}
+		var err error
+		switch r.PathValue("action") {
+		case "configure":
+			err = s.Auth.Configure(b.ClientID)
+		case "login":
+			err = s.Auth.Start(r.Context())
+		case "logout", "cancel":
+			err = s.Auth.Logout()
+		default:
+			write(w, 404, map[string]string{"error": "Unknown account action"})
+			return
+		}
+		if err != nil {
+			write(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		write(w, 200, s.Auth.Status())
+	})
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"status": "ok", "mode": s.mode()})
 	})
@@ -141,7 +181,7 @@ func (s Server) Handler() http.Handler {
 		respond(w, v, e)
 	})
 	m.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) { v, e := s.Store.Agents(r.Context()); respond(w, v, e) })
-	m.HandleFunc("GET /api/usage", func(w http.ResponseWriter,r *http.Request) { v,e:=s.Store.Usage(r.Context()); respond(w,v,e) })
+	m.HandleFunc("GET /api/usage", func(w http.ResponseWriter, r *http.Request) { v, e := s.Store.Usage(r.Context()); respond(w, v, e) })
 	m.HandleFunc("GET /api/events", s.events)
 	m.HandleFunc("GET /api/contributions/{id}/execution", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := s.Store.Contribution(r.Context(), r.PathValue("id")); e != nil {
