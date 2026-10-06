@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { request } from "../api";
+import { APIError, request, useAPI } from "../api";
 import type { Opportunity, Contribution } from "../types";
 import { Button } from "./ui/button";
 
@@ -19,21 +19,23 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
   const [approved, setApproved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [rateLimited, setRateLimited] = useState(false);
+  const discovery = useAPI<{authentication: string}>("/discovery");
   const navigate = useNavigate();
   const cache = useQueryClient();
   async function inspect() {
-    setPending(true); setError(""); setApproved(false); setPreview(null);
+    setPending(true); setError(""); setRateLimited(false); setApproved(false); setPreview(null);
     try { setPreview(await request<Preview>(`/opportunities/${encodeURIComponent(o.id)}/preview`, {})); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) { setError((e as Error).message); setRateLimited(e instanceof APIError && e.status === 429); }
     finally { setPending(false); }
   }
   async function proceed() {
     if (!preview || !approved) return;
-    setPending(true); setError("");
+    setPending(true); setError(""); setRateLimited(false);
     try {
       await request<Contribution>(`/opportunities/${encodeURIComponent(o.id)}/proceed`, { token: preview.token, approved: true, execute: true });
       await cache.invalidateQueries(); navigate("/contributions");
-    } catch (e) { setError((e as Error).message); setPreview(null); setApproved(false); }
+    } catch (e) { setError((e as Error).message); setRateLimited(e instanceof APIError && e.status === 429); setPreview(null); setApproved(false); }
     finally { setPending(false); }
   }
   if (o.demo) return <div className="dialog-footer"><p className="muted">Demo issues cannot create contribution workspaces. Start live mode to work with real repositories.</p><Button disabled>Proceed to Contribute</Button></div>;
@@ -41,6 +43,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
     <h3>Prepare a contribution workspace</h3>
     <p className="muted">Review fresh GitHub information, then approve an isolated clone, Codex implementation, real tests and independent review. Completed work stops for your review before PR submission.</p>
     {error && <p className="error" role="alert">{error}</p>}
+    {rateLimited && <p className="note">Wait until the displayed local time before trying again. GitHub access: {discovery.data?.authentication ?? "check Opportunities for authentication status"}.{discovery.data?.authentication === "public unauthenticated" && " For authenticated access, set GH_TOKEN or GITHUB_TOKEN in the terminal that starts ForgeFlow, then restart it. Never enter a token in this page or Operator."}</p>}
     {preview && <>
       <h4>{preview.issue.title}</h4>
       <p><a href={preview.issue.html_url} target="_blank" rel="noreferrer">Open the current GitHub issue</a></p>

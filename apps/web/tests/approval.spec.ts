@@ -2,6 +2,26 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+test.use({ timezoneId: "Asia/Kolkata" });
+
+test("rate-limited preview shows local reset time and never permits execution", async ({page}) => {
+  const examples=await (await page.request.get("/api/opportunities")).json();
+  const opportunity={...examples[0],id:"quota-ui-fixture",demo:false};
+  await page.route("**/api/opportunities",route=>route.fulfill({json:[opportunity]}));
+  await page.route("**/api/discovery",route=>route.fulfill({json:{available:true,running:false,automatic:false,authentication:"public unauthenticated",last_run:null,retry_at:null}}));
+  await page.route("**/api/opportunities/quota-ui-fixture/preview",route=>route.fulfill({status:429,json:{error:"GitHub rate limit reached; retry after 2026-10-06T21:06:19Z"}}));
+  let executions=0;
+  await page.route("**/api/opportunities/quota-ui-fixture/proceed",route=>{executions++;return route.fulfill({status:500,json:{error:"Unexpected approval"}})});
+  await page.goto("/opportunities");
+  await page.getByRole("button",{name:"Inspect "+opportunity.repository}).click();
+  await page.getByRole("button",{name:"Proceed to Contribute"}).click();
+  await expect(page.getByRole("alert")).toContainText("2:36:19");
+  await expect(page.getByRole("alert")).not.toContainText("2026-10-06T21:06:19Z");
+  await expect(page.getByText(/For authenticated access, set GH_TOKEN or GITHUB_TOKEN/)).toBeVisible();
+  await expect(page.getByRole("button",{name:"Approve and start contribution"})).toHaveCount(0);
+  expect(executions).toBe(0);
+});
+
 test("workspace approval requires fresh preview and explicit confirmation", async ({ page }) => {
   // UI contract fixture only. Backend integration tests exercise actual Git.
   const original = await page.request.get("/api/opportunities");

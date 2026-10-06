@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -85,18 +86,8 @@ func pinGitConfig(repo string) error {
 	if err != nil {
 		return errors.New("could not validate workspace Git configuration")
 	}
-	allowed := map[string]bool{"core.repositoryformatversion": true, "core.filemode": true, "core.bare": true, "core.logallrefupdates": true, "core.symlinks": true, "core.ignorecase": true, "core.precomposeunicode": true, "remote.origin.url": true, "remote.origin.fetch": true}
-	for _, entry := range strings.Split(string(b), "\x00") {
-		if entry == "" {
-			continue
-		}
-		key, value, _ := strings.Cut(entry, "\n")
-		if !allowed[key] && !(strings.HasPrefix(key, "branch.autopilot/") && (strings.HasSuffix(key, ".remote") || strings.HasSuffix(key, ".merge"))) {
-			return errors.New("unsafe local Git configuration; inspect before execution")
-		}
-		if key == "remote.origin.url" && !strings.HasPrefix(value, "https://github.com/") {
-			return errors.New("workspace remote must be the approved public GitHub HTTPS repository")
-		}
+	if err := validateLocalGitConfig(b); err != nil {
+		return err
 	}
 	// The agent cannot write this metadata directory. Never refresh a pinned digest.
 	f, err := os.OpenFile(snapshot, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -109,4 +100,43 @@ func pinGitConfig(repo string) error {
 		return err
 	}
 	return closeErr
+}
+
+var passiveGitRef = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
+
+func safeTrackingSetting(key, value string) bool {
+	if !strings.HasPrefix(key, "branch.") {
+		return false
+	}
+	last := strings.LastIndexByte(key, '.')
+	if last <= len("branch.") {
+		return false
+	}
+	switch key[last+1:] {
+	case "remote":
+		return value == "origin" || value == "."
+	case "merge":
+		return strings.HasPrefix(value, "refs/heads/") && len(value) > len("refs/heads/") && passiveGitRef.MatchString(value)
+	case "vscode-merge-base":
+		return value != "" && passiveGitRef.MatchString(value)
+	default:
+		return false
+	}
+}
+
+func validateLocalGitConfig(b []byte) error {
+	allowed := map[string]bool{"core.repositoryformatversion": true, "core.filemode": true, "core.bare": true, "core.logallrefupdates": true, "core.symlinks": true, "core.ignorecase": true, "core.precomposeunicode": true, "remote.origin.url": true, "remote.origin.fetch": true}
+	for _, entry := range strings.Split(string(b), "\x00") {
+		if entry == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(entry, "\n")
+		if !allowed[key] && !safeTrackingSetting(key, value) {
+			return errors.New("unsupported or unsafe local Git setting " + key + "; inspect before execution")
+		}
+		if key == "remote.origin.url" && !strings.HasPrefix(value, "https://github.com/") {
+			return errors.New("workspace remote must be the approved public GitHub HTTPS repository")
+		}
+	}
+	return nil
 }
