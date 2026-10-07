@@ -280,6 +280,7 @@ func resolveCommand(c domain.VerificationCommand, dir string) (domain.Verificati
 		if c.Program == "./gradlew" {
 			script = "gradlew.bat"
 		}
+		script = `.\` + script // Explicit workspace path also works when CMD excludes cwd from executable lookup.
 		return domain.VerificationCommand{Program: "cmd.exe", Arguments: append([]string{"/d", "/c", script}, c.Arguments...)}, nil
 	}
 	return c, nil
@@ -298,10 +299,10 @@ func environment() []string {
 }
 func workspaceEnvironment(dir string) []string {
 	base := filepath.Join(dir, ".forgeflow-runtime")
-	for _, part := range []string{"tmp", "go-cache", "go-mod", "go", "npm", "python", "xdg"} {
+	for _, part := range []string{"tmp", "go-cache", "go-mod", "go", "npm", "python", "xdg", "gradle"} {
 		_ = os.MkdirAll(filepath.Join(base, part), 0700)
 	}
-	overrides := map[string]string{"TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 	result := []string{}
 	for _, entry := range environment() {
 		key, _, _ := strings.Cut(entry, "=")

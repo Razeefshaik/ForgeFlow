@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { request, useAPI } from "../api";
+import LiveExecutionProgress from "./LiveExecutionProgress";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { request } from "../api";
 import type { Contribution } from "../types";
 import { Button } from "./ui/button";
 
-type Execution = {status: string; summary: string; fix_iterations: number; review_cycles: number; network: boolean; constraints?: string; plan?: {summary: string; root_cause: string; strategy: string; files: string[]; risks: string[]; unknowns: string[]}; review?: {verdict: string; summary: string; findings: {severity: string; file: string; line: number; explanation: string; recommended_fix: string}[]}; diff: string; report: string; pr_title: string; pr_body: string; submission_token: string; pr_url: string};
+type Execution = {status: string; phase?: string; message?: string; summary: string; fix_iterations: number; review_cycles: number; network: boolean; constraints?: string; plan?: {summary: string; root_cause: string; strategy: string; files: string[]; risks: string[]; unknowns: string[]}; review?: {verdict: string; summary: string; findings: {severity: string; file: string; line: number; explanation: string; recommended_fix: string}[]}; diff: string; report: string; pr_title: string; pr_body: string; submission_token: string; pr_url: string};
 type TestRun = {id: string; command: {program: string; arguments: string[]}; exit_code: number; output: string; started_at: string; finished_at: string; truncated: boolean};
 export default function ExecutionPanel({ contribution: c }: {contribution: Contribution}) {
   const prefix = "/contributions/" + encodeURIComponent(c.id);
-  const execution = useAPI<Execution>(prefix + "/execution");
-  const tests = useAPI<TestRun[]>(prefix + "/tests");
+  const execution = useQuery({queryKey:[prefix+"/execution"],queryFn:()=>request<Execution>(prefix+"/execution"),refetchInterval:3000});
+  const tests = useQuery({queryKey:[prefix+"/tests"],queryFn:()=>request<TestRun[]>(prefix+"/tests"),refetchInterval:3000});
   const [tab, setTab] = useState("Plan");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,7 +29,8 @@ export default function ExecutionPanel({ contribution: c }: {contribution: Contr
   }
   return <section className="execution-panel">
     <h3>Contribution execution</h3>
-    <p className="muted">{r?.summary || "Start Codex planning, coding, real verification and independent review in this isolated workspace."}</p>
+    {running && <LiveExecutionProgress id={c.id} phase={r.phase ?? c.state} />}
+    <p className="muted">{r?.message || (running ? "Execution running: " + c.state.toLowerCase() : r?.summary) || "Start Codex planning, coding, real verification and independent review in this isolated workspace."}</p>
     {error && <p className="error" role="alert">{error}</p>}
     {execution.error && <p className="error">{execution.error.message}</p>}
     {!running && ["BLOCKED", "PAUSED", "PLANNING"].includes(c.state) && <>

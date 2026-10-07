@@ -1,5 +1,7 @@
 # Local execution boundaries
 
+Gradle verification uses `GRADLE_USER_HOME=<active-repo>/.forgeflow-runtime/gradle`, alongside isolated Go/npm/Python caches. Windows wrappers resolve through explicit local paths. Wrapper permission and network setup failures stop the workflow before code-fix retries; failed command evidence remains persisted. Current execution messages are separate from implementation summaries and update when execution resumes or changes phase.
+
 GitHub browser login uses device authorization with a registered public OAuth Client ID and explicit GitHub consent. Windows DPAPI encrypts credentials for the current Windows account outside the project. The backend verifies `/user`, saves refresh tokens encrypted, respects polling delays, and refreshes expiring tokens. Account endpoints use the existing loopback/origin/strict-JSON protections. Public account status is marked `no-store`. See [GitHub sign-in](github-sign-in.md).
 
 The HTTP server binds numeric loopback, validates Host, rejects cross-origin writes, requires JSON and bounds bodies. Vite proxies the API on the same origin. This is a personal local application, not a public multi-user service.

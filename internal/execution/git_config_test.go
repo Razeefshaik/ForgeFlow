@@ -3,8 +3,30 @@ package execution
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 )
+
+func TestConfigurationFailureIsNotReportedAsChangedHistory(t *testing.T) {
+	s, c := buildFixture(t, &fixtureRunner{})
+	repo, _, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.prepareRuntime(repo); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "config", "--local", "branch.autopilot/issue-1.vscode-merge-base", "origin/main")
+	cmd.Dir = repo
+	cmd.Env = gitEnv()
+	if out, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("fixture config: %v %s", e, out)
+	}
+	err = s.verifyApprovedGit(context.Background(), repo, c.BaseCommit, c.Branch)
+	if err == nil || !strings.Contains(err.Error(), "Git configuration changed after approval") || strings.Contains(err.Error(), "changed Git history") {
+		t.Fatalf("incorrect failure classification: %v", err)
+	}
+}
 
 func TestCloneTrackingAndVSCodeSettingsCanBePinned(t *testing.T) {
 	s, c := buildFixture(t, &fixtureRunner{})

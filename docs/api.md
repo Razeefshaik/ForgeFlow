@@ -25,7 +25,7 @@ All JSON endpoints live under /api. Errors return {"error":"message"}. Mutations
 | GET | /contributions | Persisted contribution records |
 | GET | /agents | Latest 200 persisted real agent sessions |
 | GET | /usage | All persisted agent token observations and durations; null official allowance |
-| GET | /events | Latest 100 events; after/entity query enables cursor reads |
+| GET | /events | Latest 100 matching events in chronological order; entity filters the page; explicit after enables forward cursor replay |
 | GET | /events/stream | SSE activity events; Last-Event-ID or after replay |
 | GET | /config | Current version and full config snapshot |
 | GET | /config/history | All immutable config versions, newest first |
@@ -44,6 +44,8 @@ Live opportunities include nullable evidence fields, source links, observation t
 
 GET /runtime reports mode, configured contribution root, installed CLI availability and model override (availability does not prove login).
 GET /contributions/{id}/execution returns current plan/review/diff/report/PR status; GET /contributions/{id}/tests returns immutable real outcomes.
+Active agent sessions append AgentHeartbeat events every ten seconds with elapsed time and the last output timestamp. A heartbeat indicates that the runner is waiting for the process; it does not prove coding progress. The contribution panel polls execution, tests and recent activity every three seconds, including when SSE is disconnected.
+Contributor and reviewer inputs include bounded excerpts of the latest outcome for each command (at most 64 KiB of encoded test evidence). Complete saved test records remain in the audit store and a workspace-local `.forgeflow-runtime/evidence/` snapshot. Original output truncation is disclosed. Total inline task input is bounded to 256 KiB; oversized tasks retain a complete workspace snapshot that the agent is instructed to read. `AgentPromptPrepared` events record input byte counts and any overflow snapshot path.
 POST /contributions/{id}/{action} accepts a strict JSON body. Actions: start/resume `{approved:true,network:false}`; pause/stop `{}`; abandon/approve-plan `{approved:true}`; tests/review `{approved:true}`; constraints `{approved:true,constraints:"..."}`; open-workspace `{}`; prepare-pr `{}`; submit-pr `{approved:true,token:"<prepared commit/text token>"}`.
 
 Network defaults off. Execution requires an approved isolated workspace and CLI sandbox proof. READY follows real verification and independent review. Preparing commits does not submit a PR. Same-origin and loopback checks apply to every mutation. Operator temporary proposals carry expires_at; only Apply activates them.

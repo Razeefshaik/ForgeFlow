@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Bot, GitBranch, ShieldCheck } from "lucide-react";
 import { request, useAPI } from "../api";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Contribution, Event, Opportunity } from "../types";
 import {
   Badge,
@@ -22,11 +22,14 @@ function CommandOutput({ event }: { event: Event }) {
   </details>;
 }
 export function Contributions() {
-  const cs = useAPI<Contribution[]>("/contributions");
+  const cs = useQuery({queryKey:["/contributions"],queryFn:()=>request<Contribution[]>("/contributions"),refetchInterval:3000});
   const events = useAPI<Event[]>("/events");
   const [selected, setSelected] = useState<Contribution | null>(null);
   const current = cs.data?.find(c => c.id === selected?.id) ?? selected;
-  const timeline = useAPI<Event[]>("/events?entity=" + encodeURIComponent(current?.id ?? ""));
+  const timelinePath="/events?entity="+encodeURIComponent(current?.id ?? "");
+  const timeline = useQuery({queryKey:[timelinePath],queryFn:()=>request<Event[]>(timelinePath),enabled:!!current,refetchInterval:3000});
+  // Merge the global live tail so already-running older servers also show fresh activity.
+  const liveTimeline = [...new Map([...(timeline.data ?? []), ...(events.data ?? []).filter(e => e.entity_id === current?.id)].map(e => [e.id,e])).values()].sort((a,b)=>a.id-b.id).slice(-100);
   return (
     <>
       <div className="page-intro">
@@ -102,13 +105,13 @@ export function Contributions() {
             {!current.demo && <ExecutionPanel contribution={current} />}
             <h3>Persisted timeline</h3>
             <EventRows
-              events={(timeline.data ?? events.data ?? []).filter(
+              events={liveTimeline.filter(
                 (e) => e.entity_id === current.id,
               )}
             />
             {!current.demo && <>
               <h3>Git command output</h3>
-              {(timeline.data ?? []).filter(e => e.type === "CommandFinished").map(e => <CommandOutput key={e.id} event={e} />)}
+              {liveTimeline.filter(e => e.type === "CommandFinished").map(e => <CommandOutput key={e.id} event={e} />)}
             </>}
             <p className="muted">
               Git command output and snapshots are saved in this workspace's .autopilot directory. Contribution execution requires approval; PR submission has its own approval.

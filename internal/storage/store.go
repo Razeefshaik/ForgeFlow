@@ -408,15 +408,21 @@ func (s *Store) Events(ctx context.Context, after int64, entity string, limit in
 	return result, rows.Err()
 }
 func (s *Store) RecentEvents(ctx context.Context) ([]domain.Event, error) {
+	return s.RecentEntityEvents(ctx, "")
+}
+
+// RecentEntityEvents selects the latest matching events, rather than the first
+// replay page. Explicit after cursors continue to use Events for ordered replay.
+func (s *Store) RecentEntityEvents(ctx context.Context, entity string) ([]domain.Event, error) {
 	var cursor int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(id),0) FROM events").Scan(&cursor); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COALESCE(MIN(id),0) FROM (SELECT id FROM events WHERE (?='' OR entity_id=?) ORDER BY id DESC LIMIT 100)", entity, entity).Scan(&cursor); err != nil {
 		return nil, err
 	}
-	cursor -= 100
+	cursor--
 	if cursor < 0 {
 		cursor = 0
 	}
-	return s.Events(ctx, cursor, "", 100)
+	return s.Events(ctx, cursor, entity, 100)
 }
 func (s *Store) Transition(ctx context.Context, id, to string) error {
 	return s.transact(ctx, func(tx *sql.Tx) error {

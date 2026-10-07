@@ -347,8 +347,8 @@ func (s Server) overview(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"mode": s.mode(), "repositories": len(repos), "opportunities": len(os), "high_quality": high, "active_contributions": active, "states": states, "config_version": c.Version, "discovery_status": discoveryStatus, "execution_available": !s.Store.Demo && s.Execution != nil})
 }
 func (s Server) events(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("after") == "" && r.URL.Query().Get("entity") == "" {
-		v, e := s.Store.RecentEvents(r.Context())
+	if r.URL.Query().Get("after") == "" {
+		v, e := s.Store.RecentEntityEvents(r.Context(), r.URL.Query().Get("entity"))
 		respond(w, v, e)
 		return
 	}

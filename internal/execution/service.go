@@ -121,7 +121,11 @@ func (s *Service) Start(ctx context.Context, id string, approved, network bool) 
 	record.Status = "RUNNING"
 	record.Phase = c.State
 	record.Network = network
+	record.Message = "Execution running: " + strings.ToLower(c.State)
 	if err = s.Store.SaveExecution(ctx, record, "user", "Human approved Codex coding, verification and independent review"); err != nil {
+		return record, err
+	}
+	if err = s.Store.WorkspaceMessage(ctx, id, record.Message); err != nil {
 		return record, err
 	}
 	runCtx, cancel := context.WithTimeout(s.ctx, 2*time.Hour)
@@ -231,6 +235,7 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 		if ctx.Err() != nil {
 			r.Summary = "Execution stopped; workspace and evidence preserved. Resume explicitly to continue."
 		}
+		r.Message = r.Summary
 		latest, e := s.Store.Contribution(endCtx, c.ID)
 		if e == nil && latest.State != state {
 			_ = s.Store.Transition(endCtx, c.ID, state)
@@ -281,6 +286,13 @@ func (s *Service) phase(ctx context.Context, r *domain.ExecutionRecord, state st
 		}
 	}
 	r.Phase = state
+	r.Message = "Execution running: " + strings.ToLower(state)
+	if state == "READY" {
+		r.Message = "Real verification passed and independent review approved. Ready for your review."
+	}
+	if err := s.Store.WorkspaceMessage(ctx, c.ID, r.Message); err != nil {
+		return err
+	}
 	return s.Store.SaveExecution(ctx, *r, "execution", "Contribution entered "+state)
 }
 func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.WorkspaceApproval, r *domain.ExecutionRecord, repo, meta string) error {
@@ -353,23 +365,26 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 				return err
 			}
 			tests, _ := s.Store.Tests(ctx, c.ID)
-			b, _ := json.Marshal(tests)
-			review, _ := json.Marshal(r.Review)
-			_, err := s.agent(ctx, c.ID, repo, meta, "contributor", instructions+"Fix the persisted test failures/reviewer findings without unrelated changes. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+string(b)+"\nReview:\n"+string(review), implementationSchema, r.Network)
+			evidence, err := testPromptEvidence(repo, tests)
 			if err != nil {
 				return err
 			}
+			review, _ := json.Marshal(r.Review)
+			output, err := s.agent(ctx, c.ID, repo, meta, "contributor", instructions+"Fix the persisted test failures/reviewer findings without unrelated changes. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review), implementationSchema, r.Network)
+			if err != nil {
+				return err
+			}
+			var implemented struct{ Status, Summary string }
+			if err = json.Unmarshal([]byte(output), &implemented); err != nil || implemented.Status != "IMPLEMENTED" {
+				return errors.New("contributor cannot complete the fix: " + output)
+			}
+			r.Summary = implemented.Summary
 		}
 		if err := s.phase(ctx, r, "TESTING"); err != nil {
 			return err
 		}
-		head, e := s.git(ctx, repo, "rev-parse", "HEAD")
-		if e != nil || strings.TrimSpace(head) != c.BaseCommit {
-			return errors.New("contributor changed Git history; inspect workspace before continuing")
-		}
-		branch, e := s.git(ctx, repo, "branch", "--show-current")
-		if e != nil || strings.TrimSpace(branch) != c.Branch {
-			return errors.New("contributor left its approved branch")
+		if err := s.verifyApprovedGit(ctx, repo, c.BaseCommit, c.Branch); err != nil {
+			return err
 		}
 		passed, err := s.tests(ctx, c.ID, repo, meta, r)
 		if err != nil {
@@ -401,12 +416,15 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		r.Diff = diff
 		r.ChangedFiles = files
 		tests, _ := s.Store.Tests(ctx, c.ID)
-		testEvidence, _ := json.Marshal(tests)
+		testEvidence, err := testPromptEvidence(repo, tests)
+		if err != nil {
+			return err
+		}
 		release, err := s.reviewSlot(ctx, a.Config.Config.Agents.MaxReviewers)
 		if err != nil {
 			return err
 		}
-		output, err := s.agent(ctx, c.ID, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+string(testEvidence), reviewSchema, r.Network)
+		output, err := s.agent(ctx, c.ID, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema, r.Network)
 		release()
 		if err != nil {
 			return err
@@ -496,6 +514,14 @@ func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.Ex
 		if e != nil {
 			return false, e
 		}
+		if (command.Program == "./gradlew" || command.Program == "gradle") && strings.Contains(run.Output, "org.gradle.wrapper") {
+			if strings.Contains(run.Output, "Access is denied") {
+				return false, errors.New("verification setup failed: Gradle wrapper cache is not writable; repository tests did not start. Fix workspace cache configuration, then retry tests")
+			}
+			if strings.Contains(run.Output, "SocketTimeoutException") || strings.Contains(run.Output, "UnknownHostException") {
+				return false, errors.New("verification setup failed: Gradle distribution download could not reach the network; repository tests did not start. Check dependency access, then retry tests")
+			}
+		}
 		all.WriteString(fmt.Sprintf("$ %s %s\nexit: %d\n%s\n", command.Program, strings.Join(command.Arguments, " "), run.ExitCode, run.Output))
 		if err != nil || run.ExitCode != 0 {
 			passed = false
@@ -510,6 +536,14 @@ func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.Ex
 	return passed, nil
 }
 func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schema string, network bool) (string, error) {
+	bounded, snapshot, err := boundedAgentPrompt(repo, prompt)
+	if err != nil {
+		return "", err
+	}
+	if err = s.Store.WorkspaceEvent(ctx, id, "AgentPromptPrepared", "Prepared bounded "+role+" input; saved test history remains available", map[string]any{"role": role, "original_bytes": len(prompt), "inline_bytes": len(bounded), "prompt_snapshot": snapshot}); err != nil {
+		return "", err
+	}
+	prompt = bounded
 	run := domain.AgentRun{ID: storage.ID(), ContributionID: id, Role: role, Status: "RUNNING", StartedAt: time.Now().UTC()}
 	if err := s.Store.SaveAgent(ctx, run); err != nil {
 		return "", err
@@ -525,12 +559,16 @@ func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schem
 	defer log.Close()
 	agentCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
+	progress := &agentProgress{last: time.Now()}
+	stopHeartbeat := s.heartbeat(agentCtx, id, run.ID, role, progress)
 	result, err := s.Runner.Run(agentCtx, codex.Request{Directory: repo, Role: role, Prompt: prompt, Schema: schemaPath, OutputFile: filepath.Join(meta, run.ID+"-result.json"), Network: network}, func(event json.RawMessage) error {
+		progress.activity()
 		if _, e := log.Write(append(append([]byte{}, event...), '\n')); e != nil {
 			return e
 		}
-		return s.Store.WorkspaceEvent(agentCtx, id, "AgentActivity", role+" activity", event)
+		return s.Store.WorkspaceEvent(agentCtx, id, "AgentActivity", agentActivityMessage(role, event), event)
 	})
+	stopHeartbeat()
 	end := time.Now().UTC()
 	run.FinishedAt = &end
 	run.SessionID = result.SessionID

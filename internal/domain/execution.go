@@ -56,6 +56,7 @@ type ExecutionRecord struct {
 	Plan            *Plan     `json:"plan,omitempty"`
 	Review          *Review   `json:"review,omitempty"`
 	Summary         string    `json:"summary"`
+	Message         string    `json:"message,omitempty"`
 	FixIterations   int       `json:"fix_iterations"`
 	ReviewCycles    int       `json:"review_cycles"`
 	PlanApproved    bool      `json:"plan_approved"`

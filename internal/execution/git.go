@@ -67,6 +67,24 @@ func gitEnv() []string {
 	}
 	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
 }
+
+func (s *Service) verifyApprovedGit(ctx context.Context, repo, base, approvedBranch string) error {
+	head, err := s.git(ctx, repo, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("could not verify approved Git HEAD: %w", err)
+	}
+	if strings.TrimSpace(head) != base {
+		return errors.New("contributor changed Git history; inspect workspace before continuing")
+	}
+	branch, err := s.git(ctx, repo, "branch", "--show-current")
+	if err != nil {
+		return fmt.Errorf("could not verify approved Git branch: %w", err)
+	}
+	if strings.TrimSpace(branch) != approvedBranch {
+		return errors.New("contributor left its approved branch")
+	}
+	return nil
+}
 func (s *Service) diff(ctx context.Context, repo, base string) (string, []string, error) {
 	tracked, err := s.git(ctx, repo, "diff", "--no-ext-diff", "--no-textconv", base, "--")
 	if err != nil {
