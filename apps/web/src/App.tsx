@@ -13,6 +13,7 @@ import {
   Menu,
   MessageSquare,
   Moon,
+  Sun,
   Radar,
   Settings as SettingsIcon,
   ShieldCheck,
@@ -60,7 +61,7 @@ const navigation = [
 ];
 export default function App() {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("forgeflow-theme") ?? "dark",
+    () => localStorage.getItem("forgeflow-theme") ?? "light",
   );
   const [operatorOpen, setOperatorOpen] = useState(false);
   const [help, setHelp] = useState(false);
@@ -69,6 +70,16 @@ export default function App() {
   const overview = useAPI<OverviewType>("/overview");
   const client = useQueryClient();
   const location = useLocation();
+  useEffect(() => {
+    const keyboard = () => { document.documentElement.dataset.input = "keyboard"; };
+    const pointer = () => { document.documentElement.dataset.input = "pointer"; };
+    document.addEventListener("keydown", keyboard);
+    document.addEventListener("pointerdown", pointer);
+    return () => {
+      document.removeEventListener("keydown", keyboard);
+      document.removeEventListener("pointerdown", pointer);
+    };
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("forgeflow-theme", theme);
@@ -107,7 +118,7 @@ export default function App() {
             <Command size={19} />
           </span>
           <strong>ForgeFlow</strong>
-          <span className="version">α</span>
+          <span className="version">LOCAL</span>
           <button
             className="icon-button mobile-close"
             aria-label="Close navigation"
@@ -117,7 +128,7 @@ export default function App() {
           </button>
         </div>
         <div className="workspace-switch">
-          <span className="workspace-avatar">R</span>
+          <span className="workspace-avatar"><GitBranch size={16} /></span>
           <div>
             <strong>Personal workspace</strong>
             <span>Local contribution control</span>
@@ -126,7 +137,7 @@ export default function App() {
         <span className="nav-label">WORKSPACE</span>
         <nav aria-label="Main navigation">
           {navigation.map((n) => (
-            <NavLink end={n.to === "/"} to={n.to} key={n.to}>
+            <NavLink end={n.to === "/"} to={n.to} key={n.to} onClick={() => setMenu(false)}>
               <n.icon size={17} />
               <span>{n.label}</span>
               {n.to === "/opportunities" && (
@@ -139,9 +150,9 @@ export default function App() {
         </nav>
         <div className="sidebar-bottom">
           <div className="local-card">
-            <span className="status-dot" />
+            <span className={"status-dot" + (connected ? "" : " status-offline")} />
             <div>
-              <strong>Running locally</strong>
+              <strong>{connected ? "Connected locally" : "Connection interrupted"}</strong>
               <p>Your workspace. Your approval.</p>
             </div>
           </div>
@@ -149,7 +160,7 @@ export default function App() {
             <CircleHelp size={16} /> Getting started <ArrowUpRight size={13} />
           </button>
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            <Moon size={16} />{" "}
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
             {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           </button>
         </div>
@@ -178,7 +189,7 @@ export default function App() {
           <div>
             <span className={"connection " + (connected ? "connected" : "")}>
               <i />
-              {connected ? "Event stream connected" : "Reconnecting events"}
+              {connected ? "Live updates" : "Reconnecting events"}
             </span>
             <span className="top-divider" />
             <Button
@@ -204,7 +215,7 @@ export default function App() {
                 ? "Backend unavailable. Start the Go server to connect."
                 : overview.data?.mode === "demo"
                   ? "DEMO WORKSPACE · Issues, scores and contribution states are illustrative."
-                  : "LIVE WORKSPACE · GitHub discovery, isolated Codex contributions and independent review. PR submission requires approval."}
+                  : "LIVE WORKSPACE · Your contributions. Your approval."}
           </span>
           {overview.data && (
             <Badge>Config v{overview.data.config_version}</Badge>
@@ -273,7 +284,7 @@ export default function App() {
             <ShieldCheck size={12} /> Human approval at every boundary that
             matters.
           </span>
-          <span>ForgeFlow · discovery 0.2</span>
+          <span>ForgeFlow · Local workspace</span>
         </footer>
       </div>
       <Dialog
@@ -300,10 +311,9 @@ export default function App() {
           profile or try “Add Rust”.
         </p>
         <p className="muted">
-          GitHub discovery is available in live mode. Isolated execution, Codex
-          sessions, real contribution tests, independent review and PR
-          preparation are later milestones. Demo data is clearly labeled and
-          stored separately.
+          Connect GitHub to discover issues. Each approved contribution has its
+          own workspace, real test evidence and independent review. PR submission
+          requires your approval. Demo data is clearly labeled and stored separately.
         </p>
       </Dialog>
     </div>

@@ -8,6 +8,7 @@ export function Dialog({
   description,
   children,
   wide = false,
+  workspace = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -15,13 +16,14 @@ export function Dialog({
   description: string;
   children: ReactNode;
   wide?: boolean;
+  workspace?: boolean;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="dialog-overlay" />
         <DialogPrimitive.Content
-          className={"dialog-content" + (wide ? " dialog-wide" : "")}
+          className={"dialog-content" + (wide ? " dialog-wide" : "") + (workspace ? " dialog-workspace" : "")}
         >
           <div className="dialog-heading">
             <div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Bot, GitBranch, ShieldCheck } from "lucide-react";
 import { request, useAPI } from "../api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,8 +25,16 @@ function CommandOutput({ event }: { event: Event }) {
 export function Contributions() {
   const cs = useQuery({queryKey:["/contributions"],queryFn:()=>request<Contribution[]>("/contributions"),refetchInterval:3000});
   const events = useAPI<Event[]>("/events");
-  const [selected, setSelected] = useState<Contribution | null>(null);
-  const current = cs.data?.find(c => c.id === selected?.id) ?? selected;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedId = searchParams.get("contribution");
+  const current = cs.data?.find(c => c.id === selectedId) ?? null;
+  const selectContribution = (id: string | null) => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (id) next.set("contribution", id); else next.delete("contribution");
+      return next;
+    });
+  };
   const timelinePath="/events?entity="+encodeURIComponent(current?.id ?? "");
   const timeline = useQuery({queryKey:[timelinePath],queryFn:()=>request<Event[]>(timelinePath),enabled:!!current,refetchInterval:3000});
   // Merge the global live tail so already-running older servers also show fresh activity.
@@ -51,7 +60,7 @@ export function Contributions() {
           cs.data.map((c) => (
             <button
               className="contribution-row contribution-button"
-              onClick={() => setSelected(c)}
+              onClick={() => selectContribution(c.id)}
               key={c.id}
             >
               <span className="branch-icon">
@@ -67,13 +76,14 @@ export function Contributions() {
         )}
       </section>
       <Dialog
-        open={!!selected}
+        open={!!current}
         onOpenChange={(v) => {
-          if (!v) setSelected(null);
+          if (!v) selectContribution(null);
         }}
-        title={selected?.repository ?? "Contribution"}
-        description="Persisted workspace and command audit trail"
+        title={current?.repository ?? "Contribution"}
+        description="Your contribution workspace · Plan, verification and review"
         wide
+        workspace
       >
         {current && (
           <>
@@ -86,6 +96,10 @@ export function Contributions() {
                 and no contribution tests or reviews were performed.
               </div>
             )}
+            <ol className="lifecycle" aria-label="Contribution stages">
+              {[{label:"Plan",states:["SELECTED","CLONING","PLANNING"]},{label:"Code",states:["CODING"]},{label:"Test",states:["TESTING"]},{label:"Fix",states:["FIXING"]},{label:"Review",states:["REVIEWING"]},{label:"Human review",states:["READY","PR_PREPARED","PR_OPENED"]}].map((stage,index) => <li key={stage.label} className={stage.states.includes(current.state) ? "current" : ""} aria-current={stage.states.includes(current.state) ? "step" : undefined}><span>{index + 1}</span>{stage.label}</li>)}
+            </ol>
+            <details className="workspace-inspector"><summary>Workspace details · Branch, location and configuration</summary>
             <dl className="key-values">
               <div>
                 <dt>Contribution ID</dt>
@@ -102,6 +116,7 @@ export function Contributions() {
               {current.workspace && <div><dt>Workspace</dt><dd><code>{current.workspace}</code></dd></div>}
               {current.base_commit && <div><dt>Base commit</dt><dd><code>{current.base_commit}</code></dd></div>}
             </dl>
+            </details>
             {!current.demo && <ExecutionPanel contribution={current} />}
             <h3>Persisted timeline</h3>
             <EventRows
