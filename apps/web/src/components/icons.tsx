@@ -1,0 +1,88 @@
+import type { Icon, IconProps } from "@phosphor-icons/react";
+import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
+import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
+import { ArrowRightIcon } from "@phosphor-icons/react/dist/csr/ArrowRight";
+import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
+import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
+import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
+import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
+import { DiamondsFourIcon } from "@phosphor-icons/react/dist/csr/DiamondsFour";
+import { GitBranchIcon } from "@phosphor-icons/react/dist/csr/GitBranch";
+import { SquaresFourIcon } from "@phosphor-icons/react/dist/csr/SquaresFour";
+import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
+import { ChatsCircleIcon } from "@phosphor-icons/react/dist/csr/ChatsCircle";
+import { MoonStarsIcon } from "@phosphor-icons/react/dist/csr/MoonStars";
+import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
+import { CompassIcon } from "@phosphor-icons/react/dist/csr/Compass";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
+import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
+import { SlidersHorizontalIcon } from "@phosphor-icons/react/dist/csr/SlidersHorizontal";
+import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
+import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
+import { PauseCircleIcon } from "@phosphor-icons/react/dist/csr/PauseCircle";
+import { ArrowsDownUpIcon } from "@phosphor-icons/react/dist/csr/ArrowsDownUp";
+import { GitPullRequestIcon } from "@phosphor-icons/react/dist/csr/GitPullRequest";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
+import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowCounterClockwise";
+import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
+import { ArrowElbowDownLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowElbowDownLeft";
+import { CircleDashedIcon } from "@phosphor-icons/react/dist/csr/CircleDashed";
+import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/csr/ArrowSquareOut";
+import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
+import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
+import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
+import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
+import { FolderOpenIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
+import { GithubLogoIcon } from "@phosphor-icons/react/dist/csr/GithubLogo";
+
+// Individual imports keep the development bundle small. Icons are decorative by default.
+function duotone(Component: Icon) {
+  return function AppIcon(props: IconProps) {
+    return (
+      <Component size={20} weight="duotone" aria-hidden="true" {...props} />
+    );
+  };
+}
+export const Activity = duotone(PulseIcon);
+export const ArrowUpRight = duotone(ArrowUpRightIcon);
+export const ArrowRight = duotone(ArrowRightIcon);
+export const ArrowLeft = duotone(ArrowLeftIcon);
+export const ArrowUp = duotone(ArrowUpIcon);
+export const Bot = duotone(CpuIcon);
+export const ChevronRight = duotone(CaretRightIcon);
+export const CircleHelp = duotone(QuestionIcon);
+export const Command = duotone(DiamondsFourIcon);
+export const GitBranch = duotone(GitBranchIcon);
+export const LayoutDashboard = duotone(SquaresFourIcon);
+export const Menu = duotone(ListIcon);
+export const MessageSquare = duotone(ChatsCircleIcon);
+export const Moon = duotone(MoonStarsIcon);
+export const Sun = duotone(SunIcon);
+export const Radar = duotone(CompassIcon);
+export const Settings = duotone(GearSixIcon);
+export const ShieldCheck = duotone(ShieldCheckIcon);
+export const SlidersHorizontal = duotone(SlidersHorizontalIcon);
+export const Sparkles = duotone(StackIcon);
+export const X = duotone(XIcon);
+export const Zap = duotone(ChartBarIcon);
+export const CircleCheck = duotone(CheckCircleIcon);
+export const CirclePause = duotone(PauseCircleIcon);
+export const ArrowDownUp = duotone(ArrowsDownUpIcon);
+export const GitPullRequest = duotone(GitPullRequestIcon);
+export const Search = duotone(MagnifyingGlassIcon);
+export const RefreshCw = duotone(ArrowClockwiseIcon);
+export const RotateCcw = duotone(ArrowCounterClockwiseIcon);
+export const Check = duotone(CheckIcon);
+export const CornerDownLeft = duotone(ArrowElbowDownLeftIcon);
+export const CircleDashed = duotone(CircleDashedIcon);
+export const ExternalLink = duotone(ArrowSquareOutIcon);
+export const Copy = duotone(CopyIcon);
+export const Terminal = duotone(TerminalWindowIcon);
+export const Clock = duotone(ClockIcon);
+export const Monitor = duotone(DesktopIcon);
+export const Folder = duotone(FolderOpenIcon);
+export const Github = duotone(GithubLogoIcon);

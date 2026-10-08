@@ -14,7 +14,7 @@ test("contribution execution evidence and PR approval gate", async ({page}) => {
   let submitted=0;
   await page.route("**/api/contributions/execution-ui/submit-pr",async route=>{expect(route.request().postDataJSON()).toMatchObject({approved:true,token:"reviewed-token"});submitted++;await route.fulfill({json:{...r,pr_url:"https://github.com/fixture/addition/pull/2"}})});
   await page.goto("/contributions");
-  await page.getByRole("button",{name:/fixture\/addition/}).click();
+  await page.getByRole("link",{name:/fixture\/addition/}).click();
   await page.getByRole("tab",{name:"Tests (1)"}).click();
   await expect(page.getByText(/go test \.\/.*exit 0/)).toBeVisible();
   await page.getByRole("tab",{name:"Review",exact:true}).click();

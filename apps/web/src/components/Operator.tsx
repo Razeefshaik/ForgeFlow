@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, Bot, CornerDownLeft } from "lucide-react";
+import { ArrowUp, Bot, CornerDownLeft } from "./icons";
 import { Link } from "react-router-dom";
 import { request, useAPI } from "../api";
 import type { Reply } from "../types";

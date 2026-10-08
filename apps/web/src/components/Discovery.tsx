@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Radar, RefreshCw } from "lucide-react";
+import { Radar, RefreshCw } from "./icons";
 import { request, useAPI } from "../api";
 import type { DiscoveryRun, DiscoveryStatus } from "../types";
 import { Badge, SectionHeader } from "./primitives";

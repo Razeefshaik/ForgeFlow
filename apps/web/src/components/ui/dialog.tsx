@@ -1,5 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { X } from "../icons";
 import type { ReactNode } from "react";
 export function Dialog({
   open,
@@ -8,7 +8,7 @@ export function Dialog({
   description,
   children,
   wide = false,
-  workspace = false,
+  drawer = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -16,14 +16,18 @@ export function Dialog({
   description: string;
   children: ReactNode;
   wide?: boolean;
-  workspace?: boolean;
+  drawer?: boolean;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="dialog-overlay" />
         <DialogPrimitive.Content
-          className={"dialog-content" + (wide ? " dialog-wide" : "") + (workspace ? " dialog-workspace" : "")}
+          className={
+            "dialog-content" +
+            (wide ? " dialog-wide" : "") +
+            (drawer ? " dialog-drawer" : "")
+          }
         >
           <div className="dialog-heading">
             <div>

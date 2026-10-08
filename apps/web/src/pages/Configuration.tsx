@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { Check, RotateCcw, SlidersHorizontal } from "../components/icons";
 import { request, useAPI } from "../api";
 import type { Config, ConfigVersion, Proposal } from "../types";
 import { Badge, SectionHeader } from "../components/primitives";
@@ -100,6 +100,42 @@ export default function Configuration() {
         <p className="notice" role="status">
           {notice}
         </p>
+      )}
+      {current.data && (
+        <div className="profile-summary">
+          <section className="surface">
+            <SectionHeader title="Languages" />
+            <div className="profile-chips">
+              {Object.entries(current.data.config.profile.languages).map(
+                ([name, weight]) => (
+                  <Badge key={name}>
+                    {name} · {Math.round(weight * 100)}%
+                  </Badge>
+                ),
+              )}
+            </div>
+          </section>
+          <section className="surface">
+            <SectionHeader title="Domains" />
+            <div className="profile-chips">
+              {Object.keys(current.data.config.profile.domains).map((name) => (
+                <Badge key={name}>{name.replaceAll("_", " ")}</Badge>
+              ))}
+            </div>
+          </section>
+          <section className="surface">
+            <SectionHeader title="Agent concurrency" />
+            <div className="profile-chips">
+              <Badge>
+                {current.data.config.agents.max_contributors} contributors
+              </Badge>
+              <Badge>
+                {current.data.config.agents.max_reviewers} reviewers
+              </Badge>
+              <Badge>{current.data.config.agents.max_scouts} scouts</Badge>
+            </div>
+          </section>
+        </div>
       )}
       <div className="config-layout">
         <section className="surface">
@@ -219,7 +255,14 @@ export default function Configuration() {
                 <div className="section-header">
                   <div>
                     <h3>{p.reason}</h3>
-                    {p.expires_at && <p className="muted">Temporary until {new Date(p.expires_at).toLocaleString()}. Expiration restores the prior version if no newer configuration has replaced this one.</p>}
+                    {p.expires_at && (
+                      <p className="muted">
+                        Temporary until{" "}
+                        {new Date(p.expires_at).toLocaleString()}. Expiration
+                        restores the prior version if no newer configuration has
+                        replaced this one.
+                      </p>
+                    )}
                     <p className="muted">
                       Based on v{p.base_version}
                       {p.base_version !== current.data?.version

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, ArrowUpRight, CircleDashed } from "lucide-react";
+import { Activity, ArrowUpRight, CircleDashed } from "./icons";
 import type { Event } from "../types";
 export function Badge({
   children,
@@ -32,7 +32,11 @@ export function Score({ value }: { value: number }) {
     <span className="score">
       <span>{value.toFixed(0)}</span>
       <span className="score-track">
-        <i style={{ width: value + "%" }} />
+        <i
+          style={{
+            transform: `scaleX(${Math.max(0, Math.min(100, value)) / 100})`,
+          }}
+        />
       </span>
     </span>
   );

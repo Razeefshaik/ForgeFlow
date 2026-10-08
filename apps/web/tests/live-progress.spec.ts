@@ -11,7 +11,7 @@ test("live activity advances beyond an old entity page and polls without SSE",as
  await page.route("**/api/contributions/live-ui/execution",r=>r.fulfill({json:{status:"RUNNING",phase:"FIXING",message:c.message,summary:"",fix_iterations:1,review_cycles:0,network:false}}));
  await page.route("**/api/contributions/live-ui/tests",r=>r.fulfill({json:[]}));
  await page.route("**/api/agents",r=>r.fulfill({json:[{id:"active-run",contribution_id:c.id,role:"contributor",status:"RUNNING",started_at:new Date(Date.now()-120000).toISOString()}]}));
- await page.goto("/contributions");await page.getByRole("button",{name:/fixture\/live/}).click();
+ await page.goto("/contributions");await page.getByRole("link",{name:/fixture\/live/}).click();
  await expect(page.getByLabel("Live execution progress")).toContainText("Codex contributor process");
  await expect(page.locator(".event-list").getByText("Newest activity past first 100 events",{exact:true})).toBeVisible();
  recent=[event(201,"Updated through polling with SSE disconnected")];
