@@ -15,6 +15,7 @@ type WorkspaceApproval struct {
 	Repository    json.RawMessage `json:"repository"`
 	Competition   json.RawMessage `json:"competition"`
 	BaseCommit    string          `json:"base_commit"`
+	CodexModel    string          `json:"codex_model,omitempty"`
 	Warnings      []string        `json:"warnings"`
 	CheckedAt     time.Time       `json:"checked_at"`
 }

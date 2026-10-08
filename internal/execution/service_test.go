@@ -19,12 +19,15 @@ import (
 type fixtureRunner struct {
 	contributors, reviews int
 	roles                 []string
+	models                []string
 	alwaysFail            bool
+	blockedVerification   bool
 }
 
 func (f *fixtureRunner) Check(context.Context, string, string) error { return nil }
 func (f *fixtureRunner) Run(ctx context.Context, r codex.Request, event func(json.RawMessage) error) (codex.Result, error) {
 	f.roles = append(f.roles, r.Role)
+	f.models = append(f.models, r.Model)
 	if event != nil {
 		if e := event(json.RawMessage(`{"type":"turn.started"}`)); e != nil {
 			return codex.Result{}, e
@@ -45,6 +48,9 @@ func (f *fixtureRunner) Run(ctx context.Context, r codex.Request, event func(jso
 			os.WriteFile(filepath.Join(r.Directory, "negative_test.go"), []byte("package fixture\nimport \"testing\"\nfunc TestNegative(t *testing.T){if Add(-2,-3)!=-5 {t.Fatal(\"negative sum\")}}\n"), 0600)
 		}
 		value = map[string]string{"status": "IMPLEMENTED", "summary": "Fixed addition with regression tests"}
+		if f.blockedVerification && f.contributors >= 2 {
+			value = map[string]string{"status": "BLOCKED", "summary": "Fixed the patch. Agent testing stalled on downloads and Docker is unavailable; required verification remains blocked."}
+		}
 	case "reviewer":
 		f.reviews++
 		review := domain.Review{Verdict: "APPROVE", Summary: "Correct minimal fix with positive and negative regression coverage", Findings: []domain.Finding{}}
@@ -74,6 +80,9 @@ func (f *fixtureRunner) Command(ctx context.Context, dir string, c domain.Verifi
 	return rec, err
 }
 func buildFixture(t *testing.T, runner codex.Runner) (*Service, domain.Contribution) {
+	return buildFixtureWithModel(t, runner, "")
+}
+func buildFixtureWithModel(t *testing.T, runner codex.Runner, model string) (*Service, domain.Contribution) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -124,7 +133,7 @@ func buildFixture(t *testing.T, runner codex.Runner) (*Service, domain.Contribut
 	if e = store.FinishDiscovery(ctx, run, []domain.Opportunity{o}); e != nil {
 		t.Fatal(e)
 	}
-	c := domain.Contribution{ID: "fixture", OpportunityID: o.ID, Repository: o.Repository, Title: o.Title, State: "SELECTED", Branch: "autopilot/issue-1", BaseCommit: sha, Workspace: filepath.ToSlash(repo), ConfigVersion: 1}
+	c := domain.Contribution{ID: "fixture", OpportunityID: o.ID, Repository: o.Repository, Title: o.Title, State: "SELECTED", Branch: "autopilot/issue-1", BaseCommit: sha, Workspace: filepath.ToSlash(repo), ConfigVersion: 1, CodexModel: model}
 	cfg := domain.ConfigVersion{Version: 1, Config: config.Default()}
 	cfg.Config.Codex.MaxFixIterations = 3
 	cfg.Config.Codex.MaxReviewCycles = 2
@@ -141,7 +150,7 @@ func buildFixture(t *testing.T, runner codex.Runner) (*Service, domain.Contribut
 }
 func TestWorkflowRealCommandsFixIndependentReviewAndPRGate(t *testing.T) {
 	runner := &fixtureRunner{}
-	s, c := buildFixture(t, runner)
+	s, c := buildFixtureWithModel(t, runner, "model-a")
 	ctx := context.Background()
 	if _, e := s.Start(ctx, c.ID, false, false); e == nil {
 		t.Fatal("execution started without approval")
@@ -171,10 +180,15 @@ func TestWorkflowRealCommandsFixIndependentReviewAndPRGate(t *testing.T) {
 	agents, _ := s.Store.Agents(ctx)
 	sessions := map[string]bool{}
 	for _, a := range agents {
-		if a.Status != "SUCCEEDED" || sessions[a.SessionID] {
+		if a.Status != "SUCCEEDED" || sessions[a.SessionID] || a.Model != "model-a" {
 			t.Fatal("contexts not independent")
 		}
 		sessions[a.SessionID] = true
+	}
+	for _, model := range runner.models {
+		if model != "model-a" {
+			t.Fatalf("agent received wrong model: %q", model)
+		}
 	}
 	if !strings.Contains(r.Diff, "negative_test.go") || r.Report == "" {
 		t.Fatal("new file or report missing")

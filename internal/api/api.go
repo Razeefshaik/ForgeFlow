@@ -82,6 +82,13 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/overview", s.overview)
 	m.HandleFunc("GET /api/runtime", func(w http.ResponseWriter, r *http.Request) { write(w, 200, s.Runtime) })
+	m.HandleFunc("GET /api/runtime/models", func(w http.ResponseWriter, r *http.Request) {
+		models, err := codex.LocalModels()
+		if err != nil {
+			models = []codex.ModelOption{}
+		}
+		write(w, 200, map[string]any{"models": models})
+	})
 	m.HandleFunc("GET /api/discovery", func(w http.ResponseWriter, r *http.Request) {
 		if s.Discovery == nil {
 			write(w, 200, discovery.Status{Message: "Discovery adapter unavailable"})
@@ -141,7 +148,9 @@ func (s Server) Handler() http.Handler {
 		respond(w, v, e)
 	})
 	m.HandleFunc("POST /api/opportunities/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
-		var b struct{}
+		var b struct {
+			CodexModel string `json:"codex_model"`
+		}
 		if !decode(w, r, &b) {
 			return
 		}
@@ -149,14 +158,15 @@ func (s Server) Handler() http.Handler {
 			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
 			return
 		}
-		v, e := s.Workspaces.Preview(r.Context(), r.PathValue("id"))
+		v, e := s.Workspaces.PreviewForModel(r.Context(), r.PathValue("id"), b.CodexModel)
 		respond(w, v, e)
 	})
 	m.HandleFunc("POST /api/opportunities/{id}/proceed", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
-			Approved bool   `json:"approved"`
-			Token    string `json:"token"`
-			Execute  bool   `json:"execute"`
+			Approved   bool   `json:"approved"`
+			Token      string `json:"token"`
+			Execute    bool   `json:"execute"`
+			CodexModel string `json:"codex_model"`
 		}
 		if !decode(w, r, &b) {
 			return
@@ -165,7 +175,7 @@ func (s Server) Handler() http.Handler {
 			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
 			return
 		}
-		v, e := s.Workspaces.ProceedWithExecution(r.Context(), r.PathValue("id"), b.Token, b.Approved, b.Execute)
+		v, e := s.Workspaces.ProceedWithExecutionForModel(r.Context(), r.PathValue("id"), b.Token, b.Approved, b.Execute, b.CodexModel)
 		if e != nil {
 			fail(w, e)
 			return
@@ -197,6 +207,18 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/contributions/{id}/tests", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Store.Tests(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
+	m.HandleFunc("GET /api/contributions/{id}/diagnosis", func(w http.ResponseWriter, r *http.Request) {
+		if _, e := s.Store.Contribution(r.Context(), r.PathValue("id")); e != nil {
+			fail(w, e)
+			return
+		}
+		if s.Execution == nil {
+			write(w, 503, map[string]string{"error": "Execution adapter unavailable"})
+			return
+		}
+		v, e := s.Execution.Diagnose(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
 	m.HandleFunc("POST /api/contributions/{id}/{action}", s.executionAction)

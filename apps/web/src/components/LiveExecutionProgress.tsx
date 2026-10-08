@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "../api";
 import type { Event } from "../types";
-import { ProgressMeter } from "./Visuals";
 import { Terminal } from "./icons";
 
 type Agent = {
@@ -86,12 +85,12 @@ export default function LiveExecutionProgress({
         </strong>
         <span className="live-pill">Live</span>
       </div>
-      <ProgressMeter indeterminate label="Execution in progress" />
+      {active && output && <p className="live-current-task">{activityLabel(output)}</p>}
       {active && (
         <p>
           {output
-            ? `Last progress event ${duration(seconds(output.created_at))} ago.`
-            : `Awaiting first Codex progress event · ${duration(seconds(active.started_at))} elapsed.`}{" "}
+            ? `${seconds(output.created_at) > 30 ? "Waiting for output. " : ""}Last output ${new Date(output.created_at).toLocaleTimeString()} (${duration(seconds(output.created_at))} ago).`
+            : `Waiting for output · started ${new Date(active.started_at).toLocaleTimeString()}.`}{" "}
           The process is marked running; this does not confirm that it is making
           progress.
         </p>
@@ -107,7 +106,7 @@ export default function LiveExecutionProgress({
           Live status could not refresh. Check the backend connection.
         </p>
       )}
-      <details open>
+      <details>
         <summary>Recent activity · refreshed every 3 seconds</summary>
         {recent.length ? (
           recent.map((e) => (

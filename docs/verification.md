@@ -1,5 +1,14 @@
 # Verification - 2026-10-06
 
+## Issue reactor delivery - 2026-10-09
+
+- Design, recovery rules and implementation milestones: [issue-reactor.md](issue-reactor.md). Implemented in the real Go execution service and React contribution workspace.
+- Full `go test ./...` and `go vet ./...` passed. Additional targeted checks cover approval/lock requirements, cancellation during backoff, substantive blockers, missing patches, read-only HTTP diagnosis and rejected unapproved recovery. Production Go binary and TypeScript/Vite builds passed.
+- Actual installed native sandbox probe passed: workspace write permitted, outside write denied, and the public Go dependency endpoint returned HTTP 200 with approved network access despite a deliberately inherited discard proxy. This was a disposable probe, not verification of the user's external contribution or proof that Docker/WSL works.
+- Synthetic agent results with real Git and Go commands exercised a failed test, a verification-only BLOCKED contributor response, fresh passing checks, independent REQUEST_CHANGES, another fix, APPROVE, and READY. PR creation remained gated. Recovery command fixtures separately exercise transport retry, bounded attempts, locked npm installation and failure evidence retention.
+- Browser contract checks exercise explicit download approval, linked command output, mobile overflow, cleared current errors after resume, and unavailable diagnosis. Existing contribution evidence/PR and model approval checks also passed. Screenshots: [desktop](../artifacts/reactor-desktop.png), [mobile](../artifacts/reactor-mobile.png). These use labelled UI fixture data and do not execute or submit external contributions.
+- Restarting the existing development process was rejected by automatic approval review with `blocked by policy`. The current backend has not loaded this delivery. Stop the existing dev command and run `npm run dev` from the application root; then open a contribution's Issue reactor panel. The previous blocked contribution was not automatically resumed, and its required Docker/WSL live verification remains unverified.
+
 ## Current execution delivery
 
 - Contribution parent moved to S:/StudyResource/TechBoooo/Backend/Contriss. All 4020 pre-move SHA256 file hashes matched after relocation. Main contributions/ contains only .gitkeep. Source, branch, Git history, snapshots and artifacts were preserved.

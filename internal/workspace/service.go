@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"forgeflow/internal/codex"
 	"forgeflow/internal/contributions"
 	"forgeflow/internal/domain"
 	"forgeflow/internal/github"
@@ -29,14 +30,15 @@ var commitSHA = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 var ErrChanged = errors.New("issue, repository or configuration changed; review the fresh approval preview again")
 
 type Service struct {
-	Store   *storage.Store
-	Client  *github.Client
-	Root    string
-	Base    string
-	ctx     context.Context
-	mu      sync.Mutex
-	running int
-	wg      sync.WaitGroup
+	Store        *storage.Store
+	Client       *github.Client
+	Root         string
+	Base         string
+	DefaultModel string
+	ctx          context.Context
+	mu           sync.Mutex
+	running      int
+	wg           sync.WaitGroup
 	// Git is resolved on the server, never supplied by API callers.
 	Git            string
 	selfRepository string
@@ -65,7 +67,20 @@ func New(ctx context.Context, s *storage.Store, c *github.Client, root string) *
 }
 func (s *Service) Wait() { s.wg.Wait() }
 func (s *Service) Preview(ctx context.Context, id string) (domain.WorkspaceApproval, error) {
+	return s.PreviewForModel(ctx, id, "")
+}
+func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string) (domain.WorkspaceApproval, error) {
 	var a domain.WorkspaceApproval
+	if err := codex.ValidateModelID(requestedModel); err != nil {
+		return a, err
+	}
+	model := requestedModel
+	if model == "" {
+		model = s.DefaultModel
+	}
+	if err := codex.ValidateModelID(model); err != nil {
+		return a, err
+	}
 	if s.Store.Demo {
 		return a, errors.New("demo issues cannot create external workspaces")
 	}
@@ -117,7 +132,7 @@ func (s *Service) Preview(ctx context.Context, id string) (domain.WorkspaceAppro
 	if err = session.Get(ctx, github.SearchPath("issues", fmt.Sprintf("repo:%s is:pr is:open \"%s\"", o.Repository, issue.HTMLURL), 10), &competition); err != nil {
 		return a, err
 	}
-	a = domain.WorkspaceApproval{Opportunity: o, Config: cfg, BaseCommit: commits[0].SHA, CheckedAt: time.Now().UTC(), Warnings: []string{"Preparation clones and branches the repository. Codex coding, repository tests and PR submission are not started by this approval."}}
+	a = domain.WorkspaceApproval{Opportunity: o, Config: cfg, BaseCommit: commits[0].SHA, CodexModel: model, CheckedAt: time.Now().UTC(), Warnings: []string{"Preparation clones and branches the repository. Codex coding, repository tests and PR submission are not started by this approval."}}
 	a.WorkspaceRoot = s.Base
 	if s.Prepared != nil {
 		a.Warnings = []string{"Approval starts isolated cloning, Codex coding, real verification and independent review. PR submission requires a later explicit approval."}
@@ -158,9 +173,15 @@ func (s *Service) Proceed(ctx context.Context, id, token string, approved bool) 
 	return s.ProceedWithExecution(ctx, id, token, approved, false)
 }
 func (s *Service) ProceedWithExecution(ctx context.Context, id, token string, approved, execute bool) (domain.Contribution, error) {
+	return s.ProceedWithExecutionForModel(ctx, id, token, approved, execute, "")
+}
+func (s *Service) ProceedWithExecutionForModel(ctx context.Context, id, token string, approved, execute bool, model string) (domain.Contribution, error) {
 	var c domain.Contribution
 	if !approved || len(token) != 64 {
 		return c, errors.New("explicit human approval and a reviewed preview token are required")
+	}
+	if err := codex.ValidateModelID(model); err != nil {
+		return c, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -168,14 +189,18 @@ func (s *Service) ProceedWithExecution(ctx context.Context, id, token string, ap
 		return c, errors.New("server is stopping")
 	}
 	if previous, err := s.Store.ApprovedContribution(ctx, token); err == nil {
-		if previous.OpportunityID != id {
+		selected := model
+		if selected == "" {
+			selected = s.DefaultModel
+		}
+		if previous.OpportunityID != id || previous.CodexModel != selected {
 			return c, ErrChanged
 		}
 		return previous, nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
 		return c, err
 	}
-	a, err := s.Preview(ctx, id)
+	a, err := s.PreviewForModel(ctx, id, model)
 	if err != nil {
 		return c, err
 	}
@@ -194,7 +219,7 @@ func (s *Service) ProceedWithExecution(ctx context.Context, id, token string, ap
 	if s.Base == filepath.Join(s.Root, "contributions") {
 		workspacePath = filepath.Join("contributions", cid, "repo")
 	}
-	c = domain.Contribution{ID: cid, OpportunityID: id, Repository: a.Opportunity.Repository, Title: a.Opportunity.Title, State: "SELECTED", Branch: fmt.Sprintf("autopilot/issue-%d", a.Opportunity.Number), ConfigVersion: a.Config.Version, UpdatedAt: time.Now().UTC(), Workspace: filepath.ToSlash(workspacePath), BaseCommit: a.BaseCommit, Message: "Human approved; preparing isolated workspace"}
+	c = domain.Contribution{ID: cid, OpportunityID: id, Repository: a.Opportunity.Repository, Title: a.Opportunity.Title, State: "SELECTED", Branch: fmt.Sprintf("autopilot/issue-%d", a.Opportunity.Number), ConfigVersion: a.Config.Version, CodexModel: a.CodexModel, UpdatedAt: time.Now().UTC(), Workspace: filepath.ToSlash(workspacePath), BaseCommit: a.BaseCommit, Message: "Human approved; preparing isolated workspace"}
 	c.ExecutionApproved = execute
 	if err = s.Store.ApproveWorkspace(ctx, c, a); err != nil {
 		return c, err

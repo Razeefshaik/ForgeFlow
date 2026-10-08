@@ -66,10 +66,13 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
   const examples = await original.json();
   const o = { ...examples[0], id: "approval-ui-fixture", demo: false };
   await page.route("**/api/opportunities", (r) => r.fulfill({ json: [o] }));
-  await page.route("**/api/opportunities/approval-ui-fixture/preview", (r) =>
-    r.fulfill({
+  await page.route("**/api/runtime/models", (r) => r.fulfill({ json: { models: [{ slug: "model-a", display_name: "Model A" }] } }));
+  await page.route("**/api/opportunities/approval-ui-fixture/preview", (r) => {
+    expect(r.request().postDataJSON().codex_model).toBe("model-a");
+    return r.fulfill({
       json: {
         token: "f".repeat(64),
+        codex_model: "model-a",
         configuration: { version: 1 },
         base_commit: "a".repeat(40),
         checked_at: new Date().toISOString(),
@@ -80,8 +83,8 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
         },
         warnings: ["Preparation only; coding adapter pending."],
       },
-    }),
-  );
+    });
+  });
   let approvals = 0;
   await page.route(
     "**/api/opportunities/approval-ui-fixture/proceed",
@@ -89,6 +92,7 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
       const b = r.request().postDataJSON();
       expect(b.approved).toBe(true);
       expect(b.token).toBe("f".repeat(64));
+      expect(b.codex_model).toBe("model-a");
       approvals++;
       await r.fulfill({
         status: 202,
@@ -98,7 +102,9 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
   );
   await page.goto("/opportunities");
   await page.getByRole("button", { name: "Inspect " + o.repository }).click();
+  await page.getByLabel("Codex model for this contribution").selectOption("model-a");
   await page.getByRole("button", { name: "Proceed to Contribute" }).click();
+  await expect(page.getByText("model-a", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Fresh approval fixture" }),
   ).toBeVisible();

@@ -102,6 +102,7 @@ export function Agents() {
         id: string;
         contribution_id: string;
         role: string;
+        model?: string;
         status: string;
         session_id: string;
         started_at: string;
@@ -156,6 +157,7 @@ export function Agents() {
                 <div>
                   <h2>{a.role}</h2>
                   <p>{new Date(a.started_at).toLocaleString()}</p>
+                  {a.model && <p>Model: {a.model}</p>}
                 </div>
                 <Badge tone={a.status === "RUNNING" ? "violet" : "neutral"}>
                   {a.status}
@@ -446,10 +448,11 @@ export function Settings({
                 </dd>
               </div>
               <div>
-                <dt>Model</dt>
+                <dt>Default model for new contributions</dt>
                 <dd>{runtime.data?.codex_model || "Codex CLI default"}</dd>
               </div>
             </dl>
+            <p className="muted">Choose a model for each contribution when reviewing its approval preview. That choice is saved with the contribution.</p>
             <p>
               <Link className="text-link" to="/configuration">
                 <SlidersHorizontal size={15} />

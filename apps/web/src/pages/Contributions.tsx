@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight } from "../components/icons";
+import { ArrowLeft, ArrowUpRight, Bot, GitBranch } from "../components/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { APIError, request } from "../api";
 import type { Contribution, Event } from "../types";
@@ -11,6 +11,7 @@ import {
   StateBadge,
 } from "../components/primitives";
 import ExecutionPanel from "../components/ExecutionPanel";
+import ContributionStages from "../components/ContributionStages";
 import { CopyValue, RepositoryAvatar } from "../components/Visuals";
 
 const contributionURL = (id: string) =>
@@ -52,7 +53,6 @@ export default function Contributions() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">ISOLATED WORK · SHARED VISIBILITY</span>
           <h1>Contributions</h1>
           <p>Every issue gets its own branch, workspace and audit trail.</p>
         </div>
@@ -118,15 +118,6 @@ export default function Contributions() {
   );
 }
 
-const stages = [
-  { label: "Plan", states: ["SELECTED", "CLONING", "PLANNING"] },
-  { label: "Code", states: ["CODING"] },
-  { label: "Test", states: ["TESTING"] },
-  { label: "Fix", states: ["FIXING"] },
-  { label: "Review", states: ["REVIEWING"] },
-  { label: "Human review", states: ["READY", "PR_PREPARED", "PR_OPENED"] },
-];
-
 function CommandOutput({ event }: { event: Event }) {
   const record = event.data as {
     arguments: string[];
@@ -165,6 +156,15 @@ export function ContributionPage() {
       !(error instanceof APIError && error.status === 404) && count < 1,
   });
   const current = contribution.data;
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const agents = useQuery({
+    queryKey: ["/agents"],
+    queryFn: () => request<{ contribution_id: string; model?: string; started_at: string }[]>("/agents"),
+    enabled: !!current && !current.demo && !current.codex_model,
+    refetchInterval: 5000,
+  });
+  const savedModel = current?.codex_model || agents.data?.filter(a => a.contribution_id === id && a.model).sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]?.model;
   const timelinePath = "/events?entity=" + encodeURIComponent(id);
   const timeline = useQuery({
     queryKey: [timelinePath],
@@ -214,44 +214,29 @@ export function ContributionPage() {
             <div className="contribution-title">
               <RepositoryAvatar repository={current.repository} />
               <div>
-                <span className="eyebrow">{current.repository}</span>
+                <a className="contribution-repository" href={"https://github.com/" + current.repository.split("/").map(encodeURIComponent).join("/")} target="_blank" rel="noreferrer">{current.repository}<ArrowUpRight size={13} /></a>
                 <h1>{current.title}</h1>
-                <p>
-                  Isolated contribution workspace · configuration v
-                  {current.config_version}
-                </p>
               </div>
             </div>
             <StateBadge state={current.state} />
+          </div>
+          <div className="contribution-context">
+            <div className="contribution-model" aria-label="Selected contribution AI model"><Bot size={17} /><span>Codex model</span><strong>{savedModel || (agents.isPending && !current.demo ? "Checking saved model…" : "Not recorded")}</strong></div>
+            <div className="contribution-branch"><GitBranch size={15} /><code>{current.branch || "Branch not recorded"}</code></div>
+            <span className="contribution-config">Configuration v{current.config_version}</span>
           </div>
           {contribution.error && (
             <p className="error" role="alert">
               Workspace status could not refresh: {contribution.error.message}
             </p>
           )}
-          {current.message && <p className="note">{current.message}</p>}
           {current.demo && (
             <div className="note">
               Illustrative demo state. No repository was cloned, no agent ran
               and no contribution tests or reviews were performed.
             </div>
           )}
-          <ol className="lifecycle" aria-label="Contribution stages">
-            {stages.map((stage, index) => (
-              <li
-                key={stage.label}
-                className={
-                  stage.states.includes(current.state) ? "current" : ""
-                }
-                aria-current={
-                  stage.states.includes(current.state) ? "step" : undefined
-                }
-              >
-                <span>{index + 1}</span>
-                {stage.label}
-              </li>
-            ))}
-          </ol>
+          {current.demo && <ContributionStages contribution={current} />}
           {!current.demo && (
             <ExecutionPanel key={current.id} contribution={current} />
           )}
@@ -276,6 +261,7 @@ export function ContributionPage() {
                 <dt>Configuration snapshot</dt>
                 <dd>v{current.config_version}</dd>
               </div>
+              <div><dt>Codex model</dt><dd>{savedModel || "Model ID not recorded"}</dd></div>
               {current.workspace && (
                 <div>
                   <dt>Workspace</dt>
@@ -298,14 +284,16 @@ export function ContributionPage() {
             className="surface contribution-timeline"
             aria-label="Persisted timeline"
           >
-            <SectionHeader title="Persisted timeline" />
+            <SectionHeader title="Activity" extra={<button className="text-link" onClick={() => setHistoryExpanded(!historyExpanded)} aria-expanded={historyExpanded}>{historyExpanded ? "Show recent activity" : "Show full timeline"}</button>} />
+            {historyExpanded && <div className="history-search"><input aria-label="Search contribution activity" placeholder="Search saved events…" value={historySearch} onChange={e => setHistorySearch(e.target.value)} /></div>}
             {timeline.error && (
               <p className="error" role="alert">
                 Timeline could not refresh: {timeline.error.message}
               </p>
             )}
             <EventRows
-              events={liveTimeline.filter((e) => e.entity_id === id)}
+              events={liveTimeline.filter((e) => e.entity_id === id && (!historyExpanded || (e.message + " " + e.type).toLowerCase().includes(historySearch.toLowerCase())))}
+              compact={!historyExpanded}
             />
           </section>
           {!current.demo && (

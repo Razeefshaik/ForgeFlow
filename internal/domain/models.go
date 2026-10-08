@@ -53,6 +53,7 @@ type Contribution struct {
 	PreviousState     string    `json:"previous_state,omitempty"`
 	Branch            string    `json:"branch"`
 	ConfigVersion     int64     `json:"config_version"`
+	CodexModel        string    `json:"codex_model,omitempty"`
 	UpdatedAt         time.Time `json:"updated_at"`
 	Demo              bool      `json:"demo"`
 	Workspace         string    `json:"workspace,omitempty"`

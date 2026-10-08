@@ -31,6 +31,7 @@ type AgentRun struct {
 	ID             string           `json:"id"`
 	ContributionID string           `json:"contribution_id"`
 	Role           string           `json:"role"`
+	Model          string           `json:"model,omitempty"`
 	Status         string           `json:"status"`
 	SessionID      string           `json:"session_id"`
 	StartedAt      time.Time        `json:"started_at"`
@@ -48,27 +49,47 @@ type TestRun struct {
 	ExitCode       int                 `json:"exit_code"`
 	Output         string              `json:"output"`
 	Truncated      bool                `json:"truncated"`
+	FailureKind    string              `json:"failure_kind,omitempty"`
+	RecoveryOf     string              `json:"recovery_of,omitempty"`
+}
+
+// ExecutionIncident is the current diagnosis. Historical diagnoses and actions
+// live in immutable events; a resolved incident is removed from current status.
+type ExecutionIncident struct {
+	ID         string               `json:"id"`
+	Kind       string               `json:"kind"`
+	Summary    string               `json:"summary"`
+	Evidence   string               `json:"evidence"`
+	NextAction string               `json:"next_action"`
+	Status     string               `json:"status"`
+	TestRunID  string               `json:"test_run_id,omitempty"`
+	Command    *VerificationCommand `json:"command,omitempty"`
+	Attempt    int                  `json:"attempt"`
+	CanRecover bool                 `json:"can_recover"`
+	DetectedAt time.Time            `json:"detected_at"`
 }
 type ExecutionRecord struct {
-	ContributionID  string    `json:"contribution_id"`
-	Status          string    `json:"status"`
-	Phase           string    `json:"phase"`
-	Plan            *Plan     `json:"plan,omitempty"`
-	Review          *Review   `json:"review,omitempty"`
-	Summary         string    `json:"summary"`
-	Message         string    `json:"message,omitempty"`
-	FixIterations   int       `json:"fix_iterations"`
-	ReviewCycles    int       `json:"review_cycles"`
-	PlanApproved    bool      `json:"plan_approved"`
-	Network         bool      `json:"network"`
-	Constraints     string    `json:"constraints"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ChangedFiles    []string  `json:"changed_files"`
-	Diff            string    `json:"diff"`
-	Report          string    `json:"report"`
-	PRTitle         string    `json:"pr_title"`
-	PRBody          string    `json:"pr_body"`
-	PRURL           string    `json:"pr_url"`
-	HeadCommit      string    `json:"head_commit"`
-	SubmissionToken string    `json:"submission_token"`
+	ContributionID   string             `json:"contribution_id"`
+	Status           string             `json:"status"`
+	Phase            string             `json:"phase"`
+	Plan             *Plan              `json:"plan,omitempty"`
+	Review           *Review            `json:"review,omitempty"`
+	Summary          string             `json:"summary"`
+	Message          string             `json:"message,omitempty"`
+	FixIterations    int                `json:"fix_iterations"`
+	ReviewCycles     int                `json:"review_cycles"`
+	PlanApproved     bool               `json:"plan_approved"`
+	Network          bool               `json:"network"`
+	Incident         *ExecutionIncident `json:"incident,omitempty"`
+	RecoveryAttempts int                `json:"recovery_attempts"`
+	Constraints      string             `json:"constraints"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+	ChangedFiles     []string           `json:"changed_files"`
+	Diff             string             `json:"diff"`
+	Report           string             `json:"report"`
+	PRTitle          string             `json:"pr_title"`
+	PRBody           string             `json:"pr_body"`
+	PRURL            string             `json:"pr_url"`
+	HeadCommit       string             `json:"head_commit"`
+	SubmissionToken  string             `json:"submission_token"`
 }

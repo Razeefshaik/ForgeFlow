@@ -105,22 +105,15 @@ test("running state has unknown completion while command history has measured re
   );
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/contributions/meter-ui");
-  const ongoing = page.getByRole("progressbar", {
-    name: "Execution in progress",
-  });
+  const ongoing = page.getByLabel("Live execution progress");
   await expect(ongoing).toBeVisible();
   await expect(ongoing).not.toHaveAttribute("aria-valuenow");
-  await expect(ongoing).toHaveAttribute(
-    "aria-valuetext",
-    /completion percentage unknown/,
-  );
-  await expect(
-    page.getByRole("progressbar", { name: "Successful recorded command runs" }),
-  ).toHaveAttribute("aria-valuenow", "50");
+  await expect(ongoing).toContainText("Verification phase: testing");
+  await expect(ongoing.getByRole("progressbar")).toHaveCount(0);
+  await expect(page.locator(".verification-outcomes").getByRole("button", { name: "Passed 1" })).toBeVisible();
+  await expect(page.locator(".verification-outcomes").getByRole("button", { name: "Failed 1" })).toBeVisible();
   expect(
-    await ongoing
-      .locator("span")
-      .evaluate((el) => getComputedStyle(el).animationName),
+    await page.locator(".evidence-content").evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");
   await page.getByRole("tab", { name: "Plan", exact: true }).focus();
   await page.keyboard.press("ArrowRight");

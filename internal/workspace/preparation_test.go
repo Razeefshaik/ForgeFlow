@@ -88,11 +88,11 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	t.Setenv("FORGEFLOW_GIT_FIXTURE_ORIGIN", origin)
 	t.Setenv("FORGEFLOW_GIT_FIXTURE_EXECUTABLE", realGit)
 	manager.Git = os.Args[0]
-	preview, err := manager.Preview(ctx, "issue")
+	preview, err := manager.PreviewForModel(ctx, "issue", "model-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := manager.Proceed(ctx, "issue", preview.Token, true)
+	c, err := manager.ProceedWithExecutionForModel(ctx, "issue", preview.Token, true, false, "model-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +100,9 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	got, err := s.Contribution(ctx, c.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got.CodexModel != "model-a" {
+		t.Fatalf("selected model was not persisted: %+v", got)
 	}
 	if got.State != "BLOCKED" || got.PreviousState != "PLANNING" {
 		events, _ := s.Events(ctx, 0, c.ID, 100)
@@ -122,7 +125,7 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(out)) != sha {
 		t.Fatal("approved SHA not checked out")
 	}
-	duplicate, err := manager.Proceed(ctx, "issue", preview.Token, true)
+	duplicate, err := manager.ProceedWithExecutionForModel(ctx, "issue", preview.Token, true, false, "model-a")
 	if err != nil || duplicate.ID != c.ID {
 		t.Fatal("repeat approval created another workspace")
 	}

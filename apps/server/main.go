@@ -155,6 +155,7 @@ func run() error {
 	}
 	workspaces := workspace.New(ctx, s, client, root)
 	workspaces.Base = settings.ContributionsDir
+	workspaces.DefaultModel = settings.CodexModel
 	cli := codex.Resolve(settings.CodexBinary, settings.CodexModel)
 	var operatorAI codex.Runner
 	if !*demo && cli.Binary != "" {

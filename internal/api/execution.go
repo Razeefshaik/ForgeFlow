@@ -21,6 +21,13 @@ func (s Server) executionAction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	action := r.PathValue("action")
 	switch action {
+	case "recover":
+		v, e := s.Execution.Recover(r.Context(), id, b.Approved, b.Network)
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		write(w, 202, v)
 	case "constraints":
 		if e := s.Execution.SetConstraints(r.Context(), id, b.Constraints, b.Approved); e != nil {
 			fail(w, e)

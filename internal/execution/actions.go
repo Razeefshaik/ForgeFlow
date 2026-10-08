@@ -7,6 +7,9 @@ import (
 )
 
 func (s *Service) Retry(ctx context.Context, id, action string, approved bool) (domain.ExecutionRecord, error) {
+	return s.retry(ctx, id, action, approved, nil)
+}
+func (s *Service) retry(ctx context.Context, id, action string, approved bool, network *bool) (domain.ExecutionRecord, error) {
 	if !approved {
 		return domain.ExecutionRecord{}, errors.New("explicit confirmation is required")
 	}
@@ -66,7 +69,14 @@ func (s *Service) Retry(ctx context.Context, id, action string, approved bool) (
 	r.Status = "BLOCKED"
 	r.Review = nil
 	r.ReviewCycles = 0
-	if err = s.Store.SaveExecution(ctx, r, "user", "Human requested fresh tests and independent review"); err != nil {
+	if network != nil {
+		r.Network = *network
+	}
+	message := "Human requested fresh tests and independent review"
+	if network != nil && *network {
+		message += " and approved dependency downloads"
+	}
+	if err = s.Store.SaveExecution(ctx, r, "user", message); err != nil {
 		s.mu.Unlock()
 		return r, err
 	}

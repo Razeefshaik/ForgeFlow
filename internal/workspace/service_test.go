@@ -79,6 +79,13 @@ func TestFreshPreviewApprovalAndStaleInputs(t *testing.T) {
 	if calls != 4 {
 		t.Fatal("unapproved request fetched or executed work")
 	}
+	selected, err := manager.PreviewForModel(ctx, "issue", "model-a")
+	if err != nil || selected.CodexModel != "model-a" || selected.Token == preview.Token {
+		t.Fatalf("model was not bound to approval: %+v, %v", selected, err)
+	}
+	if _, err = manager.ProceedWithExecutionForModel(ctx, "issue", selected.Token, true, false, "model-b"); !errors.Is(err, ErrChanged) {
+		t.Fatalf("approval accepted a changed model: %v", err)
+	}
 	head = strings.Repeat("b", 40)
 	if _, err = manager.Proceed(ctx, "issue", preview.Token, true); !errors.Is(err, ErrChanged) {
 		t.Fatalf("stale head accepted: %v", err)

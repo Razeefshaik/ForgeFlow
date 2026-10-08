@@ -19,8 +19,8 @@ import (
 )
 
 type Request struct {
-	Directory, Role, Prompt, Schema, OutputFile string
-	Network                                     bool
+	Directory, Role, Prompt, Schema, OutputFile, Model string
+	Network                                            bool
 }
 type Result struct {
 	SessionID, Output string
@@ -72,8 +72,12 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
 	args = append(args, c.policy(readOnly, r.Network)...)
-	if c.Model != "" {
-		args = append(args, "--model", c.Model)
+	model := r.Model
+	if model == "" {
+		model = c.Model
+	}
+	if model != "" {
+		args = append(args, "--model", model)
 	}
 	if r.Schema != "" {
 		args = append(args, "--output-schema", r.Schema)
@@ -86,7 +90,11 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, c.Binary, args...)
 	cmd.Dir = r.Directory
-	cmd.Env = workspaceEnvironment(r.Directory)
+	env, err := workspaceEnvironmentForNetwork(r.Directory, r.Network)
+	if err != nil {
+		return result, err
+	}
+	cmd.Env = env
 	if r.Role == "operator" {
 		cmd.Env = environment()
 	}
@@ -177,13 +185,18 @@ func (c *CLI) sandbox(ctx context.Context, dir string, command domain.Verificati
 	args = append(args, command.Arguments...)
 	cmd := exec.CommandContext(ctx, c.Binary, args...)
 	cmd.Dir = dir
-	cmd.Env = workspaceEnvironment(dir)
+	env, err := workspaceEnvironmentForNetwork(dir, network)
+	if err != nil {
+		rec.FinishedAt = time.Now().UTC()
+		return rec, err
+	}
+	cmd.Env = env
 	cmd.WaitDelay = 3 * time.Second
 	configureProcess(cmd)
 	out := &bounded{limit: 256 << 10}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	err := cmd.Run()
+	err = cmd.Run()
 	rec.FinishedAt = time.Now().UTC()
 	if cmd.ProcessState != nil {
 		rec.ExitCode = cmd.ProcessState.ExitCode()
@@ -298,13 +311,17 @@ func environment() []string {
 	return all
 }
 func workspaceEnvironment(dir string) []string {
+	env, _ := workspaceEnvironmentForNetwork(dir, false)
+	return env
+}
+func workspaceEnvironmentForNetwork(dir string, network bool) ([]string, error) {
 	base := filepath.Join(dir, ".forgeflow-runtime")
-	for _, part := range []string{"tmp", "go-cache", "go-mod", "go", "npm", "python", "xdg", "gradle"} {
-		_ = os.MkdirAll(filepath.Join(base, part), 0700)
+	if err := prepareWorkspaceCaches(dir); err != nil {
+		return nil, err
 	}
 	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 	result := []string{}
-	for _, entry := range environment() {
+	for _, entry := range approvedNetworkEnvironment(environment(), network) {
 		key, _, _ := strings.Cut(entry, "=")
 		skip := false
 		for name := range overrides {
@@ -319,7 +336,28 @@ func workspaceEnvironment(dir string) []string {
 	for key, value := range overrides {
 		result = append(result, key+"="+value)
 	}
-	return result
+	return result, nil
+}
+
+func prepareWorkspaceCaches(dir string) error {
+	paths := []string{filepath.Join(dir, ".forgeflow-runtime")}
+	for _, part := range []string{"tmp", "go-cache", "go-mod", "go", "npm", "python", "xdg", "gradle"} {
+		paths = append(paths, filepath.Join(dir, ".forgeflow-runtime", part))
+	}
+	for _, path := range paths {
+		if err := os.Mkdir(path, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return errors.New("workspace runtime cache is not writable")
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("workspace runtime cache must be an independent directory")
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil || !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(path)) {
+			return errors.New("workspace runtime cache crosses a link boundary")
+		}
+	}
+	return nil
 }
 
 type bounded struct {

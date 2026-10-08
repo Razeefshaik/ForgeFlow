@@ -101,6 +101,7 @@ export interface Contribution {
   previous_state?: string;
   branch: string;
   config_version: number;
+  codex_model?: string;
   updated_at: string;
   demo: boolean;
 }
