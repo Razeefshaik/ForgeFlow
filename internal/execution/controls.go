@@ -17,7 +17,7 @@ func (s *Service) SetConstraints(ctx context.Context, id, text string, approved 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.tasks[id] != nil {
+	if s.tasks[id] != nil || s.prBusy[id] {
 		return errors.New("pause execution before changing constraints")
 	}
 	c, err := s.Store.Contribution(ctx, id)
@@ -37,9 +37,16 @@ func (s *Service) SetConstraints(ctx context.Context, id, text string, approved 
 	return s.Store.SaveExecution(ctx, r, "user", "Human updated contribution constraints")
 }
 
-func (s *Service) beginPR(id string) error {
+func (s *Service) beginPR(id string) error { return s.beginPROperation(id, false) }
+func (s *Service) beginPROperation(id string, internal bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ctx.Err() != nil {
+		return errors.New("server is stopping")
+	}
+	if !internal && s.tasks[id] != nil {
+		return errors.New("wait for execution to finish before a PR operation")
+	}
 	if s.prBusy[id] {
 		return errors.New("PR operation already in progress")
 	}

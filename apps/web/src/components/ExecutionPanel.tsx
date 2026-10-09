@@ -1,3 +1,4 @@
+import PRDraftEditor from "./PRDraftEditor";
 import { useEffect, useState } from "react";
 import LiveExecutionProgress from "./LiveExecutionProgress";
 import IssueReactor, { type ExecutionIncident } from "./IssueReactor";
@@ -51,6 +52,7 @@ type Execution = {
   report: string;
   pr_title: string;
   pr_body: string;
+  pr_revision?: string;
   submission_token: string;
   pr_url: string;
 };
@@ -93,11 +95,13 @@ export default function ExecutionPanel({
   const [error, setError] = useState("");
   const [approved, setApproved] = useState(false);
   const [submitApproved, setSubmitApproved] = useState(false);
+ const [editingPR,setEditingPR]=useState(false);
   const [network, setNetwork] = useState(false);
   const [constraints, setConstraints] = useState<string | null>(null);
   const cache = useQueryClient();
   const r = execution.data;
   const running = r?.status === "RUNNING";
+ useEffect(()=>{setSubmitApproved(false)},[r?.submission_token]);
   const diagnosis = useQuery({
     queryKey: [prefix + "/diagnosis"],
     queryFn: () => request<ExecutionIncident | null>(prefix + "/diagnosis"),
@@ -135,8 +139,10 @@ export default function ExecutionPanel({
             : "Action accepted. Refreshing execution status…",
       );
       await cache.invalidateQueries();
+ return true;
     } catch (e) {
       setError((e as Error).message);
+ return false;
     } finally {
       setBusy(false);
     }
@@ -769,13 +775,13 @@ export default function ExecutionPanel({
               <>
                 {r?.pr_title ? (
                   <>
-                    <h4>{r.pr_title}</h4>
-                    <pre className="issue-body">{r.pr_body}</pre>
+                    <PRDraftEditor key={c.id} title={r.pr_title} body={r.pr_body} revision={r.pr_revision ?? ""} editable={["READY","PR_PREPARED"].includes(c.state)} busy={busy} onEditing={v=>{setEditingPR(v);setSubmitApproved(false)}} onSave={draft=>act("pr-text",draft)}/>
                     {c.state === "PR_PREPARED" && (
                       <>
                         <label className="approval-checkbox">
                           <input
                             type="checkbox"
+                            disabled={editingPR || busy}
                             checked={submitApproved}
                             onChange={(e) =>
                               setSubmitApproved(e.target.checked)
@@ -785,7 +791,7 @@ export default function ExecutionPanel({
                           reviewed branch and submitting this PR to GitHub.
                         </label>
                         <Button
-                          disabled={busy || !submitApproved}
+                          disabled={busy || !submitApproved || editingPR}
                           onClick={() =>
                             act("submit-pr", {
                               approved: true,

@@ -1019,3 +1019,17 @@
     min-height: 44px;
   }
 }
+
+.pr-draft-editor { display: grid; gap: 12px; }
+.pr-draft-editor input, .pr-draft-editor textarea { width: 100%; min-width: 0; color: var(--text-primary, #eee); background: rgba(0,0,0,.18); border: 1px solid transparent; border-radius: 12px; padding: 14px; font: inherit; }
+.pr-draft-editor textarea { resize: vertical; line-height: 1.6; }
+.pr-draft-editor :is(input,textarea):focus-visible { outline: 2px solid var(--accent, #8ca7ff); outline-offset: 3px; }
+.health-checks { list-style: none; padding: 0; display: grid; gap: 12px; }
+.health-checks li { padding: 16px; background: rgba(128,128,128,.07); border-radius: 14px; }
+.health-checks li > div { display:flex; justify-content:space-between; gap: 12px; flex-wrap:wrap; }
+.health-checks p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.health-status { color: #7fc8a7; font-size: .8rem; }
+.health-checks [data-status="warning"] .health-status { color: #e5b872; }
+.health-checks [data-status="failed"] .health-status { color: #ed8e9c; }
+.system-health > :not(.section-header) { margin-inline: 24px; }
+.system-health > :last-child { margin-bottom: 24px; }

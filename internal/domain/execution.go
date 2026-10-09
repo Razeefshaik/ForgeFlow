@@ -88,6 +88,7 @@ type ExecutionRecord struct {
 	Diff             string             `json:"diff"`
 	Report           string             `json:"report"`
 	PRTitle          string             `json:"pr_title"`
+	PRRevision       string             `json:"pr_revision"`
 	PRBody           string             `json:"pr_body"`
 	PRURL            string             `json:"pr_url"`
 	HeadCommit       string             `json:"head_commit"`

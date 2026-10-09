@@ -17,7 +17,10 @@ import (
 )
 
 func (s *Service) PreparePR(ctx context.Context, id string) (domain.ExecutionRecord, error) {
-	if err := s.beginPR(id); err != nil {
+	return s.preparePR(ctx, id, false)
+}
+func (s *Service) preparePR(ctx context.Context, id string, internal bool) (domain.ExecutionRecord, error) {
+	if err := s.beginPROperation(id, internal); err != nil {
 		return domain.ExecutionRecord{}, err
 	}
 	defer s.endPR(id)
@@ -27,6 +30,9 @@ func (s *Service) PreparePR(ctx context.Context, id string) (domain.ExecutionRec
 	}
 	r, err := s.Store.Execution(ctx, id)
 	if err != nil {
+		return r, err
+	}
+	if err = validatePRText(r.PRTitle, r.PRBody); err != nil {
 		return r, err
 	}
 	if c.State == "PR_PREPARED" {
@@ -74,10 +80,7 @@ func (s *Service) PreparePR(ctx context.Context, id string) (domain.ExecutionRec
 	r.HeadCommit = strings.TrimSpace(sha)
 	r.Status = "PR_PREPARED"
 	r.SubmissionToken = submissionToken(r)
-	if err = s.Store.SaveExecution(ctx, r, "user", "Prepared local commit and PR title/body; no push or submission"); err != nil {
-		return r, err
-	}
-	if err = s.Store.Transition(ctx, id, "PR_PREPARED"); err != nil {
+	if err = s.Store.SaveExecutionCheckpoint(ctx, r, "PR_PREPARED", "user", "Prepared local commit and PR title/body; no push or submission"); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -101,11 +104,14 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	if err != nil {
 		return r, err
 	}
-	if !approved || token == "" || token != r.SubmissionToken {
+	if !approved || token == "" || token != r.SubmissionToken || token != submissionToken(r) {
 		return r, errors.New("explicit human submission approval for this commit and PR text is required")
 	}
 	if c.State == "PR_OPENED" && r.PRURL != "" {
 		return r, nil
+	}
+	if err = validatePRText(r.PRTitle, r.PRBody); err != nil {
+		return r, err
 	}
 	if c.State != "PR_PREPARED" || s.Client == nil || s.Client.Credential() == "" {
 		return r, errors.New("prepare PR first and authenticate GitHub with fork/push/PR permissions")
@@ -113,9 +119,6 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	client := s.Client.Snapshot()
 	approval, err := s.Store.Approval(ctx, id)
 	if err != nil {
-		return r, err
-	}
-	if err = s.freshIssue(ctx, approval); err != nil {
 		return r, err
 	}
 	repo, _, err := s.Paths(c)
@@ -144,6 +147,39 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	parts := strings.Split(c.Repository, "/")
 	if len(parts) != 2 {
 		return r, errors.New("invalid contribution repository")
+	}
+	var repository github.Repository
+	if err = json.Unmarshal(approval.Repository, &repository); err != nil {
+		return r, err
+	}
+	var existing []struct {
+		HTMLURL string `json:"html_url"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		Head    struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+	}
+	if err = session.Get(ctx, "/repos/"+c.Repository+"/pulls?state=all&head="+user.Login+":"+c.Branch+"&base="+repository.DefaultBranch+"&per_page=100", &existing); err != nil {
+		return r, err
+	}
+	for _, pr := range existing {
+		if pr.Head.SHA == r.HeadCommit && pr.Base.Ref == repository.DefaultBranch {
+			if pr.Title != r.PRTitle || pr.Body != r.PRBody {
+				return r, errors.New("existing PR text differs from the approved draft; inspect it on GitHub")
+			}
+			r.PRURL = pr.HTMLURL
+			return s.recordSubmittedPR(ctx, c.Repository, r)
+		}
+	}
+	if len(existing) > 0 {
+		return r, errors.New("this branch already has a different PR; inspect GitHub before submitting")
+	}
+	if err = s.freshIssue(ctx, approval); err != nil {
+		return r, err
 	}
 	forkName := user.Login + "/" + parts[1]
 	if !strings.EqualFold(forkName, c.Repository) {
@@ -206,40 +242,22 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	if err = cmd.Run(); err != nil {
 		return r, errors.New("push to approved fork failed; no force push was attempted")
 	}
-	var existing []struct {
+	var created struct {
 		HTMLURL string `json:"html_url"`
 	}
-	if err = session.Get(ctx, "/repos/"+c.Repository+"/pulls?state=open&head="+user.Login+":"+c.Branch, &existing); err != nil {
+	err = client.Write(ctx, "/repos/"+c.Repository+"/pulls", map[string]any{"title": r.PRTitle, "body": r.PRBody, "head": user.Login + ":" + c.Branch, "base": repository.DefaultBranch, "maintainer_can_modify": true}, &created)
+	if err != nil {
 		return r, err
 	}
-	if len(existing) > 0 {
-		r.PRURL = existing[0].HTMLURL
-	} else {
-		var created struct {
-			HTMLURL string `json:"html_url"`
-		}
-		approval, e := s.Store.Approval(ctx, id)
-		if e != nil {
-			return r, e
-		}
-		var repository github.Repository
-		if err = json.Unmarshal(approval.Repository, &repository); err != nil {
-			return r, err
-		}
-		err = client.Write(ctx, "/repos/"+c.Repository+"/pulls", map[string]any{"title": r.PRTitle, "body": r.PRBody, "head": user.Login + ":" + c.Branch, "base": repository.DefaultBranch, "maintainer_can_modify": true}, &created)
-		if err != nil {
-			return r, err
-		}
-		r.PRURL = created.HTMLURL
-	}
-	if !strings.HasPrefix(r.PRURL, "https://github.com/"+c.Repository+"/pull/") {
+	r.PRURL = created.HTMLURL
+	return s.recordSubmittedPR(ctx, c.Repository, r)
+}
+func (s *Service) recordSubmittedPR(ctx context.Context, repository string, r domain.ExecutionRecord) (domain.ExecutionRecord, error) {
+	if !strings.HasPrefix(r.PRURL, "https://github.com/"+repository+"/pull/") {
 		return r, errors.New("GitHub returned an invalid PR URL")
 	}
 	r.Status = "PR_OPENED"
-	if err = s.Store.SaveExecution(ctx, r, "user", "Human approved PR submitted: "+r.PRURL); err != nil {
-		return r, err
-	}
-	if err = s.Store.Transition(ctx, id, "PR_OPENED"); err != nil {
+	if err := s.Store.SaveExecutionCheckpoint(ctx, r, "PR_OPENED", "user", "Human approved PR submitted: "+r.PRURL); err != nil {
 		return r, err
 	}
 	return r, nil

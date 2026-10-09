@@ -236,7 +236,15 @@ func (s *Service) ProceedWithExecutionForModel(ctx context.Context, id, token st
 func (s *Service) prepare(c domain.Contribution, a domain.WorkspaceApproval, repoPath string) {
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
 	defer cancel()
-	err := s.prepareWorkspace(ctx, c, a, repoPath)
+	err := func() (err error) {
+		defer func() {
+			if v := recover(); v != nil {
+				slog.Error("Workspace worker panic", "contribution", c.ID)
+				err = errors.New("workspace preparation stopped unexpectedly; partial workspace preserved")
+			}
+		}()
+		return s.prepareWorkspace(ctx, c, a, repoPath)
+	}()
 	// Retain partial clones and all records for inspection; never delete on failure.
 	auditCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
@@ -282,7 +290,7 @@ func (s *Service) prepareWorkspace(ctx context.Context, c domain.Contribution, a
 	if err := os.Mkdir(template, 0700); err != nil {
 		return errors.New("cannot create Git template directory")
 	}
-	base := []string{"-c", "core.hooksPath=" + filepath.Join(meta, "empty-hooks"), "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always", "-c", "submodule.recurse=false", "-c", "core.symlinks=false"}
+	base := []string{"-c", "core.longpaths=true", "-c", "core.hooksPath=" + filepath.Join(meta, "empty-hooks"), "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always", "-c", "submodule.recurse=false", "-c", "core.symlinks=false"}
 	remote := "https://github.com/" + c.Repository + ".git"
 	if _, err := s.command(ctx, c.ID, meta, parent, append(append([]string{}, base...), "clone", "--no-checkout", "--no-local", "--template="+template, "--", remote, repoPath)); err != nil {
 		return err

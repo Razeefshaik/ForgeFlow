@@ -36,7 +36,7 @@ func (s *Service) git(ctx context.Context, repo string, args ...string) (string,
 	if err := verifyGitConfig(repo); err != nil {
 		return "", err
 	}
-	prefix := []string{"-c", "core.hooksPath=" + filepath.Join(filepath.Dir(repo), ".autopilot", "empty-hooks"), "-c", "credential.helper=", "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "diff.external=", "-c", "submodule.recurse=false"}
+	prefix := []string{"-c", "core.longpaths=true", "-c", "core.hooksPath=" + filepath.Join(filepath.Dir(repo), ".autopilot", "empty-hooks"), "-c", "credential.helper=", "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "diff.external=", "-c", "submodule.recurse=false"}
 	cmd := exec.CommandContext(ctx, "git", append(prefix, args...)...)
 	cmd.Dir = repo
 	cmd.Env = gitEnv()

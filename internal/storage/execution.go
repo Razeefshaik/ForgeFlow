@@ -109,17 +109,21 @@ func (s *Store) RecoverExecutions(ctx context.Context) error {
 		if v.Status == "RUNNING" {
 			v.Status = "BLOCKED"
 			v.Summary = "Execution interrupted by server restart. Resume explicitly after inspecting saved outputs."
-			if e = s.SaveExecution(ctx, v, "system", v.Summary); e != nil {
-				return e
-			}
-			if c.State != "BLOCKED" && c.State != "PAUSED" {
-				if e = s.Transition(ctx, c.ID, "BLOCKED"); e != nil {
-					return e
+			state := c.State
+			switch state {
+			case "READY", "PR_PREPARED", "PR_OPENED", "ABANDONED", "FAILED":
+				v.Status = state
+			default:
+				if state != "BLOCKED" && state != "PAUSED" {
+					state = "BLOCKED"
 				}
+			}
+			if e = s.SaveExecutionCheckpoint(ctx, v, state, "system", v.Summary); e != nil {
+				return e
 			}
 		}
 	}
-	agents, err := s.Agents(ctx)
+	agents, err := listJSON[domain.AgentRun](ctx, s.db, "SELECT data FROM agent_runs WHERE json_extract(data,'$.status')='RUNNING'")
 	if err != nil {
 		return err
 	}

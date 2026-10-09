@@ -78,8 +78,9 @@ func (s Server) Handler() http.Handler {
 		write(w, 200, s.Auth.Status())
 	})
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"status": "ok", "mode": s.mode()})
+		s.health(w, r, false)
 	})
+	m.HandleFunc("GET /api/health/details", func(w http.ResponseWriter, r *http.Request) { s.health(w, r, true) })
 	m.HandleFunc("GET /api/overview", s.overview)
 	m.HandleFunc("GET /api/runtime", func(w http.ResponseWriter, r *http.Request) { write(w, 200, s.Runtime) })
 	m.HandleFunc("GET /api/runtime/models", func(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +204,7 @@ func (s Server) Handler() http.Handler {
 			write(w, 200, map[string]string{"status": "NOT_STARTED"})
 			return
 		}
+		v.PRRevision = execution.PRRevision(v)
 		respond(w, v, e)
 	})
 	m.HandleFunc("GET /api/contributions/{id}/tests", func(w http.ResponseWriter, r *http.Request) {
