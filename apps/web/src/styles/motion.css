@@ -48,9 +48,9 @@
     box-shadow: 0 10px 24px -10px rgb(0 0 0 / 35%);
   }
   .surface-elevated:hover {
-    border-color: color-mix(in srgb, var(--surface-light) 52%, var(--border));
+    border-color: transparent;
     box-shadow:
-      var(--elevated-shadow),
+      var(--lit-shadow),
       0 12px 32px -24px
         color-mix(in srgb, var(--surface-light) 35%, transparent);
   }
@@ -234,7 +234,7 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--indigo);
+  background: var(--accent);
   animation: activity-dot 1200ms linear infinite;
 }
 .progress-indeterminate i:nth-child(2) {

@@ -9,11 +9,12 @@
   position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
-  padding: 20px 22px;
+  padding: 22px 24px;
   gap: 8px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--accent-soft) 24%, var(--border));
+  background: linear-gradient(130deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), color-mix(in srgb, var(--accent-soft) 7%, var(--surface)));
+  box-shadow: var(--panel-shadow);
   min-width: 0;
 }
 .metric > div {
@@ -50,7 +51,7 @@
   align-items: start;
 }
 .workspace-work {
-  --surface-light: var(--orchid);
+  --surface-light: var(--accent);
 }
 .overview-focus {
   margin: 0 24px;
@@ -70,7 +71,7 @@
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  color: var(--orchid);
+  color: var(--accent);
 }
 .focus-issue {
   display: block;
@@ -88,7 +89,7 @@
   position: absolute;
   right: 0;
   top: 3px;
-  color: var(--orchid);
+  color: var(--accent);
 }
 .focus-context {
   display: flex;
@@ -129,10 +130,10 @@
   place-items: center;
   width: 68px;
   height: 68px;
-  border: 1px solid color-mix(in srgb, var(--orchid) 35%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   border-radius: 20px;
-  color: var(--orchid);
-  background: color-mix(in srgb, var(--orchid) 9%, var(--surface));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
   margin-bottom: 24px;
 }
 .workspace-empty h3 {
@@ -148,9 +149,9 @@
 }
 .attention-card {
   padding: 28px;
-  background: var(--statement-rose);
-  color: #39202a;
-  border: 1px solid #ffc7b7;
+  background: var(--matte);
+  color: var(--matte-ink);
+  border: 1px solid var(--matte-stroke);
   box-shadow: 0 18px 38px -18px rgb(0 0 0 / 40%);
 }
 .attention-icon {
@@ -164,7 +165,7 @@
   margin-bottom: 18px;
 }
 .attention-card .eyebrow {
-  color: #623540;
+  color: var(--matte-muted);
   font-size: 10px;
 }
 .attention-card h2 {
@@ -174,11 +175,11 @@
   margin: 10px 0 14px;
 }
 .attention-card > p {
-  color: #623540;
+  color: var(--matte-muted);
   font-size: 13px;
 }
 .attention-card .btn-secondary {
-  color: #39202a;
+  color: var(--matte-ink);
   border-color: rgb(57 32 42 / 25%);
   background: rgb(255 255 255 / 14%);
   margin-top: 20px;
@@ -207,13 +208,13 @@
 }
 .attention-items small {
   font-size: 11px;
-  color: #623540;
+  color: var(--matte-muted);
 }
 .attention-item-dot {
   height: 5px;
   width: 5px;
   border-radius: 50%;
-  background: #623540;
+  background: var(--matte-muted);
   flex-shrink: 0;
 }
 .approval-note {
@@ -227,11 +228,11 @@
   border-top: 1px solid var(--border);
 }
 .attention-card .approval-note {
-  color: #623540;
+  color: var(--matte-muted);
   border-color: rgb(57 32 42 / 18%);
 }
 .attention-card :focus-visible {
-  outline-color: #39202a;
+  outline-color: var(--matte-ink);
 }
 .overview-bento {
   display: grid;
@@ -322,31 +323,29 @@
   padding: 4px 0;
 }
 .selected-issue {
-  background: color-mix(in srgb, var(--orchid) 9%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 }
 .selected-issue td:first-child {
-  box-shadow: inset 3px 0 var(--orchid);
+  box-shadow: inset 3px 0 var(--accent);
 }
 .opportunity-inspector {
-  border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in srgb, var(--orchid) 25%, var(--border));
-  background: var(--surface-high);
-  box-shadow: var(--elevated-shadow);
+background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) var(--feature-light), transparent), transparent 68%) padding-box,
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) var(--feature-light), transparent), transparent 65%) padding-box,
+    linear-gradient(var(--surface-high), var(--surface-high)) padding-box,
+    var(--lit-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--lit-shadow);
+  border-radius: var(--radius-xl);
   min-width: 0;
   overflow: hidden;
 }
 .opportunity-inspector-heading {
   display: flex;
   gap: 14px;
-  padding: 24px;
-  border-bottom: 1px solid var(--border);
-  background:
-    radial-gradient(
-      ellipse at 100% 0,
-      color-mix(in srgb, var(--orchid) 19%, transparent),
-      transparent 80%
-    ),
-    var(--surface-high);
+  padding: 26px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-soft) 20%, var(--border));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent-soft) 10%, transparent));
 }
 .opportunity-inspector-heading > div {
   min-width: 0;
@@ -412,7 +411,7 @@
 }
 .factors b {
   font: 11px var(--font-mono);
-  color: var(--orchid);
+  color: var(--accent);
 }
 .factor-track {
   height: 4px;
@@ -570,13 +569,13 @@
   align-items: flex-start;
   flex-wrap: wrap;
   border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: var(--radius-md);
-  padding: 22px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
+  background: linear-gradient(130deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), color-mix(in srgb, var(--accent-soft) 6%, var(--surface)));
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--panel-shadow);
 }
 .contribution-grid .contribution-row:hover {
-  border-color: color-mix(in srgb, var(--indigo) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   background: var(--raised);
 }
 .contribution-grid .contribution-row > div {
@@ -613,9 +612,13 @@
   background: var(--surface);
 }
 .agent-card[data-status="RUNNING"] {
-  background: var(--surface-high);
-  border-color: color-mix(in srgb, var(--indigo) 40%, var(--border));
-  box-shadow: var(--elevated-shadow);
+background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) var(--feature-light), transparent), transparent 68%) padding-box,
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) var(--feature-light), transparent), transparent 65%) padding-box,
+    linear-gradient(var(--surface-high), var(--surface-high)) padding-box,
+    var(--lit-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--lit-shadow);
 }
 .agent-card-heading {
   display: flex;
@@ -662,9 +665,9 @@
   padding: 24px;
 }
 .agent-summary > div:first-child {
-  background: var(--statement-indigo);
-  color: #202644;
-  border-color: #c1ccff;
+  background: var(--matte);
+  color: var(--matte-ink);
+  border-color: var(--matte-stroke);
 }
 .agent-summary span {
   font-size: 12px;
@@ -687,7 +690,7 @@
   gap: 6px;
   margin-top: 7px;
   font: 10px var(--font-mono);
-  color: var(--indigo);
+  color: var(--accent);
 }
 .activity-filters {
   display: flex;
@@ -696,10 +699,11 @@
   border-bottom: 1px solid var(--border);
 }
 .activity-surface > .section-header {
-  background: var(--surface-high);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 15%, var(--surface-high)), color-mix(in srgb, var(--accent-soft) 12%, var(--surface-high)));
+  border-bottom-color: color-mix(in srgb, var(--accent-soft) 26%, var(--border));
 }
 .activity-surface .event-row:hover {
-  background: color-mix(in srgb, var(--indigo) 3%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
 }
 .activity-filters input {
   flex: 1;
@@ -739,23 +743,27 @@
   font-size: 12px;
 }
 .usage-observed > div:first-child {
-  background: var(--statement-gold);
-  color: #382a14;
-  border-color: #ffdfa3;
+  background: var(--matte);
+  color: var(--matte-ink);
+  border-color: var(--matte-stroke);
 }
 .usage-observed > div:nth-child(2) {
-  background: var(--surface-high);
-  border-color: color-mix(in srgb, var(--gold) 28%, var(--border));
-  box-shadow: var(--elevated-shadow);
+background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) var(--feature-light), transparent), transparent 68%) padding-box,
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) var(--feature-light), transparent), transparent 65%) padding-box,
+    linear-gradient(var(--surface-high), var(--surface-high)) padding-box,
+    var(--lit-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--lit-shadow);
 }
 .usage-allowance > div:first-child {
   align-self: start;
 }
 .usage-observed > div:first-child .eyebrow {
-  color: #624817;
+  color: var(--matte-muted);
 }
 .usage-observed > div:first-child .data-label {
-  color: #624817;
+  color: var(--matte-muted);
 }
 .usage-summary input {
   display: block;
@@ -804,16 +812,16 @@
   padding: 20px 24px;
 }
 .profile-summary > .surface:first-child {
-  background: var(--statement-garnet);
-  color: #2b1d40;
-  border-color: #dcc3ff;
+  background: var(--matte);
+  color: var(--matte-ink);
+  border-color: var(--matte-stroke);
 }
 .profile-summary > .surface:first-child .section-header {
   border-color: rgb(43 29 64 / 15%);
 }
 .profile-summary > .surface:first-child .badge {
   background: rgb(43 29 64 / 9%);
-  color: #2b1d40;
+  color: var(--matte-ink);
   border-color: rgb(43 29 64 / 20%);
 }
 .config-layout {
@@ -842,7 +850,7 @@
   background: var(--terminal);
   color: var(--terminal-text);
   font: 12px/1.8 var(--font-mono);
-  border-color: color-mix(in srgb, var(--garnet) 30%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 .config-editor input {
   width: 100%;
@@ -1058,10 +1066,10 @@
   text-underline-offset: 3px;
 }
 .auth-aside {
-  background: var(--statement-indigo);
-  color: #202644;
+  background: var(--matte);
+  color: var(--matte-ink);
   padding: 30px;
-  border-color: #c1ccff;
+  border-color: var(--matte-stroke);
 }
 .auth-emblem {
   display: grid;
@@ -1074,7 +1082,7 @@
   margin-bottom: 30px;
 }
 .auth-aside .eyebrow {
-  color: #364272;
+  color: var(--matte-muted);
   font-size: 10px;
 }
 .auth-aside h2 {
@@ -1084,11 +1092,11 @@
   margin: 14px 0;
 }
 .auth-aside p {
-  color: #364272;
+  color: var(--matte-muted);
   font-size: 13px;
 }
 .auth-aside .approval-note {
-  color: #364272;
+  color: var(--matte-muted);
   border-color: rgb(32 38 68 / 20%);
 }
 .auth-workflow {
@@ -1106,14 +1114,14 @@
   display: block;
   font-size: 10px;
   font-weight: 400;
-  color: #364272;
+  color: var(--matte-muted);
   margin-top: 4px;
 }
 .operator-page {
   max-width: 920px;
   padding: 32px;
   margin: 0 auto;
-  --surface-light: var(--garnet);
+  --surface-light: var(--accent);
 }
 .operator-page .operator-suggestions {
   grid-template-columns: repeat(3, minmax(0, 1fr));

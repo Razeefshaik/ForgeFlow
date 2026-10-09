@@ -251,6 +251,8 @@ test("reduced motion removes overlay, navigation, shimmer and activity animation
     await drawer.evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");
   await page.keyboard.press("Escape");
+  // Radix needs its zero-duration exit event before removing the portal.
+  await expect(drawer).toHaveCount(0);
   const animated = await page.evaluate(() =>
     Array.from(document.querySelectorAll("*"))
       .filter((el) => getComputedStyle(el).animationName !== "none")

@@ -1,28 +1,23 @@
 /* Shared interaction and data components. */
 .surface {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(145deg, var(--surface-high), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   border-radius: var(--radius-lg);
   box-shadow: var(--panel-shadow);
   min-width: 0;
   overflow: hidden;
 }
-/* Only focal surfaces receive lighting. Supporting panels stay neutral. */
+/* Paired edge light and a luminous border lift focal cards above neutral lists. */
 .surface-elevated {
   --surface-light: var(--accent);
+
   background:
-    radial-gradient(
-      ellipse at 100% 0,
-      color-mix(
-        in srgb,
-        var(--surface-light) var(--feature-light),
-        transparent
-      ),
-      transparent 58%
-    ),
-    var(--surface-high);
-  border-color: color-mix(in srgb, var(--surface-light) 38%, var(--border));
-  box-shadow: var(--elevated-shadow);
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) var(--feature-light), transparent), transparent 68%) padding-box,
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) var(--feature-light), transparent), transparent 65%) padding-box,
+    linear-gradient(var(--surface-high), var(--surface-high)) padding-box,
+    var(--lit-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--lit-shadow);
 }
 .surface-elevated > .section-header {
   background: color-mix(in srgb, var(--surface-light) 4%, transparent);
@@ -91,12 +86,10 @@ button.text-link {
     box-shadow 160ms ease;
 }
 .btn-primary {
-  background: var(--primary);
+  background: linear-gradient(115deg, var(--primary), color-mix(in srgb, var(--accent-soft) 65%, var(--primary)));
   color: var(--on-primary);
-  border-color: var(--primary);
-  box-shadow:
-    0 6px 18px -6px color-mix(in srgb, var(--primary) 28%, transparent),
-    0 1px 0 rgb(255 255 255 / 22%) inset;
+  border-color: color-mix(in srgb, var(--accent-soft) 65%, var(--primary));
+  box-shadow: 0 6px 24px -9px color-mix(in srgb, var(--primary) 50%, transparent), 0 1px 0 rgb(255 255 255 / 22%) inset;
 }
 .btn-secondary {
   background: var(--raised);
@@ -150,9 +143,9 @@ button.text-link {
   border-radius: 6px;
 }
 .badge-violet {
-  color: var(--indigo);
-  border-color: color-mix(in srgb, var(--indigo) 28%, var(--border));
-  background: color-mix(in srgb, var(--indigo) 9%, var(--surface));
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 }
 .badge-green {
   color: var(--green);
@@ -195,9 +188,9 @@ button.text-link {
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
-  background: color-mix(in srgb, var(--indigo) 10%, var(--surface));
-  color: var(--indigo);
-  border: 1px solid color-mix(in srgb, var(--indigo) 25%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
   border-radius: 12px;
 }
 .segmented-control {
@@ -377,7 +370,7 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--orchid);
+  color: var(--accent);
   font: 500 12px var(--font-mono);
 }
 .score-track {
@@ -458,7 +451,7 @@ tbody tr:hover {
   height: 30px;
   flex: 0 0 30px;
   background: var(--raised);
-  color: var(--indigo);
+  color: var(--accent);
   border: 1px solid var(--border);
   border-radius: 9px;
 }
@@ -482,7 +475,7 @@ tbody tr:hover {
   pointer-events: none;
 }
 .event-icon.violet {
-  color: var(--garnet);
+  color: var(--accent);
 }
 .event-row > div {
   flex: 1;
@@ -630,7 +623,7 @@ tbody tr:hover {
   display: block;
   height: 100%;
   width: 100%;
-  background: var(--indigo);
+  background: var(--accent);
   transform-origin: left;
   border-radius: inherit;
 }
@@ -675,8 +668,13 @@ tbody tr:hover {
   z-index: 61;
   display: flex;
   flex-direction: column;
-  background: var(--surface-high);
-  border: 1px solid color-mix(in srgb, var(--orchid) 22%, var(--border));
+  background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) var(--feature-light), transparent), transparent 68%) padding-box,
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) var(--feature-light), transparent), transparent 65%) padding-box,
+    linear-gradient(var(--surface-high), var(--surface-high)) padding-box,
+    var(--lit-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--lit-shadow);
   border-radius: var(--radius-xl);
   box-shadow: var(--floating-shadow);
   overflow: hidden;
@@ -759,9 +757,9 @@ tbody tr:hover {
   place-items: center;
   width: 52px;
   height: 52px;
-  background: color-mix(in srgb, var(--garnet) 12%, var(--raised));
-  border: 1px solid color-mix(in srgb, var(--garnet) 40%, var(--border));
-  color: var(--garnet);
+  background: color-mix(in srgb, var(--accent) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
   border-radius: 16px;
   margin-bottom: 20px;
 }
@@ -797,7 +795,7 @@ tbody tr:hover {
   font-size: 12px;
 }
 .operator-suggestions button:hover {
-  border-color: var(--garnet);
+  border-color: var(--accent);
 }
 .messages {
   max-height: 440px;
@@ -812,11 +810,11 @@ tbody tr:hover {
 }
 .message-you {
   margin-left: 24px;
-  background: color-mix(in srgb, var(--garnet) 9%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 }
 .message .eyebrow {
   font-size: 10px;
-  color: var(--garnet);
+  color: var(--accent);
 }
 .message p {
   font-size: 13px;
@@ -835,7 +833,7 @@ tbody tr:hover {
 }
 .operator-confirmation .btn {
   margin-top: 10px;
-  --primary: var(--statement-rose);
+  --primary: var(--accent);
 }
 .operator-input {
   display: flex;
@@ -844,13 +842,13 @@ tbody tr:hover {
   padding: 8px;
   border-radius: 14px;
   background: var(--bg);
-  border: 1px solid color-mix(in srgb, var(--garnet) 35%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   margin-top: 20px;
   box-shadow: 0 8px 20px -10px rgb(0 0 0 / 25%);
 }
 .operator-input:focus-within {
-  border-color: var(--garnet);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--garnet) 13%, transparent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
 }
 .operator-input input {
   flex: 1;
@@ -860,7 +858,7 @@ tbody tr:hover {
   padding: 8px;
 }
 .operator-input .btn {
-  --primary: var(--statement-garnet);
+  --primary: var(--accent);
   min-height: 38px;
 }
 .operator-footnote {
@@ -874,7 +872,7 @@ tbody tr:hover {
     transform: translateY(-1px);
     box-shadow: 0 5px 22px color-mix(in srgb, var(--primary) 18%, transparent);
   }
-  .sidebar nav a:hover,
+  .sidebar nav a:hover:not(.active),
   .account-link:hover,
   .sidebar-bottom > button:hover {
     background: var(--raised);

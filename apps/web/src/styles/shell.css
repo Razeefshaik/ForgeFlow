@@ -18,33 +18,24 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(
-      ellipse at 75% 8%,
-      color-mix(in srgb, var(--accent) var(--ambient-strength), transparent),
-      transparent 52%
-    ),
-    radial-gradient(
-      ellipse at 20% 65%,
-      color-mix(in srgb, var(--accent-soft) 8%, transparent),
-      transparent 44%
-    );
+    radial-gradient(ellipse at 85% 3%, color-mix(in srgb, var(--accent) var(--ambient-strength), transparent), transparent 54%),
+    radial-gradient(ellipse at 12% 66%, color-mix(in srgb, var(--accent-soft) var(--ambient-strength), transparent), transparent 52%),
+    var(--bg);
 }
 .main-shell::after {
   content: "";
   position: fixed;
-  top: 160px;
+  top: 140px;
   right: 7vw;
-  width: min(400px, 44vw);
-  height: 300px;
+  width: min(660px, 58vw);
+  height: 400px;
   z-index: -1;
   pointer-events: none;
   border-radius: 50%;
-  background: linear-gradient(
-    125deg,
-    color-mix(in srgb, var(--accent) 12%, transparent),
-    color-mix(in srgb, var(--accent-soft) 8%, transparent)
-  );
-  filter: blur(64px);
+  background: linear-gradient(125deg,
+    color-mix(in srgb, var(--accent) 25%, transparent) 15%,
+    color-mix(in srgb, var(--accent-soft) 28%, transparent) 85%);
+  filter: blur(90px);
 }
 .sidebar {
   position: fixed;
@@ -55,8 +46,11 @@
   flex-direction: column;
   gap: 0;
   padding: 0 16px;
-  background: linear-gradient(180deg, var(--sidebar), var(--bg));
-  border-right: 1px solid var(--border-soft);
+  background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--accent-soft) 18%, transparent), transparent 58%),
+    linear-gradient(180deg, var(--sidebar), var(--bg));
+  border-right: 1px solid color-mix(in srgb, var(--accent-soft) 22%, var(--border-soft));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -79,9 +73,10 @@
   height: 35px;
   flex: 0 0 35px;
   border-radius: 11px;
-  color: #251731;
-  background: #c6a0ff;
-  box-shadow: 0 4px 20px rgb(181 138 255 / 15%);
+  color: var(--on-primary);
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  box-shadow: 0 4px 24px -8px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 18px -8px var(--accent-soft);
 }
 .version {
   font: 10px var(--font-mono);
@@ -97,8 +92,8 @@
   gap: 10px;
   padding: 13px 10px;
   margin-bottom: 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), color-mix(in srgb, var(--accent-soft) 7%, var(--surface)));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: var(--radius-md);
   box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 }
@@ -109,7 +104,7 @@
   display: grid;
   place-items: center;
   background: var(--raised);
-  color: var(--orchid);
+  color: var(--accent-soft);
   border-radius: var(--radius-sm);
 }
 .workspace-switch div {
@@ -159,8 +154,8 @@
 }
 .sidebar nav a.active {
   color: var(--text);
-  background: color-mix(in srgb, var(--accent) 10%, var(--raised));
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 25%, var(--surface)), color-mix(in srgb, var(--accent-soft) 16%, var(--surface)));
+  border-color: color-mix(in srgb, var(--accent-soft) 40%, var(--border));
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 .sidebar nav a.active::before {
@@ -261,7 +256,9 @@
   gap: 16px;
   padding: 12px 32px;
   border-bottom: 1px solid var(--border-soft);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  background:
+    linear-gradient(100deg, color-mix(in srgb, var(--accent) 9%, transparent), color-mix(in srgb, var(--accent-soft) 8%, transparent)),
+    color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
@@ -377,7 +374,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 28px;
+  margin-bottom: 32px;
   min-width: 0;
 }
 .page-intro > div {

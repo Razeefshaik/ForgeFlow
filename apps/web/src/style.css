@@ -138,7 +138,7 @@ select:focus-visible {
   outline-offset: 4px;
 }
 ::selection {
-  background: color-mix(in srgb, var(--orchid) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 html {
   scrollbar-color: var(--border) var(--bg);

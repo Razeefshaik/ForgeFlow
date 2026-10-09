@@ -15,47 +15,38 @@ Fonts are self-hosted Inter and JetBrains Mono.
 - motion.css: shared interactions, presence, activity and reduced-motion rules.
 - ../design.css: imports only. Do not append competing theme overrides.
 
-## Color roles
+## Route palettes
 
-| Family          | Purpose                                               |
-| --------------- | ----------------------------------------------------- |
-| Cosmic Orchid   | Brand, Overview, discovery, featured contribution     |
-| Ember Rose      | Human decisions, permissions, review findings         |
-| Aurora Jade     | Completed stages and recorded successful verification |
-| Velvet Garnet   | Configuration, Operator and secondary context         |
-| Obsidian Gold   | Measured usage and allowance context                  |
-| Electric Indigo | Agents, execution and technical activity              |
+| Palette | Screens | Pair |
+| --- | --- | --- |
+| Cosmic Orchid | Overview | Orchid violet + luminous pink |
+| Ember Rose | Opportunities, GitHub account | Coral rose + warm apricot |
+| Aurora Jade | Contributions, Settings | Emerald mint + ice cyan |
+| Velvet Garnet | Activity, Configuration, Operator | Garnet pink + peach |
+| Obsidian Gold | Usage & effort | Champagne gold + copper |
+| Electric Indigo | Agents, contribution workspace | Indigo blue + electric cyan |
 
-Page accents are assigned by the application's data-page attribute. Semantic
-status colors take precedence over a page accent. Portal dialogs use root
-theme tokens; permission and Operator surfaces use their workflow palettes.
-
-Most content belongs on neutral surfaces. Use matte statement surfaces for
-consequential decisions or measured summaries. Put ambient lighting behind
-the workspace or at surface edges, never over readable text. Elevation
-distinguishes featured work, inspectors and overlays from supporting data.
+App.tsx maps routes to a palette, including nested contribution paths. A layout
+effect publishes data-palette on the document before paint. tokens.css owns the
+six pairs on that attribute, so sidebar, toolbar, content, tooltips and Radix
+portals inherit the same palette. Dark/light/system appearance stays separate.
+Semantic status green, amber and red remain independent from decorative color.
 
 ## Elevation and lighting
 
-Neutral panels use the shared surface. The surface-elevated variant is reserved
-for the featured contribution, configuration editor, appearance panel, account
-panel and Operator. Its surface-light variable follows the relevant workflow
-palette. Execution and opportunity inspectors use the same elevation tokens.
-Supporting lists and historical agent runs remain neutral. Verified review
-evidence gains Jade treatment only when recorded approval and contribution
-state agree. Matte decision and usage cards stay free of gradient fills.
+The neutral charcoal base is shared by every screen. Both route colors appear
+in the canvas ambient light, sidebar atmosphere, active navigation, brand mark,
+primary actions and focal cards. Radial edge lighting leaves readable interiors;
+the paired border gradient and dark shadows distinguish floating focal surfaces
+from supporting lists. Configuration, opportunities and execution share this
+treatment. Small summary tiles repeat the screen pair rather than introducing
+unrelated palettes. Existing statement cards use a pale matte route accent and
+dark text, with no gradient fill.
 
-Ambient lighting belongs behind the main canvas and uses the current page's
-paired palette. It is static, smaller on mobile, and removed when reduced
-transparency is preferred. Do not apply glowing borders to every panel.
-
-Do not add decorative charts, simulated completion percentages or inferred
-model identities. Existing explicitly labeled demo mode remains supported.
-
-Closed mobile navigation is inert. Open navigation traps focus and restores
-its opener. Dialog headings remain visible while bodies scroll. Motion
-respects reduced-motion preferences. On narrow screens, outstanding decisions
-precede monitoring. Detailed tables and terminals scroll in their own regions.
+Ambient blur stays static and smaller on mobile. Existing reduced-motion and
+reduced-transparency preferences remain supported. No decorative chart, metric,
+execution result or model identity is fabricated. Closed mobile navigation is
+inert; open navigation traps focus and restores the opener.
 
 ## Motion
 

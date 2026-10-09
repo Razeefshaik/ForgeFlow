@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   NavLink,
   Route,
@@ -72,6 +72,19 @@ const navigation = [
   { to: "/settings", label: "Settings", icon: SettingsIcon },
   { to: "/login", label: "GitHub account", icon: Github },
 ];
+const pagePalettes: Record<string, string> = {
+  overview: "cosmic-orchid",
+  opportunities: "ember-rose",
+  contributions: "aurora-jade",
+  workspace: "electric-indigo",
+  agents: "electric-indigo",
+  activity: "velvet-garnet",
+  usage: "obsidian-gold",
+  configuration: "velvet-garnet",
+  operator: "velvet-garnet",
+  settings: "aurora-jade",
+  login: "ember-rose",
+};
 export default function App() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("forgeflow-theme") ?? "dark",
@@ -113,6 +126,11 @@ export default function App() {
       : location.pathname.startsWith("/contributions/")
         ? "workspace"
         : location.pathname.split("/")[1];
+  const palette = pagePalettes[page] ?? "cosmic-orchid";
+  useLayoutEffect(() => {
+    document.documentElement.dataset.palette = palette;
+    return () => { delete document.documentElement.dataset.palette; };
+  }, [palette]);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
     const update = () => setCompact(media.matches);
@@ -221,7 +239,7 @@ export default function App() {
         (n.to !== "/" && location.pathname.startsWith(n.to + "/")),
     )?.label ?? "Operator";
   return (
-    <div className="app" data-page={page} data-nav-collapsed={navCollapsed}>
+    <div className="app" data-page={page} data-palette={palette} data-nav-collapsed={navCollapsed}>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
