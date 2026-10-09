@@ -73,6 +73,7 @@ export default function ExecutionPanel({
     refetchInterval: 3000,
   });
   const [tab, setTab] = useState("Plan");
+  const [inspectedStage, setInspectedStage] = useState<string | null>(null);
   const [evidenceTest, setEvidenceTest] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -137,7 +138,7 @@ export default function ExecutionPanel({
   );
   return (
     <section className="execution-panel">
-      <ContributionStages contribution={c} execution={r} onSelect={name => { setTab(name); requestAnimationFrame(() => document.getElementById(`evidence-tab-${name}`)?.focus()); }} />
+      <ContributionStages contribution={c} execution={r} inspectedStage={inspectedStage} onSelect={(name, stage) => { setInspectedStage(stage); setTab(name); requestAnimationFrame(() => document.getElementById(`evidence-tab-${name}`)?.focus()); }} />
       <div className="execution-commandbar">
         <div className="execution-task">
           <span className="task-caption">Current task</span>
@@ -159,6 +160,7 @@ export default function ExecutionPanel({
       {execution.error && <p className="error" role="alert">Execution status could not refresh: {execution.error.message}</p>}
       {approvalOpen && !running && ["BLOCKED", "PAUSED", "PLANNING"].includes(c.state) && <section className="execution-approval" id="execution-approval" aria-label="Execution approval">
         <h3>Resume with your approval</h3>
+        <p className="approval-context"><strong>{c.repository}</strong> · <code>{c.id}</code></p>
         <p>Codex can edit this contribution's isolated workspace and run its required checks.</p>
         <label className="approval-checkbox"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)} />I approve Codex coding, verification and independent review in this workspace.</label>
         <label className="approval-checkbox"><input type="checkbox" checked={network} onChange={e => setNetwork(e.target.checked)} />Allow dependency downloads during execution.</label>
@@ -192,7 +194,7 @@ export default function ExecutionPanel({
             aria-controls="evidence-panel"
             tabIndex={tab === name ? 0 : -1}
             aria-selected={tab === name}
-            onClick={() => setTab(name)}
+            onClick={() => { setInspectedStage(null); setTab(name); }}
             onKeyDown={(event) => {
               const names = ["Plan", "Tests", "Review", "Diff", "Report", "PR"];
               const index = names.indexOf(name);
@@ -258,15 +260,14 @@ export default function ExecutionPanel({
                 {visibleTests.map((t) => (
                   <details key={t.id} id={"test-run-" + t.id} className="command-result">
                     <summary>
-                      <span className={"test-run-symbol " + (t.exit_code === 0 ? "test-passed" : "test-failed")}>{t.exit_code === 0 ? <CircleCheck size={18} /> : <Terminal size={18} />}</span>
+                      <span className={"test-run-symbol " + (testStatus(t) === "Passed" ? "test-passed" : testStatus(t) === "Failed" ? "test-failed" : "muted")}>{testStatus(t) === "Passed" ? <CircleCheck size={18} /> : <Terminal size={18} />}</span>
                       <span className="test-run-command">
                       {t.command.program} {t.command.arguments.join(" ")} · exit{" "}
-                      {t.exit_code} ·{" "}
-                      {Math.round(
+                      {t.finished_at ? t.exit_code : "pending"} ·{" "}
+                      {t.finished_at && Number.isFinite(Date.parse(t.finished_at) - Date.parse(t.started_at)) ? Math.max(0, Math.round(
                         (Date.parse(t.finished_at) - Date.parse(t.started_at)) /
                           1000,
-                      )}
-                      s
+                      )) + "s" : "duration pending"}
                       </span>
                       <span className={"test-result test-result-" + testStatus(t).toLowerCase().replaceAll(" ", "-")}>{testStatus(t)}</span>
                       <ChevronRight className="test-output-chevron" size={14} />

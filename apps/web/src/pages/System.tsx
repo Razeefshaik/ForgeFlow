@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bot,
@@ -96,6 +96,8 @@ export function Agents() {
   const [controlError, setControlError] = useState("");
   const [busy, setBusy] = useState("");
   const [filter, setFilter] = useState("All");
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   const agents =
     useAPI<
       {
@@ -135,6 +137,10 @@ export function Agents() {
           ))}
         </div>
       </div>
+      <div className="agent-summary" aria-label="Agent run summary">
+        <div><span>Running sessions</span><strong>{agents.data ? agents.data.filter(a => a.status === "RUNNING").length : "—"}</strong><p>Active processes in isolated contribution workspaces.</p></div>
+        <div><span>Historical runs</span><strong>{agents.data ? agents.data.filter(a => a.status !== "RUNNING").length : "—"}</strong><p>Completed and stopped runs remain available for inspection.</p></div>
+      </div>
       {controlError && (
         <p className="error" role="alert">
           {controlError}
@@ -158,6 +164,7 @@ export function Agents() {
                   <h2>{a.role}</h2>
                   <p>{new Date(a.started_at).toLocaleString()}</p>
                   {a.model && <p>Model: {a.model}</p>}
+                  {Number.isFinite(Date.parse(a.started_at)) && <span className="agent-elapsed">{a.finished_at && Number.isFinite(Date.parse(a.finished_at)) ? Math.max(0, Math.floor((Date.parse(a.finished_at) - Date.parse(a.started_at)) / 60_000)) + "m recorded" : a.status === "RUNNING" ? Math.max(0, Math.floor((now - Date.parse(a.started_at)) / 60_000)) + "m elapsed" : "Duration not recorded"}</span>}
                 </div>
                 <Badge tone={a.status === "RUNNING" ? "violet" : "neutral"}>
                   {a.status}
@@ -248,7 +255,7 @@ export function Usage() {
           </p>
         </div>
       </div>
-      <div className="usage-summary">
+      <div className="usage-summary usage-observed">
         <div>
           <span className="eyebrow">OBSERVED INPUT TOKENS</span>
           <strong>{usage.data?.observed_usage?.input_tokens ?? "—"}</strong>
@@ -266,7 +273,7 @@ export function Usage() {
           </strong>
         </div>
       </div>
-      <div className="usage-summary">
+      <div className="usage-summary usage-allowance">
         <div>
           <span className="eyebrow">OBSERVED LOCAL SESSIONS</span>
           <strong>{usage.data?.sessions ?? "—"}</strong>
