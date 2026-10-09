@@ -35,7 +35,7 @@
 .stage-rail button:active:not(:disabled) {
   transform: scale(0.99);
 }
-:is(.surface-elevated, .contribution-grid .contribution-row, .agent-card) {
+:is(.glow-card, .surface-elevated, .contribution-grid .contribution-row, .agent-card) {
   transition:
     border-color var(--duration-ui) ease,
     box-shadow var(--duration-ui) ease,
@@ -45,16 +45,45 @@
 @media (hover: hover) and (pointer: fine) {
   .contribution-grid .contribution-row:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 24px -10px rgb(0 0 0 / 35%);
-  }
-  .surface-elevated:hover {
-    border-color: transparent;
-    box-shadow:
-      var(--lit-shadow),
-      0 12px 32px -24px
-        color-mix(in srgb, var(--surface-light) 35%, transparent);
   }
 }
+/* Expressive decoration stays separate from the stationary reading surfaces. */
+.main-shell::after { animation: atmosphere-drift 18s ease-in-out infinite alternate; }
+.art-perspective { transition: transform 700ms var(--ease-out); }
+.hero-art img { animation: sculpture-float 7s ease-in-out infinite; }
+.art-orbit-one { animation: orbit-one 18s ease-in-out infinite alternate; }
+.art-orbit-two { animation: orbit-two 23s ease-in-out infinite alternate; }
+.art-spark { animation: spark-float 5s ease-in-out infinite alternate; }
+.art-spark-two { animation-delay: -2s; }
+.art-spark-three { animation-delay: -3.5s; }
+.hero-art:not([data-in-view]) *, :root[data-hidden] .hero-art *, :root[data-hidden] .main-shell::after { animation-play-state: paused; }
+.hero-copy > * { animation: hero-arrive 800ms var(--ease-out) both; }
+.hero-copy > :nth-child(2) { animation-delay: 60ms; }
+.hero-copy > :nth-child(3) { animation-delay: 120ms; }
+.hero-copy > :nth-child(4) { animation-delay: 180ms; }
+.hero-copy > :nth-child(5) { animation-delay: 230ms; }
+.page-intro:not(.overview-hero) > * { animation: hero-arrive 500ms var(--ease-out) both; }
+.page-intro:not(.overview-hero) > :nth-child(2) { animation-delay: 70ms; }
+.sidebar nav a.active > svg { animation: nav-activate 500ms var(--ease-out); }
+.sidebar nav a > svg, .brand-mark > svg, .btn > svg, .text-link > svg, .metric svg {
+  transition: transform 380ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sidebar nav a:hover > svg { transform: translateY(-2px) rotate(-7deg) scale(1.12); }
+  .brand:hover .brand-mark > svg { transform: rotate(90deg); }
+  .btn:hover > svg, .text-link:hover > svg { transform: translate(2px, -2px); }
+  .metric:hover svg { transform: rotate(-12deg) scale(1.2); }
+}
+@keyframes hero-arrive { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes nav-activate { from { transform: scale(0.7) rotate(-18deg); } to { transform: scale(1) rotate(0); } }
+@keyframes sculpture-float {
+  0%, 100% { transform: translateY(5px) rotate(-3deg); }
+  50% { transform: translateY(-12px) rotate(3deg); }
+}
+@keyframes orbit-one { from { transform: rotate(-25deg) scale(0.94); } to { transform: rotate(10deg) scale(1.04); } }
+@keyframes orbit-two { from { transform: rotate(30deg) scale(1); } to { transform: rotate(-15deg) scale(0.9); } }
+@keyframes spark-float { from { opacity: 0.35; transform: translateY(0); } to { opacity: 1; transform: translateY(-15px); } }
+@keyframes atmosphere-drift { from { transform: translate(-3%, -3%) scale(0.95); } to { transform: translate(6%, 8%) scale(1.1); } }
 .repository-avatar img {
   transition: opacity var(--duration-ui) ease;
 }
@@ -491,6 +520,17 @@
   }
 }
 /* Focus is immediate. High-frequency keyboard actions never wait for motion. */
+:root[data-input="keyboard"] :is(.hero-copy > *, .page-intro > *, .sidebar nav a.active > svg) { animation: none; }
+:root[data-motion="paused"] *,
+:root[data-motion="paused"] *::before,
+:root[data-motion="paused"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+:root[data-motion="paused"] .dialog-overlay[data-state="closed"] { animation: overlay-out 0s linear !important; }
+:root[data-motion="paused"] .dialog-content[data-state="closed"] { animation: modal-out 0s linear !important; }
+:root[data-motion="paused"] .dialog-drawer[data-state="closed"] { animation: drawer-out 0s linear !important; }
 :root[data-input="keyboard"]
   :is(
     .sidebar,

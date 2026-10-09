@@ -7,7 +7,7 @@
   min-width: 0;
   overflow: hidden;
 }
-/* Paired edge light and a luminous border lift focal cards above neutral lists. */
+/* Paired interior light lifts focal cards. lighting.css owns hover-only rims. */
 .surface-elevated {
   --surface-light: var(--accent);
 

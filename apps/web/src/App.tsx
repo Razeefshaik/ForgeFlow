@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   Bot,
   CircleHelp,
+  CirclePause,
   Command,
   GitBranch,
   Github,
@@ -38,6 +39,7 @@ import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
 import { Tooltip } from "./components/ui/tooltip";
 import { usePresence } from "./components/ui/presence";
+import { useVisualEffects } from "./components/VisualEffects";
 const Operator = lazy(() => import("./components/Operator"));
 const Discovery = lazy(() => import("./components/Discovery"));
 const Login = lazy(() => import("./pages/Login"));
@@ -90,6 +92,8 @@ export default function App() {
     () => localStorage.getItem("forgeflow-theme") ?? "dark",
   );
   const [operatorOpen, setOperatorOpen] = useState(false);
+  const [motionPaused, setMotionPaused] = useState(() => localStorage.getItem("forgeflow-motion") === "paused");
+  const pageRef = useRef<HTMLDivElement>(null);
   const [resolvedTheme, setResolvedTheme] = useState(() =>
     localStorage.getItem("forgeflow-theme") === "light" ? "light" : "dark",
   );
@@ -127,6 +131,11 @@ export default function App() {
         ? "workspace"
         : location.pathname.split("/")[1];
   const palette = pagePalettes[page] ?? "cosmic-orchid";
+  useVisualEffects(pageRef, location.pathname, motionPaused);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.motion = motionPaused ? "paused" : "full";
+    localStorage.setItem("forgeflow-motion", motionPaused ? "paused" : "full");
+  }, [motionPaused]);
   useLayoutEffect(() => {
     document.documentElement.dataset.palette = palette;
     return () => { delete document.documentElement.dataset.palette; };
@@ -369,6 +378,12 @@ export default function App() {
               <ArrowUpRight size={14} />
             </NavLink>
           </Tooltip>
+          <Tooltip content={motionPaused ? "Resume animations" : "Pause animations"} side="right" disabled={!navCollapsed || compact}>
+            <button aria-label={motionPaused ? "Resume animations" : "Pause animations"} aria-pressed={motionPaused} onClick={() => setMotionPaused(value => !value)}>
+              {motionPaused ? <Sparkles size={16} /> : <CirclePause size={16} />}
+              <span>{motionPaused ? "Resume animations" : "Pause animations"}</span>
+            </button>
+          </Tooltip>
           <Tooltip
             content="Getting started"
             side="right"
@@ -492,7 +507,7 @@ export default function App() {
           )}
         </div>
         <main id="main" tabIndex={-1}>
-          <div className="page-transition" key={location.pathname}>
+          <div className="page-transition" key={location.pathname} ref={pageRef}>
             <Suspense
               fallback={<div className="skeleton" aria-label="Loading page" />}
             >

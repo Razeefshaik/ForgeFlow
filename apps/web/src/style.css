@@ -1,5 +1,17 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/manrope-latin.woff2") format("woff2");
+  font-weight: 400 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
 
 /* Foundation only. Layouts and components are owned by styles/. */
 * {
@@ -52,6 +64,7 @@ p {
   margin: 0;
 }
 h1 {
+  font-family: var(--font-display);
   font-size: clamp(28px, 2.7vw, 38px);
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -59,6 +72,7 @@ h1 {
   text-wrap: balance;
 }
 h2 {
+  font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.35px;
@@ -70,6 +84,7 @@ h3 {
   margin: 24px 0 12px;
 }
 h4 {
+  font-family: var(--font-display);
   font-size: 17px;
   font-weight: 600;
   line-height: 1.5;

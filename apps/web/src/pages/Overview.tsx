@@ -47,16 +47,25 @@ export default function Overview() {
   const focused = active[0] ?? attention[0];
   return (
     <>
-      <div className="page-intro overview-intro">
-        <div>
-          <h1>Good work starts here.</h1>
+      <div className="page-intro overview-intro overview-hero">
+        <div className="hero-copy">
+          <span className="eyebrow">YOUR NEXT CONTRIBUTION</span>
+          <h1>Good work.<br /><span>Extraordinary flow.</span></h1>
           <p>
-            Your agents, contribution evidence, and next decisions in one place.
+            Find your next opportunity. Shape it with your agents. Make the final call.
           </p>
+          <Link className="btn btn-primary" to="/opportunities">
+            Find an opportunity <ArrowUpRight size={16} />
+          </Link>
+          <span className="hero-note"><ShieldCheck size={14} /> Built with agents. Guided by you.</span>
         </div>
-        <Link className="btn btn-primary" to="/opportunities">
-          Find an opportunity <ArrowUpRight size={15} />
-        </Link>
+        <div className="hero-art" aria-hidden="true">
+          <div className="art-halo" />
+          <div className="art-orbit art-orbit-one" />
+          <div className="art-orbit art-orbit-two" />
+          <div className="art-perspective"><img src="/images/forge-sculpture.webp" width="1100" height="733" alt="" fetchPriority="high" /></div>
+          <span className="art-spark art-spark-one" /><span className="art-spark art-spark-two" /><span className="art-spark art-spark-three" />
+        </div>
       </div>
       {overview.error && (
         <p className="error" role="alert">

@@ -2,7 +2,8 @@
 
 One neutral foundation, six workflow-specific accent families. Dark is the
 first-use default; existing light and system preferences remain available.
-Fonts are self-hosted Inter and JetBrains Mono.
+Fonts are self-hosted Manrope, Space Grotesk and JetBrains Mono. The two new
+variable Latin fonts and their OFL licenses live in public/fonts.
 
 ## Ownership
 
@@ -12,6 +13,7 @@ Fonts are self-hosted Inter and JetBrains Mono.
 - components.css: shared controls, dialogs, data rows, feedback and Operator.
 - pages.css: dashboard bento layouts and secondary page composition.
 - workspace.css: execution stages, live activity, evidence and recovery.
+- lighting.css: borderless card edges and pointer-positioned, hover-only rims.
 - motion.css: shared interactions, presence, activity and reduced-motion rules.
 - ../design.css: imports only. Do not append competing theme overrides.
 
@@ -37,13 +39,14 @@ Semantic status green, amber and red remain independent from decorative color.
 The neutral charcoal base is shared by every screen. Both route colors appear
 in the canvas ambient light, sidebar atmosphere, active navigation, brand mark,
 primary actions and focal cards. Radial edge lighting leaves readable interiors;
-the paired border gradient and dark shadows distinguish floating focal surfaces
+soft dark shadows distinguish floating focal surfaces
 from supporting lists. Configuration, opportunities and execution share this
 treatment. Small summary tiles repeat the screen pair rather than introducing
 unrelated palettes. Existing statement cards use a pale matte route accent and
 dark text, with no gradient fill.
 
-Ambient blur stays static and smaller on mobile. Existing reduced-motion and
+Ambient blur stays constant while its layer drifts through transforms, and is
+smaller on mobile. Existing reduced-motion and
 reduced-transparency preferences remain supported. No decorative chart, metric,
 execution result or model identity is fabricated. Closed mobile navigation is
 inert; open navigation traps focus and restores the opener.
@@ -53,8 +56,22 @@ inert; open navigation traps focus and restores the opener.
 Motion tokens in tokens.css control shared 100–240ms feedback. motion.css is
 imported last so interaction rules have one owner. Animate transforms and
 opacity; sidebar width is the deliberate exception for its layout transition.
-Keep ambient blur static. Only clickable contribution cards lift on hover;
-featured surfaces gain a restrained outline, not continuous movement.
+Never animate blur. Cards have no visible perimeter at rest. A masked paired
+gradient rim and colored shadow appear only for fine-pointer hover; the light
+tracks the pointer without tilting the reading surface. Touch has no sticky rim.
+VisualEffects.tsx observes page cards and plays a one-time, staggered 650ms
+transform/opacity reveal when they enter the viewport. It never hides content
+before observation, never replays existing cards on query refresh, and leaves
+nested evidence still. Keyboard input finishes these reveals immediately.
+
+The overview's transparent chrome/glass sculpture is decorative, not a metric.
+Its source is generated artwork, optimized to a self-hosted WebP in public/images;
+no third-party request is made at runtime. Gentle floating, orbital and particle
+motion is suspended offscreen and in hidden tabs. Pointer perspective affects
+only the artwork. Hero text enters in a short stagger; icons respond to hover.
+The sidebar's Pause animations control persists across routes and reloads.
+Paused and reduced-motion states disable motion while preserving Radix's
+zero-duration exit events and restoring focus correctly.
 
 Keyboard navigation and command search are immediate. Native selects and
 details use progressive CSS enhancement and keep their normal semantics in
@@ -86,5 +103,5 @@ package dependencies are unchanged by this redesign.
 - Verification: tests/design-system.spec.ts.
 
 Existing routes, mutation handlers and human approval requirements remain in
-place. Test fixtures are isolated from production product data; real-data
-visual checks use a separate database snapshot with browser mutations blocked.
+place. Regression tests use a disposable demo database. Real-data screenshots
+read the running local app with browser API mutations blocked.

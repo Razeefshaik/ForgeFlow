@@ -1,4 +1,69 @@
 /* Page composition. Accent lighting stays at surface edges, away from body copy. */
+.page-intro.overview-hero {
+  position: relative;
+  overflow: clip;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(230px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 310px;
+  margin: -10px 0 26px;
+}
+.overview-hero .hero-copy { position: relative; z-index: 1; padding: 22px 0; }
+.overview-hero .eyebrow { font-size: 10px; letter-spacing: 2.5px; margin-bottom: 14px; }
+.page-intro.overview-hero h1 {
+  font-size: clamp(36px, 3.6vw, 54px);
+  line-height: 1.09;
+  letter-spacing: -0.065em;
+  margin-bottom: 18px;
+}
+.overview-hero h1 > span {
+  background: linear-gradient(100deg, var(--accent) 8%, var(--accent-soft) 90%);
+  background-clip: text;
+  color: transparent;
+}
+.overview-hero .hero-copy > p { max-width: 43ch; margin: 0 0 24px; font-size: 13px; }
+.hero-note { display: flex; align-items: center; gap: 6px; margin-top: 13px; color: var(--dim); font-size: 10px; }
+.overview-hero .hero-art {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 310px;
+  perspective: 900px;
+  isolation: isolate;
+}
+.art-perspective { position: absolute; inset: -15px -45px; transform: rotateX(var(--art-y, 0deg)) rotateY(var(--art-x, 0deg)); }
+.art-perspective img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.art-halo {
+  position: absolute;
+  inset: 25% 20% 15%;
+  z-index: -1;
+  border-radius: 50%;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 42%, transparent), color-mix(in srgb, var(--accent-soft) 35%, transparent));
+  filter: blur(38px);
+  opacity: 0.8;
+}
+.art-orbit { position: absolute; inset: 25% 2%; border: 1px solid color-mix(in srgb, var(--accent-soft) 18%, transparent); border-radius: 50%; transform: rotate(-25deg); }
+.art-orbit-two { inset: 17% 10%; transform: rotate(30deg); border-color: color-mix(in srgb, var(--accent) 17%, transparent); }
+.art-spark { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-soft); box-shadow: 0 0 16px 4px color-mix(in srgb, var(--accent-soft) 35%, transparent); }
+.art-spark-one { top: 19%; left: 16%; }
+.art-spark-two { top: 72%; right: 8%; width: 3px; height: 3px; }
+.art-spark-three { top: 20%; right: 12%; background: var(--accent); width: 3px; height: 3px; }
+@media (max-width: 1100px) and (min-width: 768px) {
+  .page-intro.overview-hero { grid-template-columns: minmax(0, 1.5fr) minmax(180px, 1fr); }
+  .page-intro.overview-hero h1 { font-size: 38px; }
+  .art-perspective { inset-inline: -25px; }
+}
+@media (max-width: 767px) {
+  .page-intro.overview-hero { grid-template-columns: 1fr; gap: 0; margin-top: 0; min-height: 0; }
+  .overview-hero .hero-copy { padding-top: 6px; padding-bottom: 0; }
+  .page-intro.overview-hero h1 { font-size: clamp(33px, 9.5vw, 46px); }
+  .overview-hero .hero-copy > p { max-width: 38ch; }
+  .overview-hero .hero-art { height: 200px; margin-top: -8px; }
+  .art-perspective { inset: -15px 10px; }
+  .art-halo { inset: 12% 17% 15%; filter: blur(28px); }
+  .art-orbit { inset-inline: 16%; }
+}
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -33,7 +98,7 @@
   grid-column: 2;
   grid-row: 1 / 3;
   align-self: center;
-  font: 500 30px/1 var(--font-sans);
+  font: 500 34px/1 var(--font-display);
   letter-spacing: -0.8px;
   font-variant-numeric: tabular-nums;
   color: var(--tile-accent);
@@ -1233,7 +1298,7 @@ background:
   }
   .metric-grid {
     gap: 0;
-    border: 1px solid var(--border);
+    border: 0;
     background: var(--surface);
     border-radius: var(--radius-md);
     overflow: hidden;
