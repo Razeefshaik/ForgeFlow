@@ -1,0 +1,580 @@
+/* Motion owns timing, never workflow state. No blur animation or count-up data. */
+:is(
+  .btn,
+  .icon-button,
+  .command-search,
+  .operator-suggestions button,
+  .command-results button,
+  .segmented-control button,
+  .execution-tabs button,
+  .stage-rail button,
+  .theme-choice,
+  .sidebar-bottom > button
+) {
+  touch-action: manipulation;
+  transition:
+    transform var(--duration-fast) var(--ease-ui),
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+:is(
+    .btn,
+    .icon-button,
+    .command-search,
+    .operator-suggestions button,
+    .command-results button,
+    .segmented-control button,
+    .execution-tabs button,
+    .theme-choice,
+    .sidebar-bottom > button
+  ):active:not(:disabled) {
+  transform: scale(0.97);
+}
+.stage-rail button:active:not(:disabled) {
+  transform: scale(0.99);
+}
+:is(.surface-elevated, .contribution-grid .contribution-row, .agent-card) {
+  transition:
+    border-color var(--duration-ui) ease,
+    box-shadow var(--duration-ui) ease,
+    transform var(--duration-ui) var(--ease-ui),
+    background-color var(--duration-fast) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .contribution-grid .contribution-row:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -10px rgb(0 0 0 / 35%);
+  }
+  .surface-elevated:hover {
+    border-color: color-mix(in srgb, var(--surface-light) 52%, var(--border));
+    box-shadow:
+      var(--elevated-shadow),
+      0 12px 32px -24px
+        color-mix(in srgb, var(--surface-light) 35%, transparent);
+  }
+}
+.repository-avatar img {
+  transition: opacity var(--duration-ui) ease;
+}
+.sidebar nav a {
+  transition:
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+.sidebar nav a::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  width: 3px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleY(0.7);
+  transition:
+    opacity var(--duration-fast) ease,
+    transform var(--duration-ui) var(--ease-ui);
+}
+.sidebar nav a.active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+.nav-toggle-icon {
+  transform: rotate(180deg);
+  transition: transform var(--duration-ui) var(--ease-ui);
+}
+[data-nav-collapsed="true"] .nav-toggle-icon {
+  transform: rotate(0deg);
+}
+.sidebar-toggle {
+  margin-bottom: 12px;
+}
+@media (min-width: 768px) {
+  .app {
+    --sidebar-width: 242px;
+  }
+  .sidebar {
+    width: var(--sidebar-width);
+    transition: width var(--duration-panel) var(--ease-drawer);
+  }
+  .main-shell {
+    margin-left: var(--sidebar-width);
+    transition: margin-left var(--duration-panel) var(--ease-drawer);
+  }
+  .main-shell::before {
+    left: var(--sidebar-width);
+  }
+  .app[data-nav-collapsed="true"] {
+    --sidebar-width: 80px;
+  }
+  [data-nav-collapsed="true"] .sidebar {
+    padding-inline: 12px;
+  }
+  [data-nav-collapsed="true"] .brand {
+    justify-content: center;
+    padding: 0;
+  }
+  [data-nav-collapsed="true"]
+    :is(
+      .brand strong,
+      .sidebar nav a > span,
+      .sidebar .nav-label,
+      .sidebar-bottom > button > span,
+      .account-link > span
+    ) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  [data-nav-collapsed="true"]
+    :is(
+      .version,
+      .workspace-switch,
+      .local-card,
+      .account-link > svg:last-child,
+      .sidebar-bottom > button > svg:last-child:not(:first-child)
+    ) {
+    display: none;
+  }
+  [data-nav-collapsed="true"] .sidebar nav a {
+    justify-content: center;
+    padding-inline: 10px;
+    min-height: 44px;
+  }
+  [data-nav-collapsed="true"] .nav-group {
+    margin-bottom: 24px;
+  }
+  [data-nav-collapsed="true"] :is(.account-link, .sidebar-bottom > button) {
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px;
+  }
+}
+@media (min-width: 768px) and (max-width: 1279px) {
+  .app {
+    --sidebar-width: 222px;
+  }
+}
+@media (max-width: 767px) {
+  .sidebar-toggle {
+    display: none !important;
+  }
+  .sidebar {
+    transition: transform 240ms var(--ease-drawer);
+  }
+  .menu-backdrop {
+    transition: opacity var(--duration-exit) ease;
+  }
+  .menu-backdrop[data-state="open"] {
+    opacity: 1;
+  }
+  .menu-backdrop[data-state="closed"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+  @starting-style {
+    .menu-backdrop[data-state="open"] {
+      opacity: 0;
+    }
+  }
+}
+.page-transition,
+.evidence-content {
+  transition:
+    opacity var(--duration-ui) ease,
+    transform var(--duration-ui) var(--ease-ui);
+}
+@starting-style {
+  .page-transition {
+    opacity: 0.85;
+    transform: translateY(4px);
+  }
+  .evidence-content {
+    opacity: 0.8;
+    transform: translateY(3px);
+  }
+}
+.badge,
+.stage-symbol,
+.live-pill {
+  transition:
+    background-color var(--duration-ui) ease,
+    color var(--duration-fast) ease,
+    border-color var(--duration-ui) ease;
+}
+.disclosure-open,
+.execution-primary-actions .btn-ghost svg {
+  transition: transform var(--duration-ui) var(--ease-ui);
+}
+.progress-meter > span,
+.factor-track i,
+.score-track i {
+  transition: transform var(--duration-ui) var(--ease-ui);
+}
+/* Indeterminate activity is three dots, never an invented completion sweep. */
+.progress-indeterminate {
+  height: 10px;
+  background: transparent;
+}
+.progress-indeterminate > span {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+  background: transparent;
+  align-items: center;
+  transform: none;
+}
+.progress-indeterminate i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--indigo);
+  animation: activity-dot 1200ms linear infinite;
+}
+.progress-indeterminate i:nth-child(2) {
+  animation-delay: 120ms;
+}
+.progress-indeterminate i:nth-child(3) {
+  animation-delay: 240ms;
+}
+.work-card-status .progress-indeterminate {
+  width: 20px;
+  height: 10px;
+}
+.live-execution[data-process-running="true"] .live-pill::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 6px;
+  animation: activity-dot 1400ms linear infinite;
+}
+.animated-number,
+.live-current-task {
+  animation: signal-in var(--duration-fast) ease;
+}
+@keyframes signal-in {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes activity-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 180px;
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(var(--raised), var(--raised)) 24px 24px / 38% 14px no-repeat,
+    linear-gradient(var(--raised), var(--raised)) 24px 54px / 70% 10px no-repeat,
+    linear-gradient(var(--raised), var(--raised)) 24px 78px / 58% 10px no-repeat,
+    var(--surface);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 4%),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1600ms linear infinite;
+}
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+/* Radix owns focus/presence; its closing state retains the exit frame. */
+.dialog-overlay[data-state="open"] {
+  animation: overlay-in var(--duration-ui) ease both;
+}
+.dialog-overlay[data-state="closed"] {
+  animation: overlay-out var(--duration-exit) ease both;
+  pointer-events: none;
+}
+.dialog-content[data-state="open"] {
+  animation: modal-in var(--duration-panel) var(--ease-ui) both;
+}
+.dialog-content[data-state="closed"] {
+  animation: modal-out var(--duration-exit) var(--ease-ui) both;
+  pointer-events: none;
+}
+.dialog-drawer[data-state="open"] {
+  animation-name: drawer-in;
+  animation-timing-function: var(--ease-drawer);
+}
+.dialog-drawer[data-state="closed"] {
+  animation-name: drawer-out;
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+}
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(8%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes drawer-out {
+  to {
+    opacity: 0;
+    transform: translateX(8%);
+  }
+}
+[data-instant="true"] {
+  animation: none !important;
+  transition: none !important;
+}
+.tooltip {
+  position: fixed;
+  z-index: 75;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-high);
+  color: var(--text);
+  box-shadow: var(--panel-shadow);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: center bottom;
+  transition:
+    opacity var(--duration-fast) ease,
+    transform var(--duration-fast) var(--ease-ui);
+}
+.tooltip[data-side="bottom"] {
+  transform-origin: center top;
+}
+.tooltip[data-side="right"] {
+  transform-origin: left center;
+}
+.tooltip[data-state="closed"] {
+  opacity: 0;
+  transform: translateY(2px) scale(0.98);
+  pointer-events: none;
+}
+@starting-style {
+  .tooltip[data-state="open"] {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+}
+/* Native disclosure and picker semantics remain intact, with instant fallbacks. */
+@supports (interpolate-size: allow-keywords) {
+  details::details-content {
+    interpolate-size: allow-keywords;
+    overflow: hidden;
+    block-size: 0;
+    opacity: 0;
+    content-visibility: hidden;
+    transition:
+      block-size var(--duration-ui) var(--ease-ui),
+      opacity var(--duration-fast) ease,
+      content-visibility var(--duration-ui) allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+    content-visibility: visible;
+  }
+}
+@supports (appearance: base-select) {
+  select,
+  select::picker(select) {
+    appearance: base-select;
+  }
+  select::picker(select) {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-high);
+    color: var(--text);
+    padding: 5px;
+    box-shadow: var(--floating-shadow);
+    max-block-size: min(360px, 60dvh);
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+    transform-origin: center top;
+    transition:
+      opacity var(--duration-fast) ease,
+      transform var(--duration-ui) var(--ease-ui),
+      display var(--duration-ui) allow-discrete,
+      overlay var(--duration-ui) allow-discrete;
+  }
+  select:open::picker(select) {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  @starting-style {
+    select:open::picker(select) {
+      opacity: 0;
+      transform: translateY(-3px) scale(0.985);
+    }
+  }
+  select::picker-icon {
+    transition: rotate var(--duration-ui) var(--ease-ui);
+  }
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+  option {
+    min-height: 36px;
+    padding: 8px 10px;
+    border-radius: 7px;
+  }
+  option:hover,
+  option:focus {
+    background: var(--raised);
+  }
+  option:checked {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-high));
+  }
+  option::checkmark {
+    color: var(--accent);
+  }
+}
+/* Focus is immediate. High-frequency keyboard actions never wait for motion. */
+:root[data-input="keyboard"]
+  :is(
+    .sidebar,
+    .main-shell,
+    .page-transition,
+    .evidence-content,
+    .dialog-overlay,
+    .dialog-content,
+    .menu-backdrop,
+    .tooltip,
+    .btn,
+    .icon-button,
+    .command-search,
+    .stage-rail button,
+    .execution-tabs button,
+    .segmented-control button,
+    .animated-number,
+    .nav-toggle-icon,
+    .sidebar nav a,
+    .command-results button,
+    .operator-suggestions button
+  ) {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-input="keyboard"] details::details-content,
+:root[data-input="keyboard"] select::picker(select),
+:root[data-input="keyboard"] select::picker-icon {
+  transition: none;
+}
+:root[data-input="keyboard"] .sidebar nav a::before {
+  transition: none;
+}
+/* A zero-duration exit still emits animationend for Radix Presence. Removing
+   the animation during an exit would strand its focus trap after cancellation. */
+:root[data-input="keyboard"] .dialog-overlay[data-state="closed"] {
+  animation: overlay-out 0s linear !important;
+}
+:root[data-input="keyboard"] .dialog-content[data-state="closed"] {
+  animation: modal-out 0s linear !important;
+}
+:root[data-input="keyboard"] .dialog-drawer[data-state="closed"] {
+  animation: drawer-out 0s linear !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  details::details-content,
+  select::picker(select),
+  select::picker-icon {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  :root .dialog-overlay[data-state="closed"] {
+    animation: overlay-out 0s linear !important;
+  }
+  :root .dialog-content[data-state="closed"] {
+    animation: modal-out 0s linear !important;
+  }
+  :root .dialog-drawer[data-state="closed"] {
+    animation: drawer-out 0s linear !important;
+  }
+  .skeleton::after {
+    display: none;
+  }
+  .progress-indeterminate i {
+    opacity: 0.65;
+  }
+  .contribution-grid .contribution-row:hover,
+  .btn-primary:hover,
+  :is(
+    .btn,
+    .icon-button,
+    .command-search,
+    .theme-choice,
+    .operator-suggestions button,
+    .command-results button,
+    .segmented-control button,
+    .execution-tabs button,
+    .stage-rail button,
+    .sidebar-bottom > button
+  ):active {
+    transform: none !important;
+  }
+}

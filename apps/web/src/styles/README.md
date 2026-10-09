@@ -12,6 +12,7 @@ Fonts are self-hosted Inter and JetBrains Mono.
 - components.css: shared controls, dialogs, data rows, feedback and Operator.
 - pages.css: dashboard bento layouts and secondary page composition.
 - workspace.css: execution stages, live activity, evidence and recovery.
+- motion.css: shared interactions, presence, activity and reduced-motion rules.
 - ../design.css: imports only. Do not append competing theme overrides.
 
 ## Color roles
@@ -55,6 +56,27 @@ Closed mobile navigation is inert. Open navigation traps focus and restores
 its opener. Dialog headings remain visible while bodies scroll. Motion
 respects reduced-motion preferences. On narrow screens, outstanding decisions
 precede monitoring. Detailed tables and terminals scroll in their own regions.
+
+## Motion
+
+Motion tokens in tokens.css control shared 100–240ms feedback. motion.css is
+imported last so interaction rules have one owner. Animate transforms and
+opacity; sidebar width is the deliberate exception for its layout transition.
+Keep ambient blur static. Only clickable contribution cards lift on hover;
+featured surfaces gain a restrained outline, not continuous movement.
+
+Keyboard navigation and command search are immediate. Native selects and
+details use progressive CSS enhancement and keep their normal semantics in
+browsers without the relevant CSS support. Radix owns modal focus and exit
+presence. Non-modal tooltip/backdrop presence is handled by ui/presence.tsx.
+Tooltips appear after a short initial delay, skip that delay for adjacent
+controls, remain hoverable, and never intercept touch activation.
+
+Activity dots indicate an unknown completion percentage. The live process
+indicator pulses only when the server reports a running agent. Numeric data
+changes directly to its recorded value; never interpolate invented metrics.
+Reduced motion removes transitions, shimmer and pulses. New motion checks
+live in tests/motion.spec.ts; test fixtures never run production contributions.
 
 ## Implementation touch points
 

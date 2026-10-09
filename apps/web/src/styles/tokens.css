@@ -69,6 +69,13 @@
   --space-8: 32px;
   --space-10: 40px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ui: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 100ms;
+  --duration-fast: 120ms;
+  --duration-ui: 180ms;
+  --duration-panel: 220ms;
+  --duration-exit: 140ms;
 }
 :root[data-theme="light"] {
   color-scheme: light;

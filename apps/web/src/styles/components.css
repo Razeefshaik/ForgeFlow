@@ -636,7 +636,6 @@ tbody tr:hover {
 }
 .progress-indeterminate > span {
   width: 38%;
-  animation: process-alive 2s linear infinite;
 }
 .work-card-status .progress-meter {
   width: 100px;
@@ -646,7 +645,6 @@ tbody tr:hover {
   min-height: 220px;
   border-radius: var(--radius-lg);
   background: var(--raised);
-  animation: loading-opacity 1.5s ease-in-out infinite alternate;
 }
 .bottom-note {
   display: flex;
@@ -666,7 +664,6 @@ tbody tr:hover {
   z-index: 60;
   background: var(--overlay);
   backdrop-filter: blur(8px);
-  animation: fade-in 160ms ease;
 }
 .dialog-content {
   position: fixed;
@@ -884,43 +881,6 @@ tbody tr:hover {
     color: var(--text);
   }
 }
-@keyframes process-alive {
-  from {
-    transform: translateX(-110%);
-  }
-  to {
-    transform: translateX(365%);
-  }
-}
-@keyframes loading-opacity {
-  to {
-    opacity: 0.5;
-  }
-}
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes content-in {
-  from {
-    opacity: 0.5;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .page-transition,
-  .evidence-content {
-    animation: content-in 220ms var(--ease-out);
-  }
-}
 @media (max-width: 767px) {
   .btn,
   .btn-small,
@@ -1010,20 +970,6 @@ tbody tr:hover {
     text-align: left;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
-    scroll-behavior: auto !important;
-  }
-  .progress-indeterminate > span {
-    width: 100%;
-    opacity: 0.45;
-    transform: none;
-  }
-}
 @media (prefers-reduced-transparency: reduce) {
   .main-shell::after {
     display: none;
@@ -1036,8 +982,4 @@ tbody tr:hover {
   .menu-backdrop {
     backdrop-filter: none;
   }
-}
-:root[data-input="keyboard"] .page-transition,
-:root[data-input="keyboard"] .evidence-content {
-  animation: none;
 }

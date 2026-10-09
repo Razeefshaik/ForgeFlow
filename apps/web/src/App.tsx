@@ -27,6 +27,7 @@ import {
   Sparkles,
   Search,
   X,
+  ChevronRight,
   Zap,
 } from "./components/icons";
 import { useAPI } from "./api";
@@ -35,6 +36,8 @@ import Overview from "./pages/Overview";
 import { Badge, Empty } from "./components/primitives";
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
+import { Tooltip } from "./components/ui/tooltip";
+import { usePresence } from "./components/ui/presence";
 const Operator = lazy(() => import("./components/Operator"));
 const Discovery = lazy(() => import("./components/Discovery"));
 const Login = lazy(() => import("./pages/Login"));
@@ -79,6 +82,10 @@ export default function App() {
   );
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
+  const menuPresent = usePresence(menu, 140);
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem("forgeflow-sidebar-collapsed") === "true",
+  );
   const [connected, setConnected] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [navigationSearch, setNavigationSearch] = useState("");
@@ -92,6 +99,14 @@ export default function App() {
   const client = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => {
+    if (!compact || !menu) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [compact, menu]);
   const page =
     location.pathname === "/"
       ? "overview"
@@ -153,11 +168,13 @@ export default function App() {
     const pointer = () => {
       document.documentElement.dataset.input = "pointer";
     };
-    document.addEventListener("keydown", keyboard);
-    document.addEventListener("pointerdown", pointer);
+    // Resolve input modality before Radix or React handles the same event.
+    // Otherwise Escape can cancel an exit after Presence starts waiting for it.
+    document.addEventListener("keydown", keyboard, true);
+    document.addEventListener("pointerdown", pointer, true);
     return () => {
-      document.removeEventListener("keydown", keyboard);
-      document.removeEventListener("pointerdown", pointer);
+      document.removeEventListener("keydown", keyboard, true);
+      document.removeEventListener("pointerdown", pointer, true);
     };
   }, []);
   useEffect(() => {
@@ -204,11 +221,12 @@ export default function App() {
         (n.to !== "/" && location.pathname.startsWith(n.to + "/")),
     )?.label ?? "Operator";
   return (
-    <div className="app" data-page={page}>
+    <div className="app" data-page={page} data-nav-collapsed={navCollapsed}>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
       <aside
+        id="navigation-panel"
         ref={sidebarRef}
         inert={compact && !menu ? true : undefined}
         className={"sidebar" + (menu ? " sidebar-open" : "")}
@@ -248,25 +266,60 @@ export default function App() {
             <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
               {group.items.map((n) => (
-                <NavLink
-                  end={n.to === "/"}
-                  to={n.to}
+                <Tooltip
                   key={n.to}
-                  onClick={() => setMenu(false)}
+                  content={n.label}
+                  side="right"
+                  disabled={!navCollapsed || compact}
                 >
-                  <n.icon size={20} />
-                  <span>{n.label}</span>
-                  {n.to === "/opportunities" && (
-                    <span className="nav-count">
-                      {overview.data?.opportunities ?? "—"}
-                    </span>
-                  )}
-                </NavLink>
+                  <NavLink
+                    aria-label={n.label}
+                    end={n.to === "/"}
+                    to={n.to}
+                    key={n.to}
+                    onClick={() => setMenu(false)}
+                  >
+                    <n.icon size={20} />
+                    <span>{n.label}</span>
+                    {n.to === "/opportunities" && (
+                      <span className="nav-count">
+                        {overview.data?.opportunities ?? "—"}
+                      </span>
+                    )}
+                  </NavLink>
+                </Tooltip>
               ))}
             </div>
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <Tooltip
+            content={navCollapsed ? "Expand navigation" : "Collapse navigation"}
+            side={navCollapsed ? "right" : "top"}
+          >
+            <button
+              className="sidebar-toggle"
+              aria-label={
+                navCollapsed ? "Expand navigation" : "Collapse navigation"
+              }
+              aria-expanded={!navCollapsed}
+              aria-controls="navigation-panel"
+              onClick={() =>
+                setNavCollapsed((collapsed) => {
+                  localStorage.setItem(
+                    "forgeflow-sidebar-collapsed",
+                    String(!collapsed),
+                  );
+                  return !collapsed;
+                })
+              }
+            >
+              <ChevronRight size={18} className="nav-toggle-icon" />
+              <span>
+                {navCollapsed ? "Expand navigation" : "Collapse navigation"}
+              </span>
+            </button>
+          </Tooltip>
           <div className="local-card">
             <span
               className={"status-dot" + (connected ? "" : " status-offline")}
@@ -278,34 +331,75 @@ export default function App() {
               <p>App connection</p>
             </div>
           </div>
-          <NavLink to="/login" className="account-link">
-            <Github size={18} />
-            <span>
-              {account.data?.connected
-                ? account.data.login || "GitHub connected"
-                : "Connect GitHub"}
-              <small>GitHub connection</small>
-            </span>
-            <ArrowUpRight size={14} />
-          </NavLink>
-          <button onClick={() => setHelp(true)}>
-            <CircleHelp size={16} /> Getting started <ArrowUpRight size={13} />
-          </button>
-          <button
-            onClick={() =>
-              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+          <Tooltip
+            content={
+              account.data?.connected
+                ? `GitHub: ${account.data.login || "connected"}`
+                : "Connect GitHub"
             }
+            disabled={!navCollapsed || compact}
+            side="right"
           >
-            {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
-            {resolvedTheme === "dark"
-              ? "Switch to light mode"
-              : "Switch to dark mode"}
-          </button>
+            <NavLink to="/login" className="account-link">
+              <Github size={18} />
+              <span>
+                {account.data?.connected
+                  ? account.data.login || "GitHub connected"
+                  : "Connect GitHub"}
+                <small>GitHub connection</small>
+              </span>
+              <ArrowUpRight size={14} />
+            </NavLink>
+          </Tooltip>
+          <Tooltip
+            content="Getting started"
+            side="right"
+            disabled={!navCollapsed || compact}
+          >
+            <button
+              onClick={() => {
+                setMenu(false);
+                setHelp(true);
+              }}
+            >
+              <CircleHelp size={16} /> <span>Getting started</span>{" "}
+              <ArrowUpRight size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip
+            content={
+              resolvedTheme === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            side="right"
+            disabled={!navCollapsed || compact}
+          >
+            <button
+              onClick={() =>
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun size={16} />
+              ) : (
+                <Moon size={16} />
+              )}{" "}
+              <span>
+                {resolvedTheme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"}
+              </span>
+            </button>
+          </Tooltip>
         </div>
       </aside>
-      {menu && (
+      {menuPresent && (
         <button
           className="menu-backdrop"
+          data-state={menu ? "open" : "closed"}
+          aria-hidden={!menu}
+          inert={!menu ? true : undefined}
           aria-label="Close navigation"
           onClick={() => setMenu(false)}
         />
@@ -479,6 +573,7 @@ export default function App() {
       </div>
       <Dialog
         open={searchOpen}
+        instant
         onOpenChange={setSearchOpen}
         title="Jump to a page"
         description="Navigate your local contribution control plane."

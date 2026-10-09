@@ -832,7 +832,7 @@ export default function ExecutionPanel({
               <div>
                 <strong>
                   {running
-                    ? "Verification in progress"
+                    ? "Execution in progress"
                     : ["READY", "PR_PREPARED", "PR_OPENED"].includes(c.state) &&
                         r?.review?.verdict === "APPROVE"
                       ? "Ready for human review"

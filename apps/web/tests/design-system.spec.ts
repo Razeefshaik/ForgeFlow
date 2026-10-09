@@ -143,8 +143,13 @@ test("running command shows pending exit and duration instead of a false pass", 
     }),
   );
   await page.goto("/contributions/pending-command-ui");
-  await expect(page.locator(".verification-gate")).toContainText("Verification in progress");
-  await expect(page.locator(".verification-summary")).toHaveAttribute("data-verified", "false");
+  await expect(page.locator(".verification-gate")).toContainText(
+    "Execution in progress",
+  );
+  await expect(page.locator(".verification-summary")).toHaveAttribute(
+    "data-verified",
+    "false",
+  );
   await page.getByRole("tab", { name: "Tests (1)" }).click();
   await expect(page.locator("#test-run-pending summary")).toContainText(
     "exit pending",

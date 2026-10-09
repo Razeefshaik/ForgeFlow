@@ -9,6 +9,7 @@ export function Dialog({
   children,
   wide = false,
   drawer = false,
+  instant = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -17,13 +18,18 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
   drawer?: boolean;
+  instant?: boolean;
 }) {
   const opener = useRef<HTMLElement | null>(null);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="dialog-overlay" />
+        <DialogPrimitive.Overlay
+          className="dialog-overlay"
+          data-instant={instant}
+        />
         <DialogPrimitive.Content
+          data-instant={instant}
           onOpenAutoFocus={(event) => {
             opener.current =
               document.activeElement instanceof HTMLElement

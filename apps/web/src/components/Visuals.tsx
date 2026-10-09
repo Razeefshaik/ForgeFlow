@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Copy, Check, GitBranch } from "./icons";
+import { Tooltip } from "./ui/tooltip";
 
 export function RepositoryAvatar({ repository }: { repository: string }) {
   const owner = repository.split("/")[0];
@@ -51,10 +52,19 @@ export function ProgressMeter({
       }
     >
       <span
+        aria-hidden="true"
         style={
           indeterminate ? undefined : { transform: `scaleX(${bounded / 100})` }
         }
-      />
+      >
+        {indeterminate && (
+          <>
+            <i />
+            <i />
+            <i />
+          </>
+        )}
+      </span>
     </div>
   );
 }
@@ -64,20 +74,22 @@ export function CopyValue({ value }: { value: string }) {
   return (
     <span className="copy-value">
       <code>{value}</code>
-      <button
-        className="icon-button"
-        aria-label={`Copy ${value}`}
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(value);
-            setStatus("Copied");
-          } catch {
-            setStatus("Unable to copy; select the value to copy manually");
-          }
-        }}
-      >
-        {status === "Copied" ? <Check size={15} /> : <Copy size={15} />}
-      </button>
+      <Tooltip content={status === "Copied" ? "Copied" : "Copy value"}>
+        <button
+          className="icon-button"
+          aria-label={`Copy ${value}`}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setStatus("Copied");
+            } catch {
+              setStatus("Unable to copy; select the value to copy manually");
+            }
+          }}
+        >
+          {status === "Copied" ? <Check size={15} /> : <Copy size={15} />}
+        </button>
+      </Tooltip>
       <span className="sr-only" role="status">
         {status}
       </span>
