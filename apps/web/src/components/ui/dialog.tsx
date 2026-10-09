@@ -1,6 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "../icons";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 export function Dialog({
   open,
   onOpenChange,
@@ -18,11 +18,14 @@ export function Dialog({
   wide?: boolean;
   drawer?: boolean;
 }) {
+  const opener = useRef<HTMLElement | null>(null);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="dialog-overlay" />
         <DialogPrimitive.Content
+          onOpenAutoFocus={() => { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onCloseAutoFocus={event => { if (opener.current?.isConnected) { event.preventDefault(); opener.current.focus(); } }}
           className={
             "dialog-content" +
             (wide ? " dialog-wide" : "") +
@@ -43,7 +46,7 @@ export function Dialog({
               <X size={18} />
             </DialogPrimitive.Close>
           </div>
-          {children}
+          <div className="dialog-body">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

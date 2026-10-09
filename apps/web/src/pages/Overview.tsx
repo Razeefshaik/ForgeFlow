@@ -5,6 +5,8 @@ import {
   CircleCheck,
   CirclePause,
   ArrowUpRight,
+  Bot,
+  Terminal,
 } from "../components/icons";
 import { Link } from "react-router-dom";
 import { lazy, Suspense } from "react";
@@ -16,6 +18,7 @@ import {
 import { useAPI } from "../api";
 import type { Contribution, Event, Overview as OverviewType } from "../types";
 import { EventRows, SectionHeader, StateBadge } from "../components/primitives";
+import LiveExecutionProgress from "../components/LiveExecutionProgress";
 const Opportunities = lazy(() => import("./Opportunities"));
 
 export default function Overview() {
@@ -41,13 +44,14 @@ export default function Overview() {
       ].includes(c.state),
   );
   const visible = [...attention, ...active].slice(0, 5);
+  const focused = active[0] ?? attention[0];
   return (
     <>
       <div className="page-intro overview-intro">
         <div>
           <span className="eyebrow">YOUR WORKSPACE, AT A GLANCE</span>
           <h1>Good work starts here.</h1>
-          <p>A little clarity. Your next contribution.</p>
+          <p>Your agents, contribution evidence, and next decisions in one place.</p>
         </div>
         <Link className="btn btn-primary" to="/opportunities">
           Find an opportunity <ArrowUpRight size={15} />
@@ -80,8 +84,8 @@ export default function Overview() {
             icon: ShieldCheck,
             detail: "Waiting for your eyes",
           },
-        ].map((m) => (
-          <div className="metric" key={m.label}>
+        ].map((m, index) => (
+          <div className="metric" data-tone={index === 0 ? "indigo" : index === 1 ? "rose" : "jade"} key={m.label}>
             <div>
               <span>{m.label}</span>
               <m.icon size={22} />
@@ -101,6 +105,13 @@ export default function Overview() {
               </Link>
             }
           />
+          {focused && !contributions.error && <div className="overview-focus">
+            <div className="focus-kicker"><span><Terminal size={15} />Contribution in focus</span><StateBadge state={focused.state} /></div>
+            <Link className="focus-issue" to={`/contributions/${encodeURIComponent(focused.id)}`}><span className="repo-name">{focused.repository}</span><h2>{focused.title}</h2><ArrowUpRight size={22} /></Link>
+            <div className="focus-context"><span><Bot size={15} />{focused.codex_model || "Model not recorded"}</span><code>{focused.branch || "Branch not recorded"}</code></div>
+            {!focused.demo && ["PLANNING", "CODING", "TESTING", "FIXING", "REVIEWING"].includes(focused.state) && <LiveExecutionProgress id={focused.id} phase={focused.state} />}
+            <Link className="text-link" to={`/contributions/${encodeURIComponent(focused.id)}`}>Inspect execution and evidence <ArrowRight size={15} /></Link>
+          </div>}
           {contributions.error ? (
             <p className="error">{contributions.error.message}</p>
           ) : contributions.isPending ? (
@@ -142,13 +153,7 @@ export default function Overview() {
             ))
           ) : (
             <div className="workspace-empty">
-              <img
-                className="workspace-illustration"
-                src="/images/version-control.svg"
-                alt=""
-                width="240"
-                height="160"
-              />
+              <span className="empty-workspace-symbol"><GitBranch size={32} /></span>
               <h3>Your next contribution starts here.</h3>
               <p>
                 Choose an issue that matters to you. ForgeFlow keeps the plan,
@@ -219,6 +224,7 @@ export default function Overview() {
           </div>
         </aside>
       </div>
+      <div className="overview-bento">
       <section className="surface overview-opportunities">
         <Suspense
           fallback={
@@ -244,6 +250,7 @@ export default function Overview() {
             <EventRows events={events.data ?? []} compact />
           )}
         </section>
+      </div>
       </div>
       <div className="bottom-note">
         <ShieldCheck size={14} /> Ranking ignores Codex effort. Contribution

@@ -1,0 +1,55 @@
+/* One neutral foundation, workflow-specific accents.
+   Layers: toolbar 10, backdrop 20, navigation 30, overlay 60, dialog 61. */
+:root {
+  color-scheme: dark;
+  --bg: #101014; --sidebar: #121216; --surface: #19191f; --raised: #23232c; --hover: #2a2a35;
+  --border: #343440; --border-soft: #292932;
+  --text: #f1f0f7; --muted: #b0afbf; --dim: #9897a9;
+  --orchid: #b58aff; --orchid-soft: #f1a5e8;
+  --rose: #ff897b; --rose-soft: #ffc28a;
+  --jade: #61e6b1; --jade-soft: #d5f1a5;
+  --garnet: #f59ac1; --garnet-soft: #c6a0ff;
+  --gold: #f4d18b; --gold-soft: #ffaa6f;
+  --indigo: #7899ff; --indigo-soft: #c3a4ff;
+  --accent: var(--orchid); --accent-soft: var(--orchid-soft); --accent-muted: var(--accent);
+  --primary: var(--accent); --on-primary: #17131f;
+  --green: var(--jade); --amber: var(--gold); --red: #ff9d96; --ring: #d0b2ff; --ink: var(--text);
+  --terminal: #111116; --terminal-text: #dbdbea;
+  --statement-rose: #ffad9e; --statement-indigo: #a4b5ff; --statement-garnet: #c6a0ff; --statement-gold: #f4d18b;
+  --panel-shadow: 0 8px 28px rgb(5 5 10 / 24%), 0 1px 0 rgb(255 255 255 / 3%) inset;
+  --elevated-shadow: 0 20px 48px rgb(5 5 10 / 32%), 0 1px 0 rgb(255 255 255 / 6%) inset;
+  --overlay: rgb(6 6 12 / 72%);
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 18px; --radius-xl: 24px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f5fa; --sidebar: #ededf4; --surface: #fdfcff; --raised: #ecebf3; --hover: #e3e1ef;
+  --border: #d2cfdf; --border-soft: #e3e0eb;
+  --text: #262332; --muted: #605b70; --dim: #6c657c;
+  --orchid: #7140b4; --orchid-soft: #a4438e;
+  --rose: #a53d35; --rose-soft: #9b5427;
+  --jade: #17734f; --jade-soft: #536d20;
+  --garnet: #994772; --garnet-soft: #7149aa;
+  --gold: #82601b; --gold-soft: #9b4b21;
+  --indigo: #3d56b0; --indigo-soft: #7950ae;
+  --primary: #c6a0ff; --on-primary: #21142e; --red: #a53d35; --ring: #7140b4;
+  --panel-shadow: 0 8px 24px rgb(43 26 76 / 5%), 0 1px 0 rgb(255 255 255 / 90%) inset;
+  --elevated-shadow: 0 18px 44px rgb(43 26 76 / 10%);
+  --overlay: rgb(25 19 39 / 38%);
+}
+.app[data-page="opportunities"] { --accent: var(--orchid); --accent-soft: var(--orchid-soft); }
+.app[data-page="contributions"], .app[data-page="agents"], .app[data-page="workspace"], .app[data-page="activity"] { --accent: var(--indigo); --accent-soft: var(--indigo-soft); }
+.app[data-page="usage"] { --accent: var(--gold); --accent-soft: var(--gold-soft); }
+.app[data-page="configuration"], .app[data-page="operator"] { --accent: var(--garnet); --accent-soft: var(--garnet-soft); }
+.app[data-page="settings"], .app[data-page="login"] { --accent: var(--indigo); --accent-soft: var(--indigo-soft); }
+.app { --primary: var(--accent); }
+:root[data-theme="light"] .app { --primary: #c6a0ff; }
+[data-tone="indigo"] { --tile-accent: var(--indigo); }
+[data-tone="rose"] { --tile-accent: var(--rose); }
+[data-tone="jade"] { --tile-accent: var(--jade); }
+[data-tone="gold"] { --tile-accent: var(--gold); }
+[data-tone="garnet"] { --tile-accent: var(--garnet); }

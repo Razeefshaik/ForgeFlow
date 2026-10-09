@@ -181,6 +181,7 @@ export default function Opportunities({
               {row.original.repository} <span>#{row.original.number}</span>
             </span>
             <span className="issue-title">{row.original.title}</span>
+            {!!row.original.labels?.length && <span className="issue-labels">{row.original.labels.slice(0, 2).map(label => <span key={label}>{label}</span>)}</span>}
           </button>
         ),
         enableSorting: false,

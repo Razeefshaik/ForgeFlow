@@ -36,7 +36,7 @@ export default function Operator() {
         <span className="operator-glyph">
           <Bot size={24} />
         </span>
-        <h3>A little more control.</h3>
+        <h3>Your workspace, in context.</h3>
         <p>
           Inspect your system and propose changes through controlled application
           actions.
@@ -65,11 +65,11 @@ export default function Operator() {
                 Review configuration proposal →
               </Link>
             )}
-            {m.confirmation && <Button onClick={async () => {
+            {m.confirmation && <div className="operator-confirmation"><span className="eyebrow">APPROVAL REQUIRED</span><p><strong>Contribution: <code>{m.confirmation.contribution_id}</code></strong></p><p>{m.confirmation.action === "abandon" ? "End this contribution and preserve its workspace and history." : m.confirmation.action === "start" || m.confirmation.action === "recover" ? "Allow execution in this contribution’s isolated workspace under its saved permissions." : m.confirmation.action === "constraints" ? "Save the proposed instructions for this contribution." : `Request ${m.confirmation.action.replaceAll("-", " ")} for this contribution.`}</p><Button onClick={async () => {
               if (m.confirmation?.action === "abandon" && !window.confirm("Abandon this contribution? Workspace and history will be preserved.")) return;
               try { await request("/contributions/" + encodeURIComponent(m.confirmation!.contribution_id) + "/" + m.confirmation!.action, {approved: true, constraints: m.confirmation!.constraints || ""}); await client.invalidateQueries(); setMessages(items => items.map((item,index) => index === i ? {...item, text: item.text + " Action accepted.", confirmation: undefined} : item)); }
               catch(e) { setMessages(items => [...items, {role: "operator", text: (e as Error).message, proposal: false}]); }
-            }}>{m.confirmation.label}</Button>}
+            }}>{m.confirmation.label}</Button></div>}
           </div>
         ))}
         {mutation.isPending && <p className="muted">Inspecting…</p>}

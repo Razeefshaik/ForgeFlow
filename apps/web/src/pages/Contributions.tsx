@@ -57,7 +57,10 @@ export default function Contributions() {
           <p>Every issue gets its own branch, workspace and audit trail.</p>
         </div>
       </div>
-      <section className="surface">
+      <div className="contribution-summary" aria-label="Contribution summary">
+        {[{ label: "Active workspaces", states: ["SELECTED", "CLONING", "PLANNING", "CODING", "TESTING", "FIXING", "REVIEWING"], tone: "indigo" }, { label: "Needs your attention", states: ["BLOCKED", "PAUSED"], tone: "rose" }, { label: "Ready for review", states: ["READY", "PR_PREPARED"], tone: "jade" }].map(item => <div key={item.label} data-tone={item.tone}><span>{item.label}</span><strong>{contributions.data ? contributions.data.filter(c => item.states.includes(c.state)).length : "—"}</strong></div>)}
+      </div>
+      <section className="surface contribution-collection">
         <SectionHeader title="Contribution workspaces" />
         <div className="table-toolbar contribution-filter">
           <input
@@ -97,7 +100,7 @@ export default function Contributions() {
             Try another search or state filter.
           </Empty>
         ) : (
-          visible.map((c) => (
+          <div className="contribution-grid">{visible.map((c) => (
             <Link
               className="contribution-row contribution-button"
               key={c.id}
@@ -107,11 +110,13 @@ export default function Contributions() {
               <div>
                 <strong>{c.repository}</strong>
                 <p>{c.title}</p>
+                <span className="contribution-card-meta"><Bot size={14} />{c.codex_model || "Model not recorded"}</span>
+                <code className="contribution-card-branch">{c.branch || "Branch not recorded"}</code>
               </div>
               <StateBadge state={c.state} />
               <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
-          ))
+          ))}</div>
         )}
       </section>
     </>

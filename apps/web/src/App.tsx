@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity as ActivityIcon,
@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Search,
   X,
   Zap,
 } from "./components/icons";
@@ -64,16 +65,54 @@ const navigation = [
 ];
 export default function App() {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("forgeflow-theme") ?? "system",
+    () => localStorage.getItem("forgeflow-theme") ?? "dark",
   );
   const [operatorOpen, setOperatorOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [navigationSearch, setNavigationSearch] = useState("");
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const overview = useAPI<OverviewType>("/overview");
   const account = useAPI<{ connected: boolean; login: string }>("/auth/github");
   const client = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
+  const page = location.pathname === "/" ? "overview" : location.pathname.startsWith("/contributions/") ? "workspace" : location.pathname.split("/")[1];
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(value => !value);
+      }
+    };
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, []);
+  useEffect(() => {
+    if (!menu || !compact) return;
+    const sidebar = sidebarRef.current;
+    sidebar?.querySelector<HTMLElement>(".mobile-close")?.focus();
+    const handle = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMenu(false); menuTriggerRef.current?.focus(); }
+      if (event.key !== "Tab" || !sidebar) return;
+      const elements = [...sidebar.querySelectorAll<HTMLElement>("a, button")].filter(el => el.getClientRects().length);
+      const first = elements[0], last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, [menu, compact]);
   useEffect(() => {
     const keyboard = () => {
       document.documentElement.dataset.input = "keyboard";
@@ -96,7 +135,7 @@ export default function App() {
       document.documentElement.dataset.theme = resolved;
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", resolved === "dark" ? "#0D1F2D" : "#f8f9fc");
+        ?.setAttribute("content", resolved === "dark" ? "#101014" : "#f5f5fa");
     };
     apply();
     localStorage.setItem("forgeflow-theme", theme);
@@ -131,11 +170,11 @@ export default function App() {
         (n.to !== "/" && location.pathname.startsWith(n.to + "/")),
     )?.label ?? "Operator";
   return (
-    <div className="app">
+    <div className="app" data-page={page}>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
-      <aside className={"sidebar" + (menu ? " sidebar-open" : "")}>
+      <aside ref={sidebarRef} inert={compact && !menu ? true : undefined} className={"sidebar" + (menu ? " sidebar-open" : "")}>
         <div className="brand">
           <span className="brand-mark">
             <Command size={19} />
@@ -145,7 +184,7 @@ export default function App() {
           <button
             className="icon-button mobile-close"
             aria-label="Close navigation"
-            onClick={() => setMenu(false)}
+            onClick={() => { setMenu(false); menuTriggerRef.current?.focus(); }}
           >
             <X size={16} />
           </button>
@@ -224,19 +263,22 @@ export default function App() {
           onClick={() => setMenu(false)}
         />
       )}
-      <div className="main-shell">
+      <div className="main-shell" inert={compact && menu ? true : undefined}>
         <header className="topbar">
           <div>
             <button
+              ref={menuTriggerRef}
               className="icon-button mobile-menu"
               aria-label="Open navigation"
               onClick={() => setMenu(true)}
             >
               <Menu size={19} />
             </button>
+            <span className="toolbar-breadcrumb">Workspace <span>/</span></span>
             <strong className="toolbar-title">{label}</strong>
           </div>
           <div>
+            <button className="command-search" aria-label="Open command search" onClick={() => { setNavigationSearch(""); setSearchOpen(true); }}><Search size={16} /><span>Jump to a page</span><kbd>Ctrl K</kbd></button>
             <span className={"connection " + (connected ? "connected" : "")}>
               <i />
               {connected ? "App online" : "Reconnecting events"}
@@ -301,7 +343,7 @@ export default function App() {
                         </div>
                       </div>
                       <Discovery />
-                      <section className="surface opportunity-surface">
+                      <section className="opportunity-surface">
                         <Opportunities />
                       </section>
                     </>
@@ -324,9 +366,7 @@ export default function App() {
                 <Route
                   path="/operator"
                   element={
-                    <section className="surface operator-page">
-                      <Operator />
-                    </section>
+                    <><div className="page-intro"><div><span className="eyebrow">CONTEXTUAL ASSISTANCE</span><h1>Operator</h1><p>Ask about your workspace. Review every proposed action.</p></div></div><section className="surface operator-page"><Operator /></section></>
                   }
                 />
                 <Route
@@ -349,6 +389,13 @@ export default function App() {
           <span>ForgeFlow · Local workspace</span>
         </footer>
       </div>
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen} title="Jump to a page" description="Navigate your local contribution control plane.">
+        <label className="search command-input"><Search size={18} /><input autoFocus aria-label="Search pages" placeholder="Search pages…" value={navigationSearch} onChange={event => setNavigationSearch(event.target.value)} /></label>
+        <div className="command-results">
+          {[...navigation, { to: "/operator", label: "Operator", icon: MessageSquare }].filter(item => item.label.toLowerCase().includes(navigationSearch.toLowerCase())).map(item => <button key={item.to} onClick={() => { setSearchOpen(false); navigate(item.to); }}><item.icon size={19} /><span>{item.label}</span><ArrowUpRight size={14} /></button>)}
+          {![...navigation, { label: "Operator" }].some(item => item.label.toLowerCase().includes(navigationSearch.toLowerCase())) && <p className="muted">No matching pages.</p>}
+        </div>
+      </Dialog>
       <Dialog
         open={operatorOpen}
         onOpenChange={setOperatorOpen}
