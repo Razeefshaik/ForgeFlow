@@ -5,6 +5,8 @@ import {
   CircleCheck,
   CirclePause,
   ArrowUpRight,
+  Bot,
+  Terminal,
 } from "../components/icons";
 import { Link } from "react-router-dom";
 import { lazy, Suspense } from "react";
@@ -16,6 +18,7 @@ import {
 import { useAPI } from "../api";
 import type { Contribution, Event, Overview as OverviewType } from "../types";
 import { EventRows, SectionHeader, StateBadge } from "../components/primitives";
+import LiveExecutionProgress from "../components/LiveExecutionProgress";
 const Opportunities = lazy(() => import("./Opportunities"));
 
 export default function Overview() {
@@ -41,17 +44,28 @@ export default function Overview() {
       ].includes(c.state),
   );
   const visible = [...attention, ...active].slice(0, 5);
+  const focused = active[0] ?? attention[0];
   return (
     <>
-      <div className="page-intro overview-intro">
-        <div>
-          <span className="eyebrow">YOUR WORKSPACE, AT A GLANCE</span>
-          <h1>Good work starts here.</h1>
-          <p>A little clarity. Your next contribution.</p>
+      <div className="page-intro overview-intro overview-hero">
+        <div className="hero-copy">
+          <span className="eyebrow">YOUR NEXT CONTRIBUTION</span>
+          <h1>Good work.<br /><span>Extraordinary flow.</span></h1>
+          <p>
+            Find your next opportunity. Shape it with your agents. Make the final call.
+          </p>
+          <Link className="btn btn-primary" to="/opportunities">
+            Find an opportunity <ArrowUpRight size={16} />
+          </Link>
+          <span className="hero-note"><ShieldCheck size={14} /> Built with agents. Guided by you.</span>
         </div>
-        <Link className="btn btn-primary" to="/opportunities">
-          Find an opportunity <ArrowUpRight size={15} />
-        </Link>
+        <div className="hero-art" aria-hidden="true">
+          <div className="art-halo" />
+          <div className="art-orbit art-orbit-one" />
+          <div className="art-orbit art-orbit-two" />
+          <div className="art-perspective"><img src="/images/forge-sculpture.webp" width="1100" height="733" alt="" fetchPriority="high" /></div>
+          <span className="art-spark art-spark-one" /><span className="art-spark art-spark-two" /><span className="art-spark art-spark-three" />
+        </div>
       </div>
       {overview.error && (
         <p className="error" role="alert">
@@ -80,8 +94,12 @@ export default function Overview() {
             icon: ShieldCheck,
             detail: "Waiting for your eyes",
           },
-        ].map((m) => (
-          <div className="metric" key={m.label}>
+        ].map((m, index) => (
+          <div
+            className="metric"
+            data-tone={index === 0 ? "indigo" : index === 1 ? "rose" : "jade"}
+            key={m.label}
+          >
             <div>
               <span>{m.label}</span>
               <m.icon size={22} />
@@ -92,7 +110,7 @@ export default function Overview() {
         ))}
       </div>
       <div className="workspace-grid">
-        <section className="surface workspace-work">
+        <section className="surface surface-elevated workspace-work">
           <SectionHeader
             title="Active work"
             extra={
@@ -101,54 +119,97 @@ export default function Overview() {
               </Link>
             }
           />
+          {focused && !contributions.error && (
+            <div className="overview-focus">
+              <div className="focus-kicker">
+                <span>
+                  <Terminal size={15} />
+                  Contribution in focus
+                </span>
+                <StateBadge state={focused.state} />
+              </div>
+              <Link
+                className="focus-issue"
+                to={`/contributions/${encodeURIComponent(focused.id)}`}
+              >
+                <span className="repo-name">{focused.repository}</span>
+                <h2>{focused.title}</h2>
+                <ArrowUpRight size={22} />
+              </Link>
+              <div className="focus-context">
+                <span>
+                  <Bot size={15} />
+                  {focused.codex_model || "Model not recorded"}
+                </span>
+                <code>{focused.branch || "Branch not recorded"}</code>
+              </div>
+              {!focused.demo &&
+                [
+                  "PLANNING",
+                  "CODING",
+                  "TESTING",
+                  "FIXING",
+                  "REVIEWING",
+                ].includes(focused.state) && (
+                  <LiveExecutionProgress
+                    id={focused.id}
+                    phase={focused.state}
+                  />
+                )}
+              <Link
+                className="text-link"
+                to={`/contributions/${encodeURIComponent(focused.id)}`}
+              >
+                Inspect execution and evidence <ArrowRight size={15} />
+              </Link>
+            </div>
+          )}
           {contributions.error ? (
             <p className="error">{contributions.error.message}</p>
           ) : contributions.isPending ? (
             <div className="skeleton" aria-label="Loading contributions" />
           ) : visible.length ? (
-            visible.map((c) => (
-              <Link
-                className="contribution-row"
-                key={c.id}
-                to={`/contributions/${encodeURIComponent(c.id)}`}
-              >
-                <RepositoryAvatar repository={c.repository} />
-                <div>
-                  <strong>{c.repository}</strong>
-                  <p>{c.title}</p>
-                  <span className="work-status">
-                    {["READY", "PR_PREPARED"].includes(c.state)
-                      ? "Ready for your review"
-                      : c.state === "BLOCKED"
-                        ? "Needs your attention"
-                        : c.state === "PAUSED"
-                          ? "Paused by request"
-                          : "Open to inspect execution"}
-                  </span>
-                </div>
-                <div className="work-card-status">
-                  <StateBadge state={c.state} />
-                  {["CODING", "TESTING", "FIXING", "REVIEWING"].includes(
-                    c.state,
-                  ) &&
-                    !c.demo && (
-                      <ProgressMeter
-                        indeterminate
-                        label={`${c.repository}: execution ongoing`}
-                      />
-                    )}
-                </div>
-              </Link>
-            ))
+            visible
+              .filter((c) => c.id !== focused?.id)
+              .map((c) => (
+                <Link
+                  className="contribution-row"
+                  key={c.id}
+                  to={`/contributions/${encodeURIComponent(c.id)}`}
+                >
+                  <RepositoryAvatar repository={c.repository} />
+                  <div>
+                    <strong>{c.repository}</strong>
+                    <p>{c.title}</p>
+                    <span className="work-status">
+                      {["READY", "PR_PREPARED"].includes(c.state)
+                        ? "Ready for your review"
+                        : c.state === "BLOCKED"
+                          ? "Needs your attention"
+                          : c.state === "PAUSED"
+                            ? "Paused by request"
+                            : "Open to inspect execution"}
+                    </span>
+                  </div>
+                  <div className="work-card-status">
+                    <StateBadge state={c.state} />
+                    {["CODING", "TESTING", "FIXING", "REVIEWING"].includes(
+                      c.state,
+                    ) &&
+                      !c.demo && (
+                        <ProgressMeter
+                          indeterminate
+                          label={`${c.repository}: execution ongoing`}
+                        />
+                      )}
+                  </div>
+                </Link>
+              ))
           ) : (
             <div className="workspace-empty">
-              <img
-                className="workspace-illustration"
-                src="/images/version-control.svg"
-                alt=""
-                width="240"
-                height="160"
-              />
+              <span className="empty-workspace-symbol">
+                <GitBranch size={32} />
+              </span>
               <h3>Your next contribution starts here.</h3>
               <p>
                 Choose an issue that matters to you. ForgeFlow keeps the plan,
@@ -168,7 +229,6 @@ export default function Overview() {
               <CircleCheck size={22} />
             )}
           </span>
-          <span className="eyebrow">NEEDS YOUR ATTENTION</span>
           <h2>
             {contributions.isPending
               ? "Checking your workspace…"
@@ -219,31 +279,33 @@ export default function Overview() {
           </div>
         </aside>
       </div>
-      <section className="surface overview-opportunities">
-        <Suspense
-          fallback={
-            <div className="skeleton" aria-label="Loading opportunities" />
-          }
-        >
-          <Opportunities compact />
-        </Suspense>
-      </section>
-      <div className="overview-lower">
-        <section className="surface">
-          <SectionHeader
-            title="Recent activity"
-            extra={
-              <Link className="text-link" to="/activity">
-                All events <ArrowRight size={14} />
-              </Link>
+      <div className="overview-bento">
+        <section className="surface overview-opportunities">
+          <Suspense
+            fallback={
+              <div className="skeleton" aria-label="Loading opportunities" />
             }
-          />
-          {events.error ? (
-            <p className="error">{events.error.message}</p>
-          ) : (
-            <EventRows events={events.data ?? []} compact />
-          )}
+          >
+            <Opportunities compact />
+          </Suspense>
         </section>
+        <div className="overview-lower">
+          <section className="surface">
+            <SectionHeader
+              title="Recent activity"
+              extra={
+                <Link className="text-link" to="/activity">
+                  All events <ArrowRight size={14} />
+                </Link>
+              }
+            />
+            {events.error ? (
+              <p className="error">{events.error.message}</p>
+            ) : (
+              <EventRows events={events.data ?? []} compact />
+            )}
+          </section>
+        </div>
       </div>
       <div className="bottom-note">
         <ShieldCheck size={14} /> Ranking ignores Codex effort. Contribution

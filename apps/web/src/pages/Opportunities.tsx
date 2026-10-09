@@ -181,6 +181,13 @@ export default function Opportunities({
               {row.original.repository} <span>#{row.original.number}</span>
             </span>
             <span className="issue-title">{row.original.title}</span>
+            {!!row.original.labels?.length && (
+              <span className="issue-labels">
+                {row.original.labels.slice(0, 2).map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+              </span>
+            )}
           </button>
         ),
         enableSorting: false,
@@ -222,7 +229,7 @@ export default function Opportunities({
       },
       {
         id: "action",
-        header: "",
+        header: "Actions",
         cell: ({ row }) => (
           <Button
             variant="ghost"
@@ -253,7 +260,9 @@ export default function Opportunities({
         <div className="section-header">
           <div className="section-heading">
             <h2>{compact ? "Top opportunities" : "Ranked opportunities"}</h2>
-            <span className="count">{query.data?.length ?? 0}</span>
+            <span className="count">
+              {query.data ? query.data.length : "—"}
+            </span>
           </div>
           {compact ? (
             <Link className="text-link" to="/opportunities">
@@ -307,7 +316,7 @@ export default function Opportunities({
                 {table.getHeaderGroups().map((group) => (
                   <tr key={group.id}>
                     {group.headers.map((h) => (
-                      <th key={h.id}>
+                      <th key={h.id} scope="col">
                         {h.column.getCanSort() ? (
                           <button
                             onClick={h.column.getToggleSortingHandler()}

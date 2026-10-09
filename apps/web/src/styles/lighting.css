@@ -1,0 +1,41 @@
+/* Outer card edges have one owner. Internal separators and control outlines
+   retain their semantics; the decorative rim exists only under a fine pointer. */
+.app .glow-card {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  box-shadow: var(--panel-shadow);
+}
+.app .surface-elevated.glow-card {
+  box-shadow: var(--elevated-shadow);
+}
+.glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    radial-gradient(340px circle at var(--pointer-x, 50%) var(--pointer-y, 0%), white, transparent 65%),
+    linear-gradient(125deg, var(--accent), var(--accent-soft));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 280ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .app .glow-card:hover {
+    border-color: transparent;
+    box-shadow: var(--elevated-shadow),
+      -10px -8px 42px -22px color-mix(in srgb, var(--accent) 65%, transparent),
+      14px 12px 46px -23px color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  }
+  .glow-card:hover::after { opacity: 0.8; }
+  .app .glow-card:has(.glow-card:hover)::after { opacity: 0; }
+}
+@media (forced-colors: active) {
+  .app .glow-card { border: 1px solid CanvasText; }
+  .glow-card::after { display: none; }
+}

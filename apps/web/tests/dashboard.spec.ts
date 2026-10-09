@@ -4,7 +4,7 @@ test("demo dashboard, filtering, score inspection and human gate", async ({
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Good work starts here." }),
+    page.getByRole("heading", { name: /Good work\.\s*Extraordinary flow\./ }),
   ).toBeVisible();
   await expect(
     page.getByText("DEMO WORKSPACE", { exact: false }),

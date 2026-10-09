@@ -73,6 +73,7 @@ export default function LiveExecutionProgress({
   return (
     <div
       className="live-execution"
+      data-process-running={Boolean(active) && !agents.error}
       aria-label="Live execution progress"
       style={{ display: "block", overflowWrap: "anywhere" }}
     >
@@ -83,9 +84,15 @@ export default function LiveExecutionProgress({
             ? `Codex ${active.role} process · ${duration(seconds(active.started_at))} elapsed`
             : `Verification phase: ${phase.toLowerCase()}`}
         </strong>
-        <span className="live-pill">Live</span>
+        <span className="live-pill">
+          {active ? "Process running" : "Live activity"}
+        </span>
       </div>
-      {active && output && <p className="live-current-task">{activityLabel(output)}</p>}
+      {active && output && (
+        <p className="live-current-task" key={output.id}>
+          {activityLabel(output)}
+        </p>
+      )}
       {active && (
         <p>
           {output

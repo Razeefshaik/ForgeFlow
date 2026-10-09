@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bot,
@@ -36,7 +36,6 @@ export function Activity() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">YOUR WORKSPACE HISTORY</span>
           <h1>Activity</h1>
           <p>
             Every decision, command and state change. The latest 100 persisted
@@ -45,7 +44,7 @@ export function Activity() {
         </div>
         <Badge>Append-only audit</Badge>
       </div>
-      <section className="surface">
+      <section className="surface activity-surface">
         <SectionHeader
           title="Event timeline"
           extra={<Badge>{filtered.length} events</Badge>}
@@ -96,20 +95,24 @@ export function Agents() {
   const [controlError, setControlError] = useState("");
   const [busy, setBusy] = useState("");
   const [filter, setFilter] = useState("All");
-  const agents =
-    useAPI<
-      {
-        id: string;
-        contribution_id: string;
-        role: string;
-        model?: string;
-        status: string;
-        session_id: string;
-        started_at: string;
-        finished_at: string | null;
-        output: string;
-      }[]
-    >("/agents");
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const agents = useAPI<
+    {
+      id: string;
+      contribution_id: string;
+      role: string;
+      model?: string;
+      status: string;
+      session_id: string;
+      started_at: string;
+      finished_at: string | null;
+      output: string;
+    }[]
+  >("/agents");
   const filtered = (agents.data ?? []).filter(
     (a) =>
       filter === "All" ||
@@ -119,7 +122,6 @@ export function Agents() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">EXECUTION VISIBILITY</span>
           <h1>Agents</h1>
           <p>Real Codex sessions, their workspace and recorded output.</p>
         </div>
@@ -133,6 +135,26 @@ export function Agents() {
               {name}
             </button>
           ))}
+        </div>
+      </div>
+      <div className="agent-summary" aria-label="Agent run summary">
+        <div>
+          <span>Running sessions</span>
+          <strong>
+            {agents.data
+              ? agents.data.filter((a) => a.status === "RUNNING").length
+              : "—"}
+          </strong>
+          <p>Active processes in isolated contribution workspaces.</p>
+        </div>
+        <div>
+          <span>Historical runs</span>
+          <strong>
+            {agents.data
+              ? agents.data.filter((a) => a.status !== "RUNNING").length
+              : "—"}
+          </strong>
+          <p>Completed and stopped runs remain available for inspection.</p>
         </div>
       </div>
       {controlError && (
@@ -149,7 +171,11 @@ export function Agents() {
       ) : filtered.length ? (
         <div className="agent-grid">
           {filtered.map((a) => (
-            <article key={a.id} className="surface agent-card">
+            <article
+              key={a.id}
+              className="surface agent-card"
+              data-status={a.status}
+            >
               <div className="agent-card-heading">
                 <span className="branch-icon">
                   <Bot size={23} />
@@ -158,6 +184,28 @@ export function Agents() {
                   <h2>{a.role}</h2>
                   <p>{new Date(a.started_at).toLocaleString()}</p>
                   {a.model && <p>Model: {a.model}</p>}
+                  {Number.isFinite(Date.parse(a.started_at)) && (
+                    <span className="agent-elapsed">
+                      {a.finished_at &&
+                      Number.isFinite(Date.parse(a.finished_at))
+                        ? Math.max(
+                            0,
+                            Math.floor(
+                              (Date.parse(a.finished_at) -
+                                Date.parse(a.started_at)) /
+                                60_000,
+                            ),
+                          ) + "m recorded"
+                        : a.status === "RUNNING"
+                          ? Math.max(
+                              0,
+                              Math.floor(
+                                (now - Date.parse(a.started_at)) / 60_000,
+                              ),
+                            ) + "m elapsed"
+                          : "Duration not recorded"}
+                    </span>
+                  )}
                 </div>
                 <Badge tone={a.status === "RUNNING" ? "violet" : "neutral"}>
                   {a.status}
@@ -240,7 +288,6 @@ export function Usage() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">ESTIMATES, CLEARLY SEPARATED</span>
           <h1>Codex effort & usage</h1>
           <p>
             Plan allowance is unavailable. Heuristic effort never changes
@@ -248,17 +295,21 @@ export function Usage() {
           </p>
         </div>
       </div>
-      <div className="usage-summary">
+      <div className="usage-summary usage-observed">
         <div>
-          <span className="eyebrow">OBSERVED INPUT TOKENS</span>
-          <strong>{usage.data?.observed_usage?.input_tokens ?? "—"}</strong>
+          <span className="data-label">Observed input tokens</span>
+          <strong>
+            {usage.data?.observed_usage?.input_tokens?.toLocaleString() ?? "—"}
+          </strong>
         </div>
         <div>
-          <span className="eyebrow">OBSERVED OUTPUT TOKENS</span>
-          <strong>{usage.data?.observed_usage?.output_tokens ?? "—"}</strong>
+          <span className="data-label">Observed output tokens</span>
+          <strong>
+            {usage.data?.observed_usage?.output_tokens?.toLocaleString() ?? "—"}
+          </strong>
         </div>
         <div>
-          <span className="eyebrow">SESSION DURATION</span>
+          <span className="data-label">Session duration</span>
           <strong>
             {usage.data
               ? `${Math.round(usage.data.duration_seconds / 60)}m`
@@ -266,13 +317,13 @@ export function Usage() {
           </strong>
         </div>
       </div>
-      <div className="usage-summary">
+      <div className="usage-summary usage-allowance">
         <div>
-          <span className="eyebrow">OBSERVED LOCAL SESSIONS</span>
+          <span className="data-label">Observed local sessions</span>
           <strong>{usage.data?.sessions ?? "—"}</strong>
         </div>
         <div>
-          <span className="eyebrow">OFFICIAL REMAINING ALLOWANCE</span>
+          <span className="data-label">Official remaining allowance</span>
           <strong>Unavailable</strong>
           <p>No guessed percentages.</p>
           <label>
@@ -345,7 +396,6 @@ export function Settings({
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">MAKE IT YOURS</span>
           <h1>Settings</h1>
           <p>Your interface, local workspace and connected account.</p>
         </div>
@@ -374,7 +424,7 @@ export function Settings({
           </a>
         </nav>
         <div className="settings-content">
-          <section className="surface" id="appearance">
+          <section className="surface surface-elevated" id="appearance">
             <SectionHeader title="Appearance" />
             <div className="settings-row">
               <label htmlFor="theme-select">Color theme</label>
@@ -452,7 +502,10 @@ export function Settings({
                 <dd>{runtime.data?.codex_model || "Codex CLI default"}</dd>
               </div>
             </dl>
-            <p className="muted">Choose a model for each contribution when reviewing its approval preview. That choice is saved with the contribution.</p>
+            <p className="muted">
+              Choose a model for each contribution when reviewing its approval
+              preview. That choice is saved with the contribution.
+            </p>
             <p>
               <Link className="text-link" to="/configuration">
                 <SlidersHorizontal size={15} />

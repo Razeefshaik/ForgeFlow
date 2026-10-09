@@ -1,11 +1,18 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity as ActivityIcon,
   ArrowUpRight,
   Bot,
   CircleHelp,
+  CirclePause,
   Command,
   GitBranch,
   Github,
@@ -19,17 +26,22 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Search,
   X,
+  ChevronRight,
   Zap,
 } from "./components/icons";
 import { useAPI } from "./api";
 import type { Overview as OverviewType } from "./types";
 import Overview from "./pages/Overview";
-import Operator from "./components/Operator";
 import { Badge, Empty } from "./components/primitives";
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
-import Discovery from "./components/Discovery";
+import { Tooltip } from "./components/ui/tooltip";
+import { usePresence } from "./components/ui/presence";
+import { useVisualEffects } from "./components/VisualEffects";
+const Operator = lazy(() => import("./components/Operator"));
+const Discovery = lazy(() => import("./components/Discovery"));
 const Login = lazy(() => import("./pages/Login"));
 const Configuration = lazy(() => import("./pages/Configuration"));
 const Opportunities = lazy(() => import("./pages/Opportunities"));
@@ -62,18 +74,120 @@ const navigation = [
   { to: "/settings", label: "Settings", icon: SettingsIcon },
   { to: "/login", label: "GitHub account", icon: Github },
 ];
+const pagePalettes: Record<string, string> = {
+  overview: "cosmic-orchid",
+  opportunities: "ember-rose",
+  contributions: "aurora-jade",
+  workspace: "electric-indigo",
+  agents: "electric-indigo",
+  activity: "velvet-garnet",
+  usage: "obsidian-gold",
+  configuration: "velvet-garnet",
+  operator: "velvet-garnet",
+  settings: "aurora-jade",
+  login: "ember-rose",
+};
 export default function App() {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("forgeflow-theme") ?? "system",
+    () => localStorage.getItem("forgeflow-theme") ?? "dark",
   );
   const [operatorOpen, setOperatorOpen] = useState(false);
+  const [motionPaused, setMotionPaused] = useState(() => localStorage.getItem("forgeflow-motion") === "paused");
+  const pageRef = useRef<HTMLDivElement>(null);
+  const [resolvedTheme, setResolvedTheme] = useState(() =>
+    localStorage.getItem("forgeflow-theme") === "light" ? "light" : "dark",
+  );
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
+  const menuPresent = usePresence(menu, 140);
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem("forgeflow-sidebar-collapsed") === "true",
+  );
   const [connected, setConnected] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [navigationSearch, setNavigationSearch] = useState("");
+  const [compact, setCompact] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches,
+  );
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const overview = useAPI<OverviewType>("/overview");
   const account = useAPI<{ connected: boolean; login: string }>("/auth/github");
   const client = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!compact || !menu) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [compact, menu]);
+  const page =
+    location.pathname === "/"
+      ? "overview"
+      : location.pathname.startsWith("/contributions/")
+        ? "workspace"
+        : location.pathname.split("/")[1];
+  const palette = pagePalettes[page] ?? "cosmic-orchid";
+  useVisualEffects(pageRef, location.pathname, motionPaused);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.motion = motionPaused ? "paused" : "full";
+    localStorage.setItem("forgeflow-motion", motionPaused ? "paused" : "full");
+  }, [motionPaused]);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.palette = palette;
+    return () => { delete document.documentElement.dataset.palette; };
+  }, [palette]);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((value) => !value);
+      }
+    };
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, []);
+  useEffect(() => {
+    if (!menu || !compact) return;
+    const sidebar = sidebarRef.current;
+    sidebar?.querySelector<HTMLElement>(".mobile-close")?.focus();
+    const handle = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenu(false);
+        menuTriggerRef.current?.focus();
+      }
+      if (event.key !== "Tab" || !sidebar) return;
+      const elements = [
+        ...sidebar.querySelectorAll<HTMLElement>("a, button"),
+      ].filter((el) => el.getClientRects().length);
+      const first = elements[0],
+        last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handle);
+    return () => {
+      document.removeEventListener("keydown", handle);
+      queueMicrotask(() => {
+        if (window.matchMedia("(max-width: 767px)").matches)
+          menuTriggerRef.current?.focus();
+      });
+    };
+  }, [menu, compact]);
   useEffect(() => {
     const keyboard = () => {
       document.documentElement.dataset.input = "keyboard";
@@ -81,11 +195,13 @@ export default function App() {
     const pointer = () => {
       document.documentElement.dataset.input = "pointer";
     };
-    document.addEventListener("keydown", keyboard);
-    document.addEventListener("pointerdown", pointer);
+    // Resolve input modality before Radix or React handles the same event.
+    // Otherwise Escape can cancel an exit after Presence starts waiting for it.
+    document.addEventListener("keydown", keyboard, true);
+    document.addEventListener("pointerdown", pointer, true);
     return () => {
-      document.removeEventListener("keydown", keyboard);
-      document.removeEventListener("pointerdown", pointer);
+      document.removeEventListener("keydown", keyboard, true);
+      document.removeEventListener("pointerdown", pointer, true);
     };
   }, []);
   useEffect(() => {
@@ -94,9 +210,10 @@ export default function App() {
       const resolved =
         theme === "system" ? (media.matches ? "dark" : "light") : theme;
       document.documentElement.dataset.theme = resolved;
+      setResolvedTheme(resolved);
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", resolved === "dark" ? "#0D1F2D" : "#f8f9fc");
+        ?.setAttribute("content", resolved === "dark" ? "#101014" : "#f5f5fa");
     };
     apply();
     localStorage.setItem("forgeflow-theme", theme);
@@ -131,11 +248,16 @@ export default function App() {
         (n.to !== "/" && location.pathname.startsWith(n.to + "/")),
     )?.label ?? "Operator";
   return (
-    <div className="app">
+    <div className="app" data-page={page} data-palette={palette} data-nav-collapsed={navCollapsed}>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
-      <aside className={"sidebar" + (menu ? " sidebar-open" : "")}>
+      <aside
+        id="navigation-panel"
+        ref={sidebarRef}
+        inert={compact && !menu ? true : undefined}
+        className={"sidebar" + (menu ? " sidebar-open" : "")}
+      >
         <div className="brand">
           <span className="brand-mark">
             <Command size={19} />
@@ -145,7 +267,10 @@ export default function App() {
           <button
             className="icon-button mobile-close"
             aria-label="Close navigation"
-            onClick={() => setMenu(false)}
+            onClick={() => {
+              setMenu(false);
+              menuTriggerRef.current?.focus();
+            }}
           >
             <X size={16} />
           </button>
@@ -168,25 +293,60 @@ export default function App() {
             <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
               {group.items.map((n) => (
-                <NavLink
-                  end={n.to === "/"}
-                  to={n.to}
+                <Tooltip
                   key={n.to}
-                  onClick={() => setMenu(false)}
+                  content={n.label}
+                  side="right"
+                  disabled={!navCollapsed || compact}
                 >
-                  <n.icon size={20} />
-                  <span>{n.label}</span>
-                  {n.to === "/opportunities" && (
-                    <span className="nav-count">
-                      {overview.data?.opportunities ?? "—"}
-                    </span>
-                  )}
-                </NavLink>
+                  <NavLink
+                    aria-label={n.label}
+                    end={n.to === "/"}
+                    to={n.to}
+                    key={n.to}
+                    onClick={() => setMenu(false)}
+                  >
+                    <n.icon size={20} />
+                    <span>{n.label}</span>
+                    {n.to === "/opportunities" && (
+                      <span className="nav-count">
+                        {overview.data?.opportunities ?? "—"}
+                      </span>
+                    )}
+                  </NavLink>
+                </Tooltip>
               ))}
             </div>
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <Tooltip
+            content={navCollapsed ? "Expand navigation" : "Collapse navigation"}
+            side={navCollapsed ? "right" : "top"}
+          >
+            <button
+              className="sidebar-toggle"
+              aria-label={
+                navCollapsed ? "Expand navigation" : "Collapse navigation"
+              }
+              aria-expanded={!navCollapsed}
+              aria-controls="navigation-panel"
+              onClick={() =>
+                setNavCollapsed((collapsed) => {
+                  localStorage.setItem(
+                    "forgeflow-sidebar-collapsed",
+                    String(!collapsed),
+                  );
+                  return !collapsed;
+                })
+              }
+            >
+              <ChevronRight size={18} className="nav-toggle-icon" />
+              <span>
+                {navCollapsed ? "Expand navigation" : "Collapse navigation"}
+              </span>
+            </button>
+          </Tooltip>
           <div className="local-card">
             <span
               className={"status-dot" + (connected ? "" : " status-offline")}
@@ -198,45 +358,114 @@ export default function App() {
               <p>App connection</p>
             </div>
           </div>
-          <NavLink to="/login" className="account-link">
-            <Github size={18} />
-            <span>
-              {account.data?.connected
-                ? account.data.login || "GitHub connected"
-                : "Connect GitHub"}
-              <small>GitHub connection</small>
-            </span>
-            <ArrowUpRight size={14} />
-          </NavLink>
-          <button onClick={() => setHelp(true)}>
-            <CircleHelp size={16} /> Getting started <ArrowUpRight size={13} />
-          </button>
-          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
-            {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          </button>
+          <Tooltip
+            content={
+              account.data?.connected
+                ? `GitHub: ${account.data.login || "connected"}`
+                : "Connect GitHub"
+            }
+            disabled={!navCollapsed || compact}
+            side="right"
+          >
+            <NavLink to="/login" className="account-link">
+              <Github size={18} />
+              <span>
+                {account.data?.connected
+                  ? account.data.login || "GitHub connected"
+                  : "Connect GitHub"}
+                <small>GitHub connection</small>
+              </span>
+              <ArrowUpRight size={14} />
+            </NavLink>
+          </Tooltip>
+          <Tooltip content={motionPaused ? "Resume animations" : "Pause animations"} side="right" disabled={!navCollapsed || compact}>
+            <button aria-label={motionPaused ? "Resume animations" : "Pause animations"} aria-pressed={motionPaused} onClick={() => setMotionPaused(value => !value)}>
+              {motionPaused ? <Sparkles size={16} /> : <CirclePause size={16} />}
+              <span>{motionPaused ? "Resume animations" : "Pause animations"}</span>
+            </button>
+          </Tooltip>
+          <Tooltip
+            content="Getting started"
+            side="right"
+            disabled={!navCollapsed || compact}
+          >
+            <button
+              onClick={() => {
+                setMenu(false);
+                setHelp(true);
+              }}
+            >
+              <CircleHelp size={16} /> <span>Getting started</span>{" "}
+              <ArrowUpRight size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip
+            content={
+              resolvedTheme === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            side="right"
+            disabled={!navCollapsed || compact}
+          >
+            <button
+              onClick={() =>
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun size={16} />
+              ) : (
+                <Moon size={16} />
+              )}{" "}
+              <span>
+                {resolvedTheme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"}
+              </span>
+            </button>
+          </Tooltip>
         </div>
       </aside>
-      {menu && (
+      {menuPresent && (
         <button
           className="menu-backdrop"
+          data-state={menu ? "open" : "closed"}
+          aria-hidden={!menu}
+          inert={!menu ? true : undefined}
           aria-label="Close navigation"
           onClick={() => setMenu(false)}
         />
       )}
-      <div className="main-shell">
+      <div className="main-shell" inert={compact && menu ? true : undefined}>
         <header className="topbar">
           <div>
             <button
+              ref={menuTriggerRef}
               className="icon-button mobile-menu"
               aria-label="Open navigation"
               onClick={() => setMenu(true)}
             >
               <Menu size={19} />
             </button>
+            <span className="toolbar-breadcrumb">
+              Workspace <span>/</span>
+            </span>
             <strong className="toolbar-title">{label}</strong>
           </div>
           <div>
+            <button
+              className="command-search"
+              aria-label="Open command search"
+              onClick={() => {
+                setNavigationSearch("");
+                setSearchOpen(true);
+              }}
+            >
+              <Search size={16} />
+              <span>Jump to a page</span>
+              <kbd>Ctrl K</kbd>
+            </button>
             <span className={"connection " + (connected ? "connected" : "")}>
               <i />
               {connected ? "App online" : "Reconnecting events"}
@@ -278,7 +507,7 @@ export default function App() {
           )}
         </div>
         <main id="main" tabIndex={-1}>
-          <div className="page-transition" key={location.pathname}>
+          <div className="page-transition" key={location.pathname} ref={pageRef}>
             <Suspense
               fallback={<div className="skeleton" aria-label="Loading page" />}
             >
@@ -290,9 +519,6 @@ export default function App() {
                     <>
                       <div className="page-intro">
                         <div>
-                          <span className="eyebrow">
-                            DISCOVER BEFORE YOU BUILD
-                          </span>
                           <h1>Opportunities</h1>
                           <p>
                             Quality first. Inspect the score, scope and effort
@@ -300,8 +526,17 @@ export default function App() {
                           </p>
                         </div>
                       </div>
-                      <Discovery />
-                      <section className="surface opportunity-surface">
+                      <Suspense
+                        fallback={
+                          <div
+                            className="skeleton"
+                            aria-label="Loading discovery controls"
+                          />
+                        }
+                      >
+                        <Discovery />
+                      </Suspense>
+                      <section className="opportunity-surface">
                         <Opportunities />
                       </section>
                     </>
@@ -324,9 +559,29 @@ export default function App() {
                 <Route
                   path="/operator"
                   element={
-                    <section className="surface operator-page">
-                      <Operator />
-                    </section>
+                    <>
+                      <div className="page-intro">
+                        <div>
+                          <h1>Operator</h1>
+                          <p>
+                            Ask about your workspace. Review every proposed
+                            action.
+                          </p>
+                        </div>
+                      </div>
+                      <section className="surface surface-elevated operator-page">
+                        <Suspense
+                          fallback={
+                            <div
+                              className="skeleton"
+                              aria-label="Loading Operator"
+                            />
+                          }
+                        >
+                          <Operator />
+                        </Suspense>
+                      </section>
+                    </>
                   }
                 />
                 <Route
@@ -350,13 +605,60 @@ export default function App() {
         </footer>
       </div>
       <Dialog
+        open={searchOpen}
+        instant
+        onOpenChange={setSearchOpen}
+        title="Jump to a page"
+        description="Navigate your local contribution control plane."
+      >
+        <label className="search command-input">
+          <Search size={18} />
+          <input
+            data-autofocus
+            aria-label="Search pages"
+            placeholder="Search pages…"
+            value={navigationSearch}
+            onChange={(event) => setNavigationSearch(event.target.value)}
+          />
+        </label>
+        <div className="command-results">
+          {[
+            ...navigation,
+            { to: "/operator", label: "Operator", icon: MessageSquare },
+          ]
+            .filter((item) =>
+              item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
+            )
+            .map((item) => (
+              <button
+                key={item.to}
+                onClick={() => {
+                  setSearchOpen(false);
+                  navigate(item.to);
+                }}
+              >
+                <item.icon size={19} />
+                <span>{item.label}</span>
+                <ArrowUpRight size={14} />
+              </button>
+            ))}
+          {![...navigation, { label: "Operator" }].some((item) =>
+            item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
+          ) && <p className="muted">No matching pages.</p>}
+        </div>
+      </Dialog>
+      <Dialog
         open={operatorOpen}
         onOpenChange={setOperatorOpen}
         drawer
         title="Operator"
         description="Controlled actions, grounded in your persisted system state."
       >
-        <Operator />
+        <Suspense
+          fallback={<div className="skeleton" aria-label="Loading Operator" />}
+        >
+          <Operator />
+        </Suspense>
       </Dialog>
       <Dialog
         open={help}

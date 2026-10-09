@@ -78,7 +78,6 @@ export default function Configuration() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">VERSIONED & AUDITABLE</span>
           <h1>Configuration</h1>
           <p>
             Propose a change, inspect the diff, then choose when to apply it.
@@ -138,7 +137,7 @@ export default function Configuration() {
         </div>
       )}
       <div className="config-layout">
-        <section className="surface">
+        <section className="surface surface-elevated">
           <SectionHeader
             title="Active profile"
             extra={<SlidersHorizontal size={16} />}

@@ -57,7 +57,45 @@ export default function Contributions() {
           <p>Every issue gets its own branch, workspace and audit trail.</p>
         </div>
       </div>
-      <section className="surface">
+      <div className="contribution-summary" aria-label="Contribution summary">
+        {[
+          {
+            label: "Active workspaces",
+            states: [
+              "SELECTED",
+              "CLONING",
+              "PLANNING",
+              "CODING",
+              "TESTING",
+              "FIXING",
+              "REVIEWING",
+            ],
+            tone: "indigo",
+          },
+          {
+            label: "Needs your attention",
+            states: ["BLOCKED", "PAUSED"],
+            tone: "rose",
+          },
+          {
+            label: "Ready for review",
+            states: ["READY", "PR_PREPARED"],
+            tone: "jade",
+          },
+        ].map((item) => (
+          <div key={item.label} data-tone={item.tone}>
+            <span>{item.label}</span>
+            <strong>
+              {contributions.data
+                ? contributions.data.filter((c) =>
+                    item.states.includes(c.state),
+                  ).length
+                : "—"}
+            </strong>
+          </div>
+        ))}
+      </div>
+      <section className="surface contribution-collection">
         <SectionHeader title="Contribution workspaces" />
         <div className="table-toolbar contribution-filter">
           <input
@@ -97,21 +135,30 @@ export default function Contributions() {
             Try another search or state filter.
           </Empty>
         ) : (
-          visible.map((c) => (
-            <Link
-              className="contribution-row contribution-button"
-              key={c.id}
-              to={contributionURL(c.id)}
-            >
-              <RepositoryAvatar repository={c.repository} />
-              <div>
-                <strong>{c.repository}</strong>
-                <p>{c.title}</p>
-              </div>
-              <StateBadge state={c.state} />
-              <ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
-          ))
+          <div className="contribution-grid">
+            {visible.map((c) => (
+              <Link
+                className="contribution-row contribution-button"
+                key={c.id}
+                to={contributionURL(c.id)}
+              >
+                <RepositoryAvatar repository={c.repository} />
+                <div>
+                  <strong>{c.repository}</strong>
+                  <p>{c.title}</p>
+                  <span className="contribution-card-meta">
+                    <Bot size={14} />
+                    {c.codex_model || "Model not recorded"}
+                  </span>
+                  <code className="contribution-card-branch">
+                    {c.branch || "Branch not recorded"}
+                  </code>
+                </div>
+                <StateBadge state={c.state} />
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            ))}
+          </div>
         )}
       </section>
     </>
@@ -160,11 +207,19 @@ export function ContributionPage() {
   const [historySearch, setHistorySearch] = useState("");
   const agents = useQuery({
     queryKey: ["/agents"],
-    queryFn: () => request<{ contribution_id: string; model?: string; started_at: string }[]>("/agents"),
+    queryFn: () =>
+      request<
+        { contribution_id: string; model?: string; started_at: string }[]
+      >("/agents"),
     enabled: !!current && !current.demo && !current.codex_model,
     refetchInterval: 5000,
   });
-  const savedModel = current?.codex_model || agents.data?.filter(a => a.contribution_id === id && a.model).sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]?.model;
+  const savedModel =
+    current?.codex_model ||
+    agents.data
+      ?.filter((a) => a.contribution_id === id && a.model)
+      .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]
+      ?.model;
   const timelinePath = "/events?entity=" + encodeURIComponent(id);
   const timeline = useQuery({
     queryKey: [timelinePath],
@@ -214,16 +269,47 @@ export function ContributionPage() {
             <div className="contribution-title">
               <RepositoryAvatar repository={current.repository} />
               <div>
-                <a className="contribution-repository" href={"https://github.com/" + current.repository.split("/").map(encodeURIComponent).join("/")} target="_blank" rel="noreferrer">{current.repository}<ArrowUpRight size={13} /></a>
+                <a
+                  className="contribution-repository"
+                  href={
+                    "https://github.com/" +
+                    current.repository
+                      .split("/")
+                      .map(encodeURIComponent)
+                      .join("/")
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {current.repository}
+                  <ArrowUpRight size={13} />
+                </a>
                 <h1>{current.title}</h1>
               </div>
             </div>
             <StateBadge state={current.state} />
           </div>
           <div className="contribution-context">
-            <div className="contribution-model" aria-label="Selected contribution AI model"><Bot size={17} /><span>Codex model</span><strong>{savedModel || (agents.isPending && !current.demo ? "Checking saved model…" : "Not recorded")}</strong></div>
-            <div className="contribution-branch"><GitBranch size={15} /><code>{current.branch || "Branch not recorded"}</code></div>
-            <span className="contribution-config">Configuration v{current.config_version}</span>
+            <div
+              className="contribution-model"
+              aria-label="Selected contribution AI model"
+            >
+              <Bot size={17} />
+              <span>Codex model</span>
+              <strong>
+                {savedModel ||
+                  (agents.isPending && !current.demo
+                    ? "Checking saved model…"
+                    : "Not recorded")}
+              </strong>
+            </div>
+            <div className="contribution-branch">
+              <GitBranch size={15} />
+              <code>{current.branch || "Branch not recorded"}</code>
+            </div>
+            <span className="contribution-config">
+              Configuration v{current.config_version}
+            </span>
           </div>
           {contribution.error && (
             <p className="error" role="alert">
@@ -261,7 +347,10 @@ export function ContributionPage() {
                 <dt>Configuration snapshot</dt>
                 <dd>v{current.config_version}</dd>
               </div>
-              <div><dt>Codex model</dt><dd>{savedModel || "Model ID not recorded"}</dd></div>
+              <div>
+                <dt>Codex model</dt>
+                <dd>{savedModel || "Model ID not recorded"}</dd>
+              </div>
               {current.workspace && (
                 <div>
                   <dt>Workspace</dt>
@@ -284,15 +373,44 @@ export function ContributionPage() {
             className="surface contribution-timeline"
             aria-label="Persisted timeline"
           >
-            <SectionHeader title="Activity" extra={<button className="text-link" onClick={() => setHistoryExpanded(!historyExpanded)} aria-expanded={historyExpanded}>{historyExpanded ? "Show recent activity" : "Show full timeline"}</button>} />
-            {historyExpanded && <div className="history-search"><input aria-label="Search contribution activity" placeholder="Search saved events…" value={historySearch} onChange={e => setHistorySearch(e.target.value)} /></div>}
+            <SectionHeader
+              title="Activity"
+              extra={
+                <button
+                  className="text-link"
+                  onClick={() => setHistoryExpanded(!historyExpanded)}
+                  aria-expanded={historyExpanded}
+                >
+                  {historyExpanded
+                    ? "Show recent activity"
+                    : "Show full timeline"}
+                </button>
+              }
+            />
+            {historyExpanded && (
+              <div className="history-search">
+                <input
+                  aria-label="Search contribution activity"
+                  placeholder="Search saved events…"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                />
+              </div>
+            )}
             {timeline.error && (
               <p className="error" role="alert">
                 Timeline could not refresh: {timeline.error.message}
               </p>
             )}
             <EventRows
-              events={liveTimeline.filter((e) => e.entity_id === id && (!historyExpanded || (e.message + " " + e.type).toLowerCase().includes(historySearch.toLowerCase())))}
+              events={liveTimeline.filter(
+                (e) =>
+                  e.entity_id === id &&
+                  (!historyExpanded ||
+                    (e.message + " " + e.type)
+                      .toLowerCase()
+                      .includes(historySearch.toLowerCase())),
+              )}
               compact={!historyExpanded}
             />
           </section>

@@ -1,0 +1,155 @@
+/* One neutral foundation, workflow-specific accents.
+   Layers: toolbar 10, backdrop 20, navigation 30, overlay 60, dialog 61. */
+:root {
+  color-scheme: dark;
+  --bg: #0d0e12;
+  --sidebar: #111218;
+  --surface: #1a1c24;
+  --surface-high: #20232d;
+  --raised: #282b36;
+  --hover: #303440;
+  --border: #3b3e4c;
+  --border-soft: #2c2f3a;
+  --text: #f1f0f7;
+  --muted: #b0afbf;
+  --dim: #9897a9;
+  --orchid: #b28aff;
+  --orchid-soft: #ff9edb;
+  --rose: #ff8a86;
+  --rose-soft: #ffc078;
+  --jade: #63e6b3;
+  --jade-soft: #75ddeb;
+  --garnet: #ed7fa7;
+  --garnet-soft: #ffb18c;
+  --gold: #f1cf85;
+  --gold-soft: #df9871;
+  --indigo: #8395ff;
+  --indigo-soft: #62d8ef;
+  --accent: var(--orchid);
+  --accent-soft: var(--orchid-soft);
+  --accent-muted: var(--accent);
+  --primary: var(--accent);
+  --on-primary: #17131f;
+  --on-accent: #17131f;
+  --green: var(--jade);
+  --amber: var(--gold);
+  --red: #ff9d96;
+  --ring: var(--accent);
+  --ink: var(--text);
+  --terminal: #0d1018;
+  --terminal-text: #dbdbea;
+  --statement-rose: #ffad9e;
+  --statement-indigo: #a4b5ff;
+  --statement-garnet: #ffb18c;
+  --statement-gold: #f1cf85;
+  --panel-shadow:
+    0 8px 24px rgb(2 3 8 / 24%);
+  --elevated-shadow:
+    0 24px 56px -16px rgb(2 3 8 / 66%), 0 8px 20px -8px rgb(2 3 8 / 30%);
+  --floating-shadow: 0 32px 88px -16px rgb(0 0 0 / 65%);
+  --ambient-strength: 36%;
+  --feature-light: 28%;
+  --font-size-meta: 12px;
+  --font-size-body: 14px;
+  --overlay: rgb(6 6 12 / 72%);
+  --font-sans:
+    "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", "Manrope", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ui: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 100ms;
+  --duration-fast: 120ms;
+  --duration-ui: 180ms;
+  --duration-panel: 220ms;
+  --duration-exit: 140ms;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f5fa;
+  --sidebar: #ededf4;
+  --surface: #fdfcff;
+  --surface-high: #ffffff;
+  --raised: #ecebf3;
+  --hover: #e3e1ef;
+  --border: #d2cfdf;
+  --border-soft: #e3e0eb;
+  --text: #262332;
+  --muted: #605b70;
+  --dim: #6c657c;
+  --orchid: #7140b4;
+  --orchid-soft: #a4438e;
+  --rose: #a53d35;
+  --rose-soft: #9b5427;
+  --jade: #17734f;
+  --jade-soft: #216e83;
+  --garnet: #994772;
+  --garnet-soft: #a65732;
+  --gold: #82601b;
+  --gold-soft: #9b4b21;
+  --indigo: #3d56b0;
+  --indigo-soft: #146e89;
+  --primary: var(--accent);
+  --on-primary: #ffffff;
+  --on-accent: #fdfcff;
+  --red: #a53d35;
+  --ring: var(--accent);
+  --panel-shadow:
+    0 8px 24px rgb(43 26 76 / 5%);
+  --elevated-shadow: 0 18px 44px rgb(43 26 76 / 10%);
+  --floating-shadow: 0 32px 80px -20px rgb(43 26 76 / 22%);
+  --ambient-strength: 15%;
+  --feature-light: 12%;
+  --overlay: rgb(25 19 39 / 38%);
+}
+/* Palette belongs to the route, including the shell and body-mounted portals.
+   Status green/amber/red remain semantic and never depend on a route. */
+:root[data-palette="cosmic-orchid"] {
+  --accent: var(--orchid);
+  --accent-soft: var(--orchid-soft);
+}
+:root[data-palette="ember-rose"] {
+  --accent: var(--rose);
+  --accent-soft: var(--rose-soft);
+}
+:root[data-palette="aurora-jade"] {
+  --accent: var(--jade);
+  --accent-soft: var(--jade-soft);
+}
+:root[data-palette="velvet-garnet"] {
+  --accent: var(--garnet);
+  --accent-soft: var(--garnet-soft);
+}
+:root[data-palette="obsidian-gold"] {
+  --accent: var(--gold);
+  --accent-soft: var(--gold-soft);
+}
+:root[data-palette="electric-indigo"] {
+  --accent: var(--indigo);
+  --accent-soft: var(--indigo-soft);
+}
+:root {
+  --surface-light: var(--accent);
+  --matte: color-mix(in srgb, var(--accent) 58%, #e4dce9);
+  --matte-ink: #211c27;
+  --matte-muted: #463749;
+  --matte-stroke: rgb(33 28 39 / 20%);
+  --lit-border: linear-gradient(transparent, transparent);
+  --lit-shadow: var(--elevated-shadow);
+}
+/* Summary tiles carry the screen pair; badges carry the actual recorded state. */
+[data-tone] { --tile-accent: var(--accent); }
+[data-tone]:nth-child(even) { --tile-accent: var(--accent-soft); }
