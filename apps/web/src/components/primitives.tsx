@@ -11,14 +11,21 @@ export function Badge({
   return <span className={"badge badge-" + tone}>{children}</span>;
 }
 export function StateBadge({ state }: { state: string }) {
-  const tone =
-    ["READY", "PR_PREPARED", "PR_OPENED"].includes(state)
-      ? "green"
-      : ["BLOCKED", "PAUSED"].includes(state)
-        ? "amber"
-        : ["CODING", "TESTING", "FIXING", "PLANNING", "CLONING", "REVIEWING"].includes(state)
-          ? "violet"
-          : state === "FAILED" ? "red"
+  const tone = ["READY", "PR_PREPARED", "PR_OPENED"].includes(state)
+    ? "green"
+    : ["BLOCKED", "PAUSED"].includes(state)
+      ? "amber"
+      : [
+            "CODING",
+            "TESTING",
+            "FIXING",
+            "PLANNING",
+            "CLONING",
+            "REVIEWING",
+          ].includes(state)
+        ? "violet"
+        : state === "FAILED"
+          ? "red"
           : "neutral";
   return (
     <Badge tone={tone}>
@@ -89,7 +96,10 @@ export function EventRows({
                 </span>
                 <p>{e.message}</p>
               </div>
-              <time dateTime={e.created_at} title={new Date(e.created_at).toLocaleString()}>
+              <time
+                dateTime={e.created_at}
+                title={new Date(e.created_at).toLocaleString()}
+              >
                 {new Date(e.created_at).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",

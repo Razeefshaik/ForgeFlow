@@ -1,5 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity as ActivityIcon,
@@ -26,11 +32,11 @@ import {
 import { useAPI } from "./api";
 import type { Overview as OverviewType } from "./types";
 import Overview from "./pages/Overview";
-import Operator from "./components/Operator";
 import { Badge, Empty } from "./components/primitives";
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
-import Discovery from "./components/Discovery";
+const Operator = lazy(() => import("./components/Operator"));
+const Discovery = lazy(() => import("./components/Discovery"));
 const Login = lazy(() => import("./pages/Login"));
 const Configuration = lazy(() => import("./pages/Configuration"));
 const Opportunities = lazy(() => import("./pages/Opportunities"));
@@ -68,12 +74,17 @@ export default function App() {
     () => localStorage.getItem("forgeflow-theme") ?? "dark",
   );
   const [operatorOpen, setOperatorOpen] = useState(false);
+  const [resolvedTheme, setResolvedTheme] = useState(() =>
+    localStorage.getItem("forgeflow-theme") === "light" ? "light" : "dark",
+  );
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
   const [connected, setConnected] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [navigationSearch, setNavigationSearch] = useState("");
-  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const [compact, setCompact] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches,
+  );
   const sidebarRef = useRef<HTMLElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const overview = useAPI<OverviewType>("/overview");
@@ -81,7 +92,12 @@ export default function App() {
   const client = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const page = location.pathname === "/" ? "overview" : location.pathname.startsWith("/contributions/") ? "workspace" : location.pathname.split("/")[1];
+  const page =
+    location.pathname === "/"
+      ? "overview"
+      : location.pathname.startsWith("/contributions/")
+        ? "workspace"
+        : location.pathname.split("/")[1];
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
     const update = () => setCompact(media.matches);
@@ -92,7 +108,7 @@ export default function App() {
     const handle = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setSearchOpen(value => !value);
+        setSearchOpen((value) => !value);
       }
     };
     document.addEventListener("keydown", handle);
@@ -103,15 +119,32 @@ export default function App() {
     const sidebar = sidebarRef.current;
     sidebar?.querySelector<HTMLElement>(".mobile-close")?.focus();
     const handle = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMenu(false); menuTriggerRef.current?.focus(); }
+      if (event.key === "Escape") {
+        setMenu(false);
+        menuTriggerRef.current?.focus();
+      }
       if (event.key !== "Tab" || !sidebar) return;
-      const elements = [...sidebar.querySelectorAll<HTMLElement>("a, button")].filter(el => el.getClientRects().length);
-      const first = elements[0], last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      const elements = [
+        ...sidebar.querySelectorAll<HTMLElement>("a, button"),
+      ].filter((el) => el.getClientRects().length);
+      const first = elements[0],
+        last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
     };
     document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
+    return () => {
+      document.removeEventListener("keydown", handle);
+      queueMicrotask(() => {
+        if (window.matchMedia("(max-width: 767px)").matches)
+          menuTriggerRef.current?.focus();
+      });
+    };
   }, [menu, compact]);
   useEffect(() => {
     const keyboard = () => {
@@ -133,6 +166,7 @@ export default function App() {
       const resolved =
         theme === "system" ? (media.matches ? "dark" : "light") : theme;
       document.documentElement.dataset.theme = resolved;
+      setResolvedTheme(resolved);
       document
         .querySelector('meta[name="theme-color"]')
         ?.setAttribute("content", resolved === "dark" ? "#101014" : "#f5f5fa");
@@ -174,7 +208,11 @@ export default function App() {
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
-      <aside ref={sidebarRef} inert={compact && !menu ? true : undefined} className={"sidebar" + (menu ? " sidebar-open" : "")}>
+      <aside
+        ref={sidebarRef}
+        inert={compact && !menu ? true : undefined}
+        className={"sidebar" + (menu ? " sidebar-open" : "")}
+      >
         <div className="brand">
           <span className="brand-mark">
             <Command size={19} />
@@ -184,7 +222,10 @@ export default function App() {
           <button
             className="icon-button mobile-close"
             aria-label="Close navigation"
-            onClick={() => { setMenu(false); menuTriggerRef.current?.focus(); }}
+            onClick={() => {
+              setMenu(false);
+              menuTriggerRef.current?.focus();
+            }}
           >
             <X size={16} />
           </button>
@@ -250,9 +291,15 @@ export default function App() {
           <button onClick={() => setHelp(true)}>
             <CircleHelp size={16} /> Getting started <ArrowUpRight size={13} />
           </button>
-          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
-            {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          <button
+            onClick={() =>
+              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+            }
+          >
+            {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
+            {resolvedTheme === "dark"
+              ? "Switch to light mode"
+              : "Switch to dark mode"}
           </button>
         </div>
       </aside>
@@ -274,11 +321,24 @@ export default function App() {
             >
               <Menu size={19} />
             </button>
-            <span className="toolbar-breadcrumb">Workspace <span>/</span></span>
+            <span className="toolbar-breadcrumb">
+              Workspace <span>/</span>
+            </span>
             <strong className="toolbar-title">{label}</strong>
           </div>
           <div>
-            <button className="command-search" aria-label="Open command search" onClick={() => { setNavigationSearch(""); setSearchOpen(true); }}><Search size={16} /><span>Jump to a page</span><kbd>Ctrl K</kbd></button>
+            <button
+              className="command-search"
+              aria-label="Open command search"
+              onClick={() => {
+                setNavigationSearch("");
+                setSearchOpen(true);
+              }}
+            >
+              <Search size={16} />
+              <span>Jump to a page</span>
+              <kbd>Ctrl K</kbd>
+            </button>
             <span className={"connection " + (connected ? "connected" : "")}>
               <i />
               {connected ? "App online" : "Reconnecting events"}
@@ -332,9 +392,6 @@ export default function App() {
                     <>
                       <div className="page-intro">
                         <div>
-                          <span className="eyebrow">
-                            DISCOVER BEFORE YOU BUILD
-                          </span>
                           <h1>Opportunities</h1>
                           <p>
                             Quality first. Inspect the score, scope and effort
@@ -342,7 +399,16 @@ export default function App() {
                           </p>
                         </div>
                       </div>
-                      <Discovery />
+                      <Suspense
+                        fallback={
+                          <div
+                            className="skeleton"
+                            aria-label="Loading discovery controls"
+                          />
+                        }
+                      >
+                        <Discovery />
+                      </Suspense>
                       <section className="opportunity-surface">
                         <Opportunities />
                       </section>
@@ -366,7 +432,29 @@ export default function App() {
                 <Route
                   path="/operator"
                   element={
-                    <><div className="page-intro"><div><span className="eyebrow">CONTEXTUAL ASSISTANCE</span><h1>Operator</h1><p>Ask about your workspace. Review every proposed action.</p></div></div><section className="surface operator-page"><Operator /></section></>
+                    <>
+                      <div className="page-intro">
+                        <div>
+                          <h1>Operator</h1>
+                          <p>
+                            Ask about your workspace. Review every proposed
+                            action.
+                          </p>
+                        </div>
+                      </div>
+                      <section className="surface surface-elevated operator-page">
+                        <Suspense
+                          fallback={
+                            <div
+                              className="skeleton"
+                              aria-label="Loading Operator"
+                            />
+                          }
+                        >
+                          <Operator />
+                        </Suspense>
+                      </section>
+                    </>
                   }
                 />
                 <Route
@@ -389,11 +477,46 @@ export default function App() {
           <span>ForgeFlow · Local workspace</span>
         </footer>
       </div>
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen} title="Jump to a page" description="Navigate your local contribution control plane.">
-        <label className="search command-input"><Search size={18} /><input autoFocus aria-label="Search pages" placeholder="Search pages…" value={navigationSearch} onChange={event => setNavigationSearch(event.target.value)} /></label>
+      <Dialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        title="Jump to a page"
+        description="Navigate your local contribution control plane."
+      >
+        <label className="search command-input">
+          <Search size={18} />
+          <input
+            data-autofocus
+            aria-label="Search pages"
+            placeholder="Search pages…"
+            value={navigationSearch}
+            onChange={(event) => setNavigationSearch(event.target.value)}
+          />
+        </label>
         <div className="command-results">
-          {[...navigation, { to: "/operator", label: "Operator", icon: MessageSquare }].filter(item => item.label.toLowerCase().includes(navigationSearch.toLowerCase())).map(item => <button key={item.to} onClick={() => { setSearchOpen(false); navigate(item.to); }}><item.icon size={19} /><span>{item.label}</span><ArrowUpRight size={14} /></button>)}
-          {![...navigation, { label: "Operator" }].some(item => item.label.toLowerCase().includes(navigationSearch.toLowerCase())) && <p className="muted">No matching pages.</p>}
+          {[
+            ...navigation,
+            { to: "/operator", label: "Operator", icon: MessageSquare },
+          ]
+            .filter((item) =>
+              item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
+            )
+            .map((item) => (
+              <button
+                key={item.to}
+                onClick={() => {
+                  setSearchOpen(false);
+                  navigate(item.to);
+                }}
+              >
+                <item.icon size={19} />
+                <span>{item.label}</span>
+                <ArrowUpRight size={14} />
+              </button>
+            ))}
+          {![...navigation, { label: "Operator" }].some((item) =>
+            item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
+          ) && <p className="muted">No matching pages.</p>}
         </div>
       </Dialog>
       <Dialog
@@ -403,7 +526,11 @@ export default function App() {
         title="Operator"
         description="Controlled actions, grounded in your persisted system state."
       >
-        <Operator />
+        <Suspense
+          fallback={<div className="skeleton" aria-label="Loading Operator" />}
+        >
+          <Operator />
+        </Suspense>
       </Dialog>
       <Dialog
         open={help}

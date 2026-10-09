@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Github, ExternalLink, ShieldCheck, Radar, Terminal } from "../components/icons";
+import {
+  Github,
+  ExternalLink,
+  ShieldCheck,
+  Radar,
+  Terminal,
+} from "../components/icons";
 import { request } from "../api";
 import { Button } from "../components/ui/button";
 
@@ -50,7 +56,6 @@ export default function Login() {
     <>
       <div className="page-intro">
         <div>
-          <span className="eyebrow">YOUR GITHUB CONNECTION</span>
           <h1>GitHub account</h1>
           <p>
             Sign in once in your browser. ForgeFlow remembers your account
@@ -59,7 +64,7 @@ export default function Login() {
         </div>
       </div>
       <div className="auth-layout">
-        <section className="surface auth-card">
+        <section className="surface surface-elevated auth-card">
           <h2
             style={{
               display: "flex",
@@ -282,8 +287,9 @@ export default function Login() {
               )}
         </section>
         <aside className="surface auth-aside">
-          <span className="auth-emblem"><Github size={36} /></span>
-          <span className="eyebrow">YOUR OPEN SOURCE WORKBENCH</span>
+          <span className="auth-emblem">
+            <Github size={36} />
+          </span>
           <h2>
             Great contributions.
             <br />
@@ -294,7 +300,27 @@ export default function Login() {
             actions. Plans, verification and independent reviews stay together
             in each contribution workspace.
           </p>
-          <div className="auth-workflow"><div><Radar size={19} /><span>Discover issues<strong>Evaluate before you commit</strong></span></div><div><Terminal size={19} /><span>Execute in isolation<strong>Keep changes and evidence together</strong></span></div><div><ShieldCheck size={19} /><span>Review and approve<strong>You decide when to publish</strong></span></div></div>
+          <div className="auth-workflow">
+            <div>
+              <Radar size={19} />
+              <span>
+                Discover issues<strong>Evaluate before you commit</strong>
+              </span>
+            </div>
+            <div>
+              <Terminal size={19} />
+              <span>
+                Execute in isolation
+                <strong>Keep changes and evidence together</strong>
+              </span>
+            </div>
+            <div>
+              <ShieldCheck size={19} />
+              <span>
+                Review and approve<strong>You decide when to publish</strong>
+              </span>
+            </div>
+          </div>
           <div className="approval-note">
             <ShieldCheck size={18} />
             <span>
