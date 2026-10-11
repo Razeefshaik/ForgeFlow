@@ -41,7 +41,7 @@ npm --prefix apps/web run dev
 - Reconnectable SSE replay and frontend cache invalidation.
 - Explained quality ranking, independent heuristic effort estimates and the required ranking-independence regression test.
 - Explicit, idempotent demo seeding; no mocked data in live mode.
-- Arnyx connects to the authenticated local LLM with compact current state, short conversation memory and targeted lookups. It explains blockers and drafts validated configuration proposals or contribution confirmation cards. Activity logs, agent transcripts and test output are excluded. Demo/offline mode is explicitly deterministic. See [Arnyx](docs/operator.md).
+- Arnyx uses your authenticated local Codex CLI to inspect project files and diagnostics, or edit a selected local folder after approval. Previous chats persist in SQLite and can be reopened. ForgeFlow controls still use validated proposals and contribution confirmation cards; contribution coding stays in its existing workflow. Demo/offline mode is explicitly deterministic. See [Arnyx](docs/operator.md).
 - Read-only GitHub discovery: bounded requests, credential lookup, rate-limit backoff, memory cache and ETag revalidation.
 - Repository/issue evidence, eleven explained quality factors, timestamped snapshots and durable scan history.
 - Live Run/Cancel and automatic Pause/Resume controls; demo mode cannot fetch live issues.

@@ -35,7 +35,7 @@ func TestArnyxEndpointAndBoundedConversation(t *testing.T) {
 	defer r.Body.Close()
 	var runtime map[string]any
 	json.NewDecoder(r.Body).Decode(&runtime)
-	if runtime["arnyx_version"] != float64(1) {
+	if runtime["arnyx_version"] != float64(2) {
 		t.Fatal("missing compatibility marker")
 	}
 	r = post(t, s, "/api/arnyx/chat", `{"message":"`+strings.Repeat("x", 2001)+`"}`, s.URL)

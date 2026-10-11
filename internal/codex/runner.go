@@ -69,9 +69,12 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	if c.Binary == "" {
 		return result, errors.New("Codex CLI unavailable; install it and run codex login")
 	}
-	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator"
+	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator" || r.Role == "assistant-reader"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
 	args = append(args, c.policy(readOnly, r.Network)...)
+	if r.Role == "assistant-reader" || r.Role == "assistant-editor" {
+		args = append(args, "--skip-git-repo-check")
+	}
 	if r.Role == "operator" {
 		args = append(args, "--skip-git-repo-check")
 		for _, feature := range []string{"shell_tool", "unified_exec", "apps", "plugins", "multi_agent", "browser_use", "computer_use", "image_generation", "view_image", "memories", "skill_search", "code_mode_host"} {
@@ -97,8 +100,9 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, c.Binary, args...)
 	cmd.Dir = r.Directory
-	if r.Role == "operator" {
-		cmd.Env = environment()
+	if r.Role == "operator" || r.Role == "assistant-reader" {
+		// Inspection must not create build/cache directories in the target folder.
+		cmd.Env = approvedNetworkEnvironment(environment(), r.Network)
 	} else {
 		env, err := workspaceEnvironmentForNetwork(r.Directory, r.Network)
 		if err != nil {

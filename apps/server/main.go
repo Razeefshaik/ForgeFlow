@@ -12,6 +12,7 @@ import (
 	"forgeflow/internal/execution"
 	"forgeflow/internal/github"
 	"forgeflow/internal/githubauth"
+	"forgeflow/internal/operator"
 	"forgeflow/internal/project"
 	"forgeflow/internal/seed"
 	"forgeflow/internal/storage"
@@ -202,7 +203,12 @@ func run() error {
 	}()
 	defer func() { cancel(); <-expiryDone }()
 	defer func() { cancel(); discover.Cancel(); discover.Wait() }()
-	server := &http.Server{Addr: *listen, Handler: (api.Server{Auth: account, Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Runtime: map[string]any{"contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	assistant := operator.NewWorkspaceAssistant(ctx, s, operatorAI, root, settings.ContributionsDir)
+	if err = s.RecoverArnyxTasks(ctx); err != nil {
+		return err
+	}
+	defer func() { cancel(); assistant.Wait() }()
+	server := &http.Server{Addr: *listen, Handler: (api.Server{Auth: account, Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Assistant: assistant, Runtime: map[string]any{"project_root": root, "contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	done := make(chan error, 1)
 	go func() {
 		slog.Info("ForgeFlow listening", "address", *listen, "demo", *demo)

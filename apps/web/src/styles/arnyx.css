@@ -185,6 +185,23 @@
 .arnyx-context button:disabled {
   opacity: 0.4;
 }
+.arnyx-context button + button { margin-left: 4px; }
+.arnyx-history { max-height: 220px; overflow: auto; padding: 6px 18px 12px; border-bottom: 1px solid var(--border); }
+.arnyx-history > button { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 10px; padding: 9px 12px; }
+.arnyx-history > button:is(:hover,.is-active) { background: var(--surface-high); }
+.arnyx-history time { font-size: 10px; color: var(--muted); }
+.arnyx-history span { overflow-wrap: anywhere; }
+.arnyx-history-pages,.arnyx-folder-shortcuts,.arnyx-task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.arnyx-history-pages button,.arnyx-folder-shortcuts button,.arnyx-load-older { background: transparent; border: 0; color: var(--accent); font-size: 11px; padding: 4px 0; }
+.arnyx-access { padding: 6px 20px 12px; border-bottom: 1px solid var(--border); display: grid; gap: 7px; font-size: 11px; }
+.arnyx-access label { display: grid; gap: 4px; color: var(--muted); }
+.arnyx-access :is(select,input:not([type="checkbox"])) { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.arnyx-access .arnyx-network { display: flex; align-items: center; gap: 7px; }
+.arnyx-access p { color: var(--muted); margin: 0; line-height: 1.5; }
+.arnyx-task { margin: 12px 0; }
+.arnyx-task code { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 11px; }
+.arnyx-task-actions button { white-space: normal; }
+@media (max-width: 600px) { .arnyx-access :is(input:not([type="checkbox"]),select) { font-size: 16px; } }
 .arnyx-messages {
   flex: 1;
   overflow: auto;

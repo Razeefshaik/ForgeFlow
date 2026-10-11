@@ -64,10 +64,17 @@ test("Arnyx preserves conversation across closing and navigation without applyin
   await expect(
     page.getByText("Offline assistant", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Clear chat" }).click();
+  await page.getByRole("button", { name: "New chat" }).click();
   await expect(page.getByRole("log")).not.toContainText(
     "Active configuration:",
   );
+  await page.getByRole("button", { name: "Previous chats" }).click();
+  await page.getByRole("button", { name: /What are my current languages\?/ }).click();
+  await expect(page.getByRole("log")).toContainText("Active configuration:");
+  await page.reload();
+  await page.getByRole("button", { name: "Chat with Arnyx", exact: true }).click();
+  await expect(page.getByRole("log")).toContainText("What are my current languages?");
+  await expect(page.getByRole("log")).toContainText("Active configuration:");
 });
 
 test("Arnyx sends only bounded conversation and page focus, then renders a controlled reply", async ({
@@ -102,7 +109,7 @@ test("Arnyx sends only bounded conversation and page focus, then renders a contr
   await expect.poll(() => payload?.message).toBe("Keep the other settings");
   expect(payload?.view.route).toBe("/configuration");
   expect(payload?.history).toHaveLength(2);
-  expect(Object.keys(payload!)).toEqual(["message", "history", "view"]);
+  expect(Object.keys(payload!)).toEqual(["message", "history", "view", "conversation_id"]);
 });
 
 for (const mobile of [false, true])

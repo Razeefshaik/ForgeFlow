@@ -6,153 +6,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useArnyxConversation as useConversation } from "./useArnyxConversation";
 import {
   ArrowUp,
   CornerDownLeft,
   SlidersHorizontal,
   ShieldCheck,
 } from "./icons";
-import { Link, useLocation } from "react-router-dom";
-import { request, useAPI } from "../api";
-import type { Reply } from "../types";
+import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 
-type Message = {
-  role: "user" | "assistant";
-  text: string;
-  proposal?: boolean;
-  confirmation?: Reply["confirmation"];
-};
-function shortTurn(text: string) {
-  let value = "";
-  for (const char of text) {
-    if (new TextEncoder().encode(value + char).length > 800) break;
-    value += char;
-  }
-  return value;
-}
-function useConversation() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [confirming, setConfirming] = useState<number | null>(null);
-  const [lastReply, setLastReply] = useState<Reply>();
-  const client = useQueryClient();
-  const location = useLocation();
-  const runtime = useAPI<{
-    mode: string;
-    codex_available: boolean;
-    arnyx_version?: number;
-  }>("/runtime");
-  const mutation = useMutation({
-    retry: false,
-    mutationFn: ({
-      message,
-      history,
-    }: {
-      message: string;
-      history: Message[];
-    }) =>
-      request<Reply>("/arnyx/chat", {
-        message,
-        history: history
-          .slice(-6)
-          .map((m) => ({ role: m.role, content: shortTurn(m.text) })),
-        view: {
-          route: location.pathname,
-          contribution_id:
-            location.pathname.match(/^\/contributions\/([^/]+)$/)?.[1] || "",
-        },
-      }),
-    onSuccess: async (reply) => {
-      setLastReply(reply);
-      setMessages(
-        (m) =>
-          [
-            ...m,
-            {
-              role: "assistant",
-              text: reply.message,
-              proposal: !!reply.proposal,
-              confirmation: reply.confirmation,
-            },
-          ].slice(-24) as Message[],
-      );
-      await client.invalidateQueries({ queryKey: ["/config/proposals"] });
-    },
-  });
-  function send(text: string) {
-    if (
-      !text.trim() ||
-      mutation.isPending ||
-      confirming !== null ||
-      !runtime.data?.arnyx_version
-    )
-      return;
-    const message = text.trim();
-    mutation.mutate({ message, history: messages });
-    setMessages(
-      (m) => [...m, { role: "user", text: message }].slice(-24) as Message[],
-    );
-  }
-  async function confirm(index: number) {
-    const c = messages[index]?.confirmation;
-    if (!c || confirming !== null || mutation.isPending) return;
-    if (
-      c.action === "abandon" &&
-      !window.confirm(
-        "Abandon this contribution? Workspace and history will be preserved.",
-      )
-    )
-      return;
-    setConfirming(index);
-    try {
-      await request(
-        "/contributions/" +
-          encodeURIComponent(c.contribution_id) +
-          "/" +
-          c.action,
-        { approved: true, constraints: c.constraints || "" },
-      );
-      setMessages((items) =>
-        items.map((m, i) =>
-          i === index
-            ? {
-                ...m,
-                text: m.text + " Action accepted.",
-                confirmation: undefined,
-              }
-            : m,
-        ),
-      );
-      await client.invalidateQueries();
-    } catch (e) {
-      setMessages((items) => [
-        ...items,
-        { role: "assistant", text: (e as Error).message },
-      ]);
-    } finally {
-      setConfirming(null);
-    }
-  }
-  function clear() {
-    if (!mutation.isPending && confirming === null) {
-      setMessages([]);
-      setLastReply(undefined);
-      mutation.reset();
-    }
-  }
-  return {
-    messages,
-    send,
-    confirm,
-    confirming,
-    clear,
-    mutation,
-    runtime,
-    lastReply,
-    route: location.pathname,
-  };
-}
 const Conversation = createContext<ReturnType<typeof useConversation> | null>(
   null,
 );
@@ -179,7 +42,7 @@ export default function Arnyx() {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, mutation.isPending]);
-  const needsRestart = !!runtime.data && !runtime.data.arnyx_version;
+  const needsRestart = !!runtime.data && (runtime.data.arnyx_version || 0) < 2;
   const live = runtime.data?.mode === "live" && runtime.data.codex_available;
   return (
     <div className="arnyx-chat">
@@ -199,12 +62,38 @@ export default function Arnyx() {
         <button
           onClick={clear}
           disabled={
-            mutation.isPending || confirming !== null || !messages.length
+            mutation.isPending || confirming !== null
           }
         >
-          Clear chat
+          New chat
         </button>
+        <button onClick={() => chat.setHistoryOpen(!chat.historyOpen)} aria-expanded={chat.historyOpen} disabled={mutation.isPending}>Previous chats</button>
       </div>
+      {chat.historyOpen && <div className="arnyx-history" aria-label="Previous conversations">
+        {chat.history.isPending && <p role="status">Loading conversations…</p>}
+        {chat.history.error && <p role="alert">{chat.history.error.message}</p>}
+        {chat.history.data?.length === 0 && <p>No saved conversations yet.</p>}
+        {chat.history.data?.map(c => <button key={c.id} className={c.id === chat.id ? "is-active" : ""} onClick={() => chat.selectChat(c.id)}>
+          <span>{c.title}</span><time>{new Date(c.updated_at).toLocaleString()}</time>
+        </button>)}
+        <div className="arnyx-history-pages">
+          {chat.historyOffset > 0 && <button onClick={() => chat.setHistoryOffset(Math.max(0, chat.historyOffset - 50))}>Newer chats</button>}
+          {chat.history.data?.length === 50 && <button onClick={() => chat.setHistoryOffset(chat.historyOffset + 50)}>Older chats</button>}
+        </div>
+      </div>}
+      {chat.workspaceAvailable && <div className="arnyx-access">
+        <label>Access mode<select aria-label="Arnyx access mode" value={chat.mode} onChange={e => chat.setMode(e.target.value)} disabled={mutation.isPending || chat.running}>
+          <option value="inspect">Inspect files</option><option value="edit">Make changes</option><option value="controls">ForgeFlow controls</option>
+        </select></label>
+        {chat.mode !== "controls" && <>
+          <label>Project or laptop folder<input aria-label="Arnyx workspace folder" value={chat.directory} placeholder={runtime.data?.project_root || "Absolute folder path"} onChange={e => chat.setDirectory(e.target.value)} disabled={mutation.isPending || chat.running} /></label>
+          <div className="arnyx-folder-shortcuts"><button onClick={() => chat.setDirectory(runtime.data?.project_root || "")} disabled={chat.running}>ForgeFlow project</button>
+            {chat.focusedWorkspace && <button onClick={() => chat.setDirectory(chat.focusedWorkspace!)} disabled={chat.running}>Current contribution</button>}
+          </div>
+          <label className="arnyx-network"><input type="checkbox" checked={chat.network} onChange={e => chat.setNetwork(e.target.checked)} disabled={mutation.isPending || chat.running} />Allow network and dependency downloads</label>
+          <p>{chat.mode === "edit" ? "Your request and folder will appear for approval before Codex edits files." : "Codex can read local files and use diagnostic tools. Project files remain read-only."}</p>
+        </>}
+      </div>}
       {needsRestart && (
         <p className="arnyx-restart" role="status">
           Restart ForgeFlow once to load Arnyx’s updated backend.
@@ -217,6 +106,10 @@ export default function Arnyx() {
         aria-live="polite"
         aria-label="Conversation with Arnyx"
       >
+        {chat.detail.isPending && chat.id && <p role="status">Loading saved conversation…</p>}
+        {chat.detail.error && <div role="alert" className="arnyx-error"><p>{chat.detail.error.message}</p><button onClick={clear}>Start a new chat</button></div>}
+        {chat.olderAvailable && <button className="arnyx-load-older" onClick={() => void chat.loadOlder()}>Load earlier messages</button>}
+        {chat.historyError && <p role="alert">{chat.historyError}</p>}
         {!messages.length && (
           <div className="arnyx-welcome">
             <div className="arnyx-welcome-avatar">
@@ -289,6 +182,17 @@ export default function Arnyx() {
             )}
           </div>
         ))}
+        {chat.tasks.filter(t => t.status === "RUNNING" || t.status === "AWAITING_APPROVAL").map(t => <div key={t.id} className="arnyx-confirmation arnyx-task">
+          <span className="eyebrow">{t.status === "RUNNING" ? "CODEX RUNNING" : "APPROVAL REQUIRED"}</span>
+          <p>{t.prompt}</p><code>{t.directory}</code>
+          <p>{t.mode === "edit" ? "Edits in this folder" : "Read-only inspection"}{t.network ? " · network allowed" : " · tool network disabled"}</p>
+          <p role="status">{t.activity}</p>
+          {t.status === "RUNNING" ? <Button disabled={chat.taskAction.isPending} onClick={() => chat.taskAction.mutate({task:t,action:"stop"})}>Stop Codex task</Button> : <div className="arnyx-task-actions">
+            <Button disabled={chat.taskAction.isPending || chat.running} onClick={() => chat.taskAction.mutate({task:t,action:"approve"})}>Approve changes in this folder</Button>
+            <Button variant="secondary" disabled={chat.taskAction.isPending} onClick={() => chat.taskAction.mutate({task:t,action:"stop"})}>Cancel request</Button>
+          </div>}
+        </div>)}
+        {chat.taskAction.error && <p className="arnyx-error" role="alert">{chat.taskAction.error.message}</p>}
         {mutation.isPending && (
           <div className="arnyx-thinking" role="status">
             <span />
@@ -308,7 +212,7 @@ export default function Arnyx() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (input.trim() && !mutation.isPending) {
+            if (input.trim() && !mutation.isPending && !chat.running && !chat.detail.isFetching) {
               send(input);
               setInput("");
             }
@@ -328,6 +232,8 @@ export default function Arnyx() {
             disabled={
               !input.trim() ||
               mutation.isPending ||
+              chat.running ||
+              chat.detail.isFetching ||
               confirming !== null ||
               needsRestart
             }
@@ -337,10 +243,10 @@ export default function Arnyx() {
         </form>
         <p>
           <ShieldCheck size={12} /> Changes wait for your approval{" "}
-          <span title="Only compact current state and six short conversation turns are sent. No activity logs.">
+          <span title="Saved history stays in ForgeFlow. Codex receives bounded recent context and can inspect selected project files.">
             {lastReply?.context_bytes
               ? `${(lastReply.context_bytes / 1024).toFixed(1)} KB context`
-              : "No activity logs"}
+              : "Chats saved locally"}
           </span>
         </p>
       </div>
