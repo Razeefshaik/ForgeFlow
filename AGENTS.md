@@ -3,7 +3,7 @@
 - Never auto-submit or auto-merge PRs.
 - Never let Codex-effort estimation affect opportunity ranking.
 - Every contribution must have an isolated workspace.
-- Codex may modify only the active contribution workspace.
+- Contribution agents may modify only the active contribution workspace. Arnyx local-project editing may modify only the user-selected folder after explicit approval of the request; contribution repositories still use the contribution execution workflow.
 - Real commands/tests determine pass/fail; never fabricate test results.
 - Preserve event/audit history.
 - Human approval is required before contribution execution and PR submission.

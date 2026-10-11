@@ -69,9 +69,12 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	if c.Binary == "" {
 		return result, errors.New("Codex CLI unavailable; install it and run codex login")
 	}
-	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator"
+	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator" || r.Role == "assistant-reader"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
 	args = append(args, c.policy(readOnly, r.Network)...)
+	if r.Role == "assistant-reader" || r.Role == "assistant-editor" {
+		args = append(args, "--skip-git-repo-check")
+	}
 	if r.Role == "operator" {
 		args = append(args, "--skip-git-repo-check")
 		for _, feature := range []string{"shell_tool", "unified_exec", "apps", "plugins", "multi_agent", "browser_use", "computer_use", "image_generation", "view_image", "memories", "skill_search", "code_mode_host"} {
@@ -97,8 +100,9 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, c.Binary, args...)
 	cmd.Dir = r.Directory
-	if r.Role == "operator" {
-		cmd.Env = environment()
+	if r.Role == "operator" || r.Role == "assistant-reader" {
+		// Inspection must not create build/cache directories in the target folder.
+		cmd.Env = approvedNetworkEnvironment(environment(), r.Network)
 	} else {
 		env, err := workspaceEnvironmentForNetwork(r.Directory, r.Network)
 		if err != nil {
@@ -275,8 +279,12 @@ func ValidateCommand(c domain.VerificationCommand) error {
 	if !allowed[c.Program] || len(c.Arguments) > 30 {
 		return errors.New("verification program is not allowlisted")
 	}
-	for _, a := range c.Arguments {
-		if len(a) > 300 || strings.ContainsAny(a, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
+	for i, a := range c.Arguments {
+		unsafe := a
+		if c.Program == "go" && len(c.Arguments) > 0 && c.Arguments[0] == "test" && i > 0 && c.Arguments[i-1] == "-run" {
+			unsafe = strings.ReplaceAll(a, "|", "")
+		}
+		if len(a) > 300 || strings.ContainsAny(unsafe, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
 			return errors.New("unsafe verification argument")
 		}
 	}
@@ -327,7 +335,7 @@ func workspaceEnvironmentForNetwork(dir string, network bool) ([]string, error) 
 	if err := prepareWorkspaceCaches(dir); err != nil {
 		return nil, err
 	}
-	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOTMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 	result := []string{}
 	for _, entry := range approvedNetworkEnvironment(environment(), network) {
 		key, _, _ := strings.Cut(entry, "=")

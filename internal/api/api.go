@@ -35,6 +35,7 @@ type Server struct {
 	Execution  *execution.Service
 	Runtime    map[string]any
 	OperatorAI codex.Runner
+	Assistant  *operator.WorkspaceAssistant
 }
 
 func (s Server) Handler() http.Handler {
@@ -82,7 +83,7 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/health/details", func(w http.ResponseWriter, r *http.Request) { s.health(w, r, true) })
 	m.HandleFunc("GET /api/overview", s.overview)
-	runtime := map[string]any{"arnyx_version": 1}
+	runtime := map[string]any{"arnyx_version": 2, "arnyx_workspace_available": s.Assistant != nil && s.Assistant.AI != nil && !s.Store.Demo}
 	for key, value := range s.Runtime {
 		runtime[key] = value
 	}
@@ -270,6 +271,7 @@ func (s Server) Handler() http.Handler {
 		respond(w, v, e)
 	})
 	arnyxSlot := make(chan struct{}, 1)
+	s.arnyxRoutes(m)
 	arnyxChat := func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case arnyxSlot <- struct{}{}:
@@ -280,18 +282,43 @@ func (s Server) Handler() http.Handler {
 			return
 		}
 		var b struct {
-			Message string          `json:"message"`
-			History []operator.Turn `json:"history"`
-			View    operator.View   `json:"view"`
+			Message        string          `json:"message"`
+			History        []operator.Turn `json:"history"`
+			View           operator.View   `json:"view"`
+			ConversationID string          `json:"conversation_id"`
 		}
 		if !decode(w, r, &b) {
 			return
+		}
+		if b.ConversationID != "" {
+			if _, e := s.Store.ArnyxMessages(r.Context(), b.ConversationID, 0); e != nil {
+				respond(w, nil, e)
+				return
+			}
+			if len(b.Message) == 0 || len(b.Message) > 2000 {
+				write(w, 400, map[string]string{"error": "enter a message of at most 2000 bytes"})
+				return
+			}
+			if e := s.Store.AppendArnyxMessage(r.Context(), b.ConversationID, "user", b.Message); e != nil {
+				respond(w, nil, e)
+				return
+			}
 		}
 		root := ""
 		if s.Execution != nil {
 			root = s.Execution.Root
 		}
 		v, e := (operator.Service{Store: s.Store, AI: s.OperatorAI, Execution: s.Execution, Root: root, History: b.History, View: b.View}).Chat(r.Context(), b.Message)
+		if b.ConversationID != "" {
+			text := v.Message
+			if e != nil {
+				text = "Arnyx could not answer: " + e.Error()
+			}
+			if saveErr := s.Store.AppendArnyxMessage(r.Context(), b.ConversationID, "assistant", text); saveErr != nil {
+				respond(w, nil, saveErr)
+				return
+			}
+		}
 		respond(w, v, e)
 	}
 	m.HandleFunc("POST /api/arnyx/chat", arnyxChat)
@@ -301,6 +328,9 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("/", s.spa)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/arnyx/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")

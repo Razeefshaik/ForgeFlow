@@ -47,3 +47,50 @@ func TestWindowsWrapperUsesExplicitLocalPath(t *testing.T) {
 		}
 	}
 }
+
+func TestGoTemporaryDirectoryIsWritableAndIsolated(t *testing.T) {
+	t.Setenv("GOTMPDIR", filepath.Join(t.TempDir(), "inherited-unwritable"))
+	for _, dir := range []string{t.TempDir(), t.TempDir()} {
+		expected := filepath.Join(dir, ".forgeflow-runtime", "tmp")
+		count := 0
+		env, err := workspaceEnvironmentForNetwork(dir, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range env {
+			key, value, _ := strings.Cut(entry, "=")
+			if strings.EqualFold(key, "GOTMPDIR") {
+				count++
+				if value != expected {
+					t.Fatalf("Go temporary directory escaped workspace: %s", value)
+				}
+				probe, err := os.MkdirTemp(value, "go-build")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(probe); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if count != 1 {
+			t.Fatalf("duplicate or missing GOTMPDIR override: %d", count)
+		}
+	}
+}
+
+func TestGoTestFilterAllowsAlternationOnlyAsFilter(t *testing.T) {
+	for _, tc := range []struct {
+		command domain.VerificationCommand
+		allowed bool
+	}{
+		{domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./internal/needs", "-run", "TestOne|TestTwo"}}, true},
+		{domain.VerificationCommand{Program: "go", Arguments: []string{"test", "TestOne|TestTwo"}}, false},
+		{domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-run", "TestOne|TestTwo&other"}}, false},
+		{domain.VerificationCommand{Program: "gradle", Arguments: []string{"-run", "TestOne|TestTwo"}}, false},
+	} {
+		if err := ValidateCommand(tc.command); (err == nil) != tc.allowed {
+			t.Fatalf("ValidateCommand(%+v) = %v, allowed %v", tc.command, err, tc.allowed)
+		}
+	}
+}

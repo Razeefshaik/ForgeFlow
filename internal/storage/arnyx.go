@@ -56,3 +56,22 @@ func (s *Store) ArnyxLookup(ctx context.Context, action, target string) (any, er
 	}
 	return result, nil
 }
+
+// Explicit workspace inspection gets bounded diagnostic evidence, rather than
+// entire activity/transcript dumps. Credentials/approval tokens are excluded.
+func (s *Store) ArnyxEvidence(ctx context.Context, id string) (map[string]any, error) {
+	result := map[string]any{}
+	queries := map[string]string{
+		"workspace":    `SELECT json_object('workspace',data ->> '$.workspace','branch',data ->> '$.branch','base_commit',data ->> '$.base_commit') FROM contributions WHERE id=?`,
+		"latest_agent": `SELECT json_object('role',data ->> '$.role','status',data ->> '$.status','output_excerpt',substr(data ->> '$.output',1,5000)) FROM agent_runs WHERE contribution_id=? ORDER BY rowid DESC LIMIT 1`,
+		"latest_tests": `SELECT json_object('command',json_extract(data,'$.command'),'exit_code',data ->> '$.exit_code','output_excerpt',substr(data ->> '$.output',-1800)) FROM test_runs WHERE contribution_id=? ORDER BY rowid DESC LIMIT 2`,
+	}
+	for name, query := range queries {
+		values, err := listJSON[json.RawMessage](ctx, s.db, query, id)
+		if err != nil {
+			return nil, err
+		}
+		result[name] = values
+	}
+	return result, nil
+}

@@ -1388,7 +1388,23 @@ It can also accept commands such as:
 
 Operator must NOT have arbitrary unrestricted shell access.
 
-Expose controlled domain operations.
+Expose controlled domain operations and scoped local Codex CLI tasks.
+
+Arnyx has an Inspect mode that can read local project files and run diagnostic
+tools through the authenticated Codex CLI. Users can select an existing local
+folder, including the ForgeFlow application. Make changes mode first presents
+the exact request, resolved folder and network setting for human approval; only
+then may Codex write inside that folder. Contribution repositories continue to
+use their isolated, approved contribution execution workflow.
+
+Tasks expose actual activity, cancellation, errors and a final report. On server
+restart interrupted tasks are recorded, never silently resumed. Credentials,
+Git history changes and automatic PR submission/merging remain excluded.
+
+Conversations and messages are stored locally in SQLite. Previous chats can be
+reopened after navigation, browser reload and server restart. New chat preserves
+earlier conversations. Paginate history and send only bounded recent context to
+Codex; do not concatenate full chat history or activity streams into prompts.
 
 For example:
 
@@ -1434,7 +1450,9 @@ getUsageMetrics
 
 Operator must map language to these operations.
 
-Do not let Operator directly execute arbitrary shell commands.
+Shell/file tools are enabled only for scoped local Codex tasks. Read-only tasks
+cannot edit project files; editing requires explicit approval and the selected
+folder is the only writable project root.
 
 ---
 

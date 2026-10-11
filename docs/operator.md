@@ -1,33 +1,33 @@
 # Arnyx
 
-Arnyx is ForgeFlow’s floating project companion, formerly Operator. Live mode uses the authenticated local Codex CLI already configured for ForgeFlow. No new provider, API key, or fabricated model connection is introduced. An executable being available is distinct from a successful LLM response; the UI reports both honestly. Demo/offline mode remains a limited deterministic inspector.
+Arnyx uses the authenticated local Codex CLI configured for ForgeFlow, with no separate API key. CLI availability is distinct from a successful task; errors and real activity appear in chat. Demo/offline mode remains a deterministic configuration inspector.
 
-## Compact awareness
+## Project and laptop folders
 
-Every request reads persisted current state. The initial projection contains configuration and its version, counts over all contribution/agent records, eight recent contributions, five ranked opportunities, and eight running agent summaries. The current route is a focus hint; a contribution page resolves its real persisted record. Arnyx does not read the activity/event stream, agent transcripts, test output, diffs, issue evidence, or filesystem content into prompts.
+In live mode choose **Inspect files**, select the ForgeFlow project or enter an absolute path to another local folder, and ask your question. Codex has shell and file tools with read-only filesystem permissions. It can inspect source, diagnostics and logs rather than just repeat a status summary. Build/test commands that write files require an approved editing task.
 
-The model can request at most two allowlisted lookups: a contribution (current phase, incident summary, review verdict, and the latest five test exit outcomes), an opportunity (bounded summary/ranking), a repository-name search, current configuration, or current agent summaries. Strings are projected and clipped in SQL. Initial state is capped at 20 KB; each lookup at 8 KB. Six short conversation turns, at most 800 bytes each, provide follow-up context. These are byte limits, not claimed model token counts. The visible context size measures the serialized state and short history, excluding model/system overhead. Each lookup may require another finite LLM call.
+Choose **Make changes** to request implementation or verification. A card shows the exact request, resolved folder and network setting. **Approve changes in this folder** starts a workspace-write session; only that folder is writable. Approval cannot be replayed or silently applied to a different request. Network/dependency downloads are selectable and default off. Local CLI authentication is reused.
 
-Chat is retained in memory across panel closing and route changes, up to 24 messages. Clear chat resets it. Reloading the page clears the conversation; only the companion’s position is stored locally. One in-flight request per server prevents competing LLM calls; the whole bounded lookup sequence has a 150-second deadline. Failed calls display a retryable error instead of a pretend response.
+Contribution repositories under the configured contributions root are inspectable, but editing them uses the contribution page's constraints, execution approval, tests and independent review workflow. Arnyx does not create a second coding agent in an active contribution. It does not push, rewrite Git history, submit/merge PRs, modify the live database, change OS settings or read credentials/browser profiles.
 
-## Configuration and controls
+Tasks run in the background for up to 15 minutes. Chat polls actual activity and displays **Stop Codex task**. At most two tasks run concurrently; overlapping folders and concurrent tasks in one conversation are rejected. Reports, failures, cancellation and observed session/usage metadata persist. Server restart records running tasks as interrupted; edits never silently resume. Codex execution errors never become successful reports.
 
-Arnyx can read the full application configuration and propose multi-setting or temporary changes. Configuration proposals are validated, version-bound, and never applied automatically. Review the complete diff and choose Apply in Configuration. Temporary changes retain the existing expiration/version safeguards. Credentials and host/runtime settings are not part of this configuration.
+## Previous chats
 
-Pause, resume, abandon, tests, review, prepare-draft, open-workspace and contribution-instruction requests render confirmation cards bound to persisted IDs. The model cannot execute them. Abandoning still requests explicit confirmation. PR submission remains in the contribution detail with its separate commit/text-bound approval. Automatic PR creation and merging remain forbidden.
+**Previous chats** lists saved conversations by title and update time. Open a conversation to read it again. **New chat** preserves the old conversation. The browser remembers the selected ID; messages live in local SQLite and survive browser/server restarts. Earlier memory-only chats were never saved and cannot be reconstructed.
 
-The CLI runs in a unique empty request directory under `.cache/arnyx`, with read-only permissions, external tools disabled, plugins/MCP disabled and no network access for project tools. Request directories are cleaned on completion. Audits retain action/session/observed usage and context-size metadata; they are never recycled into model context. No chat message text or model transcript is added to these new assistant audit events.
+Browse 100 messages and 50 conversations per page, with controls to load older pages. Workspace tasks send at most seven clipped recent turns, a bounded current-state snapshot and the request. Focused contribution evidence includes the workspace, latest agent excerpt and two recent test excerpts. Tools can inspect more evidence with targeted reads; full activity streams/history are never pasted into prompts. User messages are capped at 2000 bytes.
 
-## Companion
+## ForgeFlow controls
 
-Click the avatar or the header’s Arnyx button to open chat. Drag the avatar to reposition it, or focus it and use arrow keys. Enter opens chat; Escape closes it and restores focus. The panel expands to `/arnyx`; old `/operator` links redirect there and the old chat endpoint remains compatible. The companion follows the current route’s dual-color palette, supports touch, and honors reduced motion and the app’s pause-animation setting.
+Choose **ForgeFlow controls** for configuration and contribution actions. This retains the structured assistant: two bounded lookups, six short prior turns, a 150-second deadline and a tools-disabled directory under `.cache/arnyx`.
 
-Avatar: Bottts by Pablo Stanley via [DiceBear](https://www.dicebear.com/styles/bottts/), downloaded into the app with creator/license metadata preserved. It does not call a remote avatar service at runtime.
+Configuration changes produce validated, version-bound proposals. Review and Apply in Configuration. Contribution controls produce explicit confirmation cards. PR submission keeps its separate commit/text approval; automatic submission/merging remain forbidden. Saved replies remain visible, but historical confirmation buttons are not replayed.
 
-## Validation
+## Companion and validation
 
-Unit/integration checks cover prompt exclusions, current focused records, bounded history/lookups, configuration and execution approval gates, unsafe action/config rejection, old/new endpoint compatibility, and malformed input. Opt-in `FORGEFLOW_REAL_CODEX_TEST=1` tests exercise the actual authenticated local LLM against temporary databases for state-aware conversation and an expiring multi-setting proposal. They never operate on a real contribution or submit a PR.
+The floating companion and `/arnyx` share conversations. Keyboard focus, dragging, mobile layout, reduced motion and route colors remain supported. Old `/operator` routes and chat requests remain compatible. Restart the backend once to load version 2; an older backend shows a restart notice.
 
-Browser checks cover dragging, bounds after resize, keyboard/focus behavior, mobile layout, image loading, short-context request shape, retained/cleared conversation, configuration review, route palettes and reduced motion.
+Tests cover reopening, pagination, bounded context, approval/replay protection, contribution isolation, cancellation/failure and restart recovery. Opt-in `FORGEFLOW_REAL_CODEX_TEST=1` tests authenticated file inspection and an approved edit in a temporary fixture, never a real contribution. Browser checks cover history after reload, new chat, approvals, activity and responsive layout.
 
-After deploying these source changes, restart the existing ForgeFlow backend once. The UI detects an older backend and explains that restart is needed instead of calling the old, larger-context Operator implementation.
+Avatar: Bottts by Pablo Stanley via [DiceBear](https://www.dicebear.com/styles/bottts/), stored locally with creator/license metadata.
