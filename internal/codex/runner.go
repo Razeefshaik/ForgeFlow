@@ -296,7 +296,9 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 	}
 	rec, err := c.sandbox(ctx, dir, probe, false)
 	if err != nil || rec.ExitCode != 0 {
-		if err != nil { return fmt.Errorf("sandbox environment check could not run: %w; %s",err,rec.Output) }
+		if err != nil {
+			return fmt.Errorf("sandbox environment check could not run: %w; %s", err, rec.Output)
+		}
 		return errors.New("sandbox environment check could not run: " + rec.Output)
 	}
 	if _, err = os.Stat(inside); err != nil {

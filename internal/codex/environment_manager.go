@@ -47,7 +47,9 @@ type EnvironmentManager struct {
 }
 
 func NewEnvironmentManager(ctx context.Context, cli *CLI, root, base string, audit func(context.Context, string, string, any) error) (*EnvironmentManager, error) {
-	if audit==nil { return nil,errors.New("environment audit sink is required") }
+	if audit == nil {
+		return nil, errors.New("environment audit sink is required")
+	}
 	m := &EnvironmentManager{cli: cli, root: root, base: base, ctx: ctx, audit: audit}
 	m.state = EnvironmentStatus{Available: cli.Binary != "", Platform: runtime.GOOS, Mode: cli.SandboxMode(), Status: "unverified", Message: "Check workspace isolation and Git shell compatibility before execution.", Checks: []EnvironmentCheck{}}
 	b, err := os.ReadFile(m.settingsPath())
@@ -103,7 +105,9 @@ func (m *EnvironmentManager) Start(action, mode string, approved bool) (Environm
 	}
 	// Checking an unprovisioned legacy sandbox may itself invoke setup. That
 	// requires the setup/selection approval, even though probes are read-only.
-	if action == "check" && mode != m.cli.SandboxMode() { return m.Status(),errors.New("use verified selection to check a different sandbox mode") }
+	if action == "check" && mode != m.cli.SandboxMode() {
+		return m.Status(), errors.New("use verified selection to check a different sandbox mode")
+	}
 	if action == "check" && mode == "elevated" && !approved {
 		return m.Status(), errors.New("approval is required to check an elevated or different sandbox")
 	}
@@ -165,8 +169,8 @@ func (m *EnvironmentManager) run(action, mode string) {
 	if err == nil && ctx.Err() != nil {
 		err = ctx.Err()
 	}
-	if err==nil {
-		err=m.audit(ctx,"EnvironmentVerificationPassed","Selected environment passed isolation and Git shell checks",map[string]any{"mode":mode,"checks":checks})
+	if err == nil {
+		err = m.audit(ctx, "EnvironmentVerificationPassed", "Selected environment passed isolation and Git shell checks", map[string]any{"mode": mode, "checks": checks})
 	}
 	// Check is diagnostic only; selection/setup changes the policy after success.
 	if err == nil && action != "check" {
@@ -269,8 +273,8 @@ func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]En
 	}
 	// This is our freshly-created disposable directory, never a contribution.
 	defer func() {
-		absolute,e:=filepath.Abs(dir)
-		if e==nil && filepath.IsAbs(m.base) && filepath.Dir(absolute)==filepath.Clean(m.base) && strings.HasPrefix(filepath.Base(absolute),".forgeflow-environment-") {
+		absolute, e := filepath.Abs(dir)
+		if e == nil && filepath.IsAbs(m.base) && filepath.Dir(absolute) == filepath.Clean(m.base) && strings.HasPrefix(filepath.Base(absolute), ".forgeflow-environment-") {
 			_ = os.RemoveAll(absolute)
 		}
 	}()

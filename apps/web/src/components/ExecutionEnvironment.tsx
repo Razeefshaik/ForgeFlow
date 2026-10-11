@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "../api";
 import { Button } from "./ui/button";
 import { SectionHeader } from "./primitives";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 type Environment = {
   available: boolean; platform: string; mode: string; requested_mode?: string;
@@ -13,6 +14,9 @@ type Environment = {
 export default function ExecutionEnvironment() {
   const query = useQuery({ queryKey: ["/runtime/environment"], queryFn: () => request<Environment>("/runtime/environment"), refetchInterval: q => q.state.data?.running ? 1500 : false });
   const client = useQueryClient();
+  const [params] = useSearchParams();
+  const contributionId = params.get("resume");
+  const navigate = useNavigate();
   const [mode, setMode] = useState("auto");
   const [approved, setApproved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,6 +24,13 @@ export default function ExecutionEnvironment() {
   const state = query.data;
   useEffect(() => { if (state?.mode) setMode(state.mode); }, [state?.mode]);
   const disabled = busy || !!state?.running || !state?.available;
+  async function resume() {
+    if (!contributionId) return;
+    setBusy(true); setError("");
+    try { await request(`/contributions/${encodeURIComponent(contributionId)}/recover`, { approved: true, network: false }); navigate(`/contributions/${encodeURIComponent(contributionId)}`); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   async function act(action: "check" | "setup" | "select") {
     setBusy(true); setError("");
     try {
@@ -43,6 +54,7 @@ export default function ExecutionEnvironment() {
         <label className="environment-approval"><input type="checkbox" checked={approved} disabled={disabled} onChange={e => setApproved(e.target.checked)} />I approve sandbox setup or selection. Windows may ask for administrator approval.</label>
         <p className="muted">Setup provisions the sandbox. Contribution commands keep their workspace and download restrictions. Resume each contribution from its execution page.</p>
         <div className="environment-actions"><Button variant="secondary" disabled={disabled || (state.mode === "elevated" && !approved)} onClick={() => act("check")}>Check environment</Button>{state.platform === "windows" && <><Button disabled={disabled || !approved} onClick={() => act("setup")}>Set up Windows sandbox</Button><Button variant="secondary" disabled={disabled || !approved} onClick={() => act("select")}>Verify and save mode</Button></>}</div>
+        {contributionId && <div className="environment-actions">{state.status === "ready" && <Button disabled={disabled} onClick={() => void resume()}>Resume contribution</Button>}<Link className="text-link" to={`/contributions/${encodeURIComponent(contributionId)}`}>Back to contribution</Link></div>}
       </>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}

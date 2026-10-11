@@ -68,7 +68,7 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "no issue-related changes were produced"):
 		d.Kind, d.Summary = "no_changes", "Verification finished without an issue-related patch to review."
 		d.Evidence, d.NextAction = "The workspace diff was empty after verification.", "Inspect whether the approved base already solves the issue. Close the contribution if no change is needed, or provide a concrete remaining requirement. No PR can be prepared from an empty patch."
-	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text,"panic: test timed out after"):
+	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text, "panic: test timed out after"):
 		d.Kind, d.Summary = "verification_timeout", "The verification command exceeded its allowed duration."
 		d.Evidence, d.NextAction = "The runner deadline expired; any partial test output is retained.", "Inspect the last command output and required services. Restore prerequisites before rerunning the complete check."
 		d.FailedTests = failedGoTests(command, output)

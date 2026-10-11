@@ -25,8 +25,12 @@ func verificationDeadline(command domain.VerificationCommand) time.Duration {
 			} else if arg == "-timeout" && i+1 < len(command.Arguments) {
 				value = command.Arguments[i+1]
 			}
-			if d, err := time.ParseDuration(value); err == nil && d > 0 && d+2*time.Minute > deadline {
-				deadline = d + 2*time.Minute
+			if d, err := time.ParseDuration(value); err == nil && value != "" {
+				if d <= 0 {
+					deadline = 30 * time.Minute
+				} else if d+2*time.Minute > deadline {
+					deadline = d + 2*time.Minute
+				}
 			}
 		}
 	}

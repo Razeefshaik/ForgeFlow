@@ -14,11 +14,18 @@ func boundedGoTest(command domain.VerificationCommand) domain.VerificationComman
 	}
 	c := command
 	c.Arguments = append([]string{}, command.Arguments...)
+	end := len(c.Arguments)
 	for i, arg := range c.Arguments {
+		if arg == "-args" {
+			end = i
+			break
+		}
+	}
+	for i, arg := range c.Arguments[:end] {
 		value := ""
 		if strings.HasPrefix(arg, "-timeout=") {
 			value = strings.TrimPrefix(arg, "-timeout=")
-		} else if arg == "-timeout" && i+1 < len(c.Arguments) {
+		} else if arg == "-timeout" && i+1 < end {
 			value = c.Arguments[i+1]
 		}
 		if value == "" {
@@ -33,6 +40,6 @@ func boundedGoTest(command domain.VerificationCommand) domain.VerificationComman
 		}
 		return c
 	}
-	c.Arguments = append(c.Arguments, "-timeout=10m")
+	c.Arguments = append(c.Arguments[:end], append([]string{"-timeout=10m"}, c.Arguments[end:]...)...)
 	return c
 }
