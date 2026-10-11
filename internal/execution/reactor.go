@@ -47,7 +47,10 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case errors.Is(err, context.Canceled):
 		d.Kind, d.Summary = "cancelled", "Execution was stopped."
 		d.Evidence, d.NextAction = "The execution context was cancelled.", "Inspect the saved work and resume explicitly."
-	case len(failedGoTests(command, output)) == 0 && toolchainMismatch(text):
+	case command.Program == "" && hasAny(text, "codex session failed", "codex") && hasAny(text, "hit your usage limit", "usage_limit_reached", "insufficient_quota"):
+		d.Kind, d.Summary = "usage_limit", "Codex account usage is exhausted; execution is paused."
+		d.Evidence, d.NextAction = "The provider rejected the agent session before it could continue.", "Wait for the provider's reported reset or restore account capacity, then resume explicitly. No source changes or automatic retries can repair this limit."
+	case !hasAny(text, "--- fail:", "assertionerror", "assertion failed") && toolchainMismatch(text):
 		d.Kind, d.Summary = "toolchain_mismatch", "The repository requires a different runtime or compiler version; verification did not complete."
 		d.Evidence, d.NextAction = text, "Provision a matching environment and retry the unchanged verification. Do not downgrade repository requirements or start a source-fix iteration."
 	case hasAny(text, "environment image build failed", "environment image pull failed", "environment prerequisite failed", "environment requirements need operator input"):
@@ -117,9 +120,14 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "access is denied", "permission denied", "read-only file system", "eacces", "cache is not writable"):
 		d.Kind, d.Summary = "workspace_permissions", "Verification setup failed because a required path is not writable."
 		d.Evidence, d.NextAction = "The process reported a filesystem permission error.", "Inspect the command output and workspace cache permissions, then recover verification."
-	case errors.Is(err, exec.ErrNotFound) || hasAny(text, "executable file not found", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2", "codex cli unavailable"):
+	case errors.Is(err, exec.ErrNotFound) || hasAny(text, "executable file not found", "executable file not found in $path", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2", "codex cli unavailable"):
 		d.Kind, d.Summary = "tool_unavailable", "A required verification tool is unavailable."
 		d.Evidence, d.NextAction = "The runner could not launch the required executable.", "Install or configure the required tool, then recover verification."
+	// Match library errors before network tokens: ModuleNotFoundError contains "enotfound".
+	case hasAny(text, "modulenotfounderror: no module named", "bundler::gemnotfound", "could not find gem", "you must install or update .net to run this application", "error while loading shared libraries:"):
+		d.Kind, d.Summary = "dependencies_missing", "A required library or runtime dependency is unavailable."
+		d.Evidence, d.NextAction = "The process reported a missing runtime dependency.", "Inspect repository dependency declarations and provision the matching environment. Retry the original required check after successful preparation; do not weaken tests."
+		d.CanRecover = network
 	case hasAny(text, "proxyconnect tcp", "127.0.0.1:9:", "localhost:9:", "[::1]:9:"):
 		d.Kind, d.Summary = "network_transport", "Dependency setup could not reach its configured proxy."
 		d.Evidence = "The command failed before verification while connecting through a proxy."
@@ -162,7 +170,7 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 }
 
 func toolchainMismatch(text string) bool {
-	return hasAny(text, "requires go >=", "unsupported class file major version", "invalid target release:", "ebadengine", "requires a different python", "python version is not supported", "rustc is not supported", "cannot be built because it requires rustc", "net sdk does not support targeting") || (strings.Contains(text, "release version ") && strings.Contains(text, "not supported"))
+	return hasAny(text, "requires go >=", "unsupported class file major version", "invalid target release:", "ebadengine", "requires a different python", "python version is not supported", "rustc is not supported", "cannot be built because it requires rustc", "net sdk does not support targeting", "netsdk1045") || (strings.Contains(text, "rustc ") && strings.Contains(text, "is not supported by the following packages")) || (strings.Contains(text, "release version ") && strings.Contains(text, "not supported"))
 }
 
 func (s *Service) incident(ctx context.Context, r *domain.ExecutionRecord, d *domain.ExecutionIncident) error {

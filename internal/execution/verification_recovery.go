@@ -230,7 +230,7 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 		if d.Kind == "code_failure" {
 			return false, nil
 		}
-		if !environmentRepaired && (d.Kind == "toolchain_mismatch" || d.Kind == "tool_unavailable") {
+		if !environmentRepaired && (d.Kind == "toolchain_mismatch" || d.Kind == "tool_unavailable" || d.Kind == "dependencies_missing") {
 			environmentRepaired = true
 			if repaired, e := s.repairVerificationEnvironment(ctx, id, repo, r, d); e != nil {
 				return false, e

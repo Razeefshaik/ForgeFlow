@@ -25,6 +25,13 @@ func TestEnvironmentInputsAndRecipeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wording := plan
+	wording.Summary = "The same repair with different prose"
+	wording.Requirements = []string{"rewritten explanation"}
+	unchanged, err := c.EnvironmentFingerprint(dir, wording)
+	if err != nil || unchanged != one {
+		t.Fatal("wording alone changed environment identity", err)
+	}
 	os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("example==2\n"), 0600)
 	two, err := c.EnvironmentFingerprint(dir, plan)
 	if err != nil || one == two {
@@ -54,6 +61,29 @@ func TestEnvironmentInputsAndRecipeBoundaries(t *testing.T) {
 	}
 	if !strings.Contains(recipe, "USER 1000:1000") || strings.Contains(recipe, "--mount") {
 		t.Fatal(recipe)
+	}
+}
+
+func TestEnvironmentBlockedPlanAndNativeAllowlist(t *testing.T) {
+	p := environmentFixturePlan()
+	p.Checks = nil
+	p.Blockers = []string{"Needs a licensed Windows SDK"}
+	if err := ValidateEnvironmentPlan(p); err != nil {
+		t.Fatal("explicit blockers should not require invented checks", err)
+	}
+	p.Blockers = nil
+	if ValidateEnvironmentPlan(p) == nil {
+		t.Fatal("ready recipe without prerequisite checks accepted")
+	}
+	for _, base := range []string{"node", "node:latest", "registry:5000/project/image"} {
+		p = environmentFixturePlan()
+		p.BaseImage = base
+		if ValidateEnvironmentPlan(p) == nil {
+			t.Fatal("unpinned base accepted", base)
+		}
+	}
+	if ValidateCommand(domain.VerificationCommand{Program: "cargo", Arguments: []string{"test"}}) == nil {
+		t.Fatal("container capability widened native execution")
 	}
 }
 

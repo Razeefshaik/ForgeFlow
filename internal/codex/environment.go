@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -183,6 +184,15 @@ func (c *CLI) EnvironmentFingerprint(dir string, plan domain.EnvironmentPlan) (s
 	if err != nil {
 		return "", err
 	}
+	// Explanatory wording is not a repair. Compare executable inputs so changing
+	// a summary cannot authorize another identical build or contributor attempt.
+	plan.Summary = ""
+	plan.Requirements = nil
+	plan.Blockers = nil
+	plan.Files = append([]string(nil), plan.Files...)
+	sort.Strings(plan.Files)
+	plan.Environment = append([]domain.EnvironmentVariable(nil), plan.Environment...)
+	sort.Slice(plan.Environment, func(i, j int) bool { return plan.Environment[i].Name < plan.Environment[j].Name })
 	// JSON orders map keys, so this fingerprint is independent of map iteration.
 	b, err := json.Marshal(struct {
 		Plan  domain.EnvironmentPlan

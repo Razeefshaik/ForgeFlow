@@ -8,6 +8,7 @@ import (
 	"forgeflow/internal/domain"
 	"strings"
 	"testing"
+	"time"
 )
 
 type environmentRunner struct {
@@ -103,9 +104,20 @@ func TestToolchainMismatchDoesNotStartSourceFix(t *testing.T) {
 		"ERROR: Package requires a different Python: 3.10 not in >=3.12",
 		"error: invalid target release: 21",
 		"error: package cannot be built because it requires rustc 1.85 or newer",
+		"error: rustc 1.85.0 is not supported by the following packages",
+		"error NETSDK1045: The current .NET SDK does not support targeting .NET 10.0",
 	} {
 		d := diagnoseCommand(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./..."}}, output, errors.New("exit status 1"), true)
 		if d.Kind != "toolchain_mismatch" || d.CanRecover || d.Retryable || !inputRequired(d.Kind) {
+			t.Fatal(output, d)
+		}
+	}
+}
+
+func TestMissingLibraryIsEnvironmentEvidence(t *testing.T) {
+	for _, output := range []string{"ModuleNotFoundError: No module named 'pytest'", "Bundler::GemNotFound: missing rack", "error while loading shared libraries: libssl.so: cannot open shared object file"} {
+		d := diagnoseCommand(domain.VerificationCommand{Program: "custom-tool"}, output, errors.New("exit status 1"), true)
+		if d.Kind != "dependencies_missing" || d.Retryable {
 			t.Fatal(output, d)
 		}
 	}
@@ -117,5 +129,100 @@ func TestStructuredEnvironmentBlockPreservesPatchAndIncident(t *testing.T) {
 	err := s.acceptImplementation(context.Background(), c, &r, c.Workspace, `{"status":"ENVIRONMENT_BLOCKED","summary":"Need the pinned SDK and service fixture."}`)
 	if !errors.Is(err, environmentBlocked) || r.Incident == nil || r.Incident.Kind != "environment_blocked" {
 		t.Fatal(err, r)
+	}
+}
+
+func TestCodexUsageLimitDoesNotRetryOrFix(t *testing.T) {
+	s, c := buildFixture(t, &fixtureRunner{})
+	r := domain.ExecutionRecord{ContributionID: c.ID}
+	calls := 0
+	err := s.recoverOperation(context.Background(), &r, "Codex environment-planner", func() error {
+		calls++
+		return errors.New("Codex session failed: You've hit your usage limit. Try again after reset.")
+	})
+	if err == nil || calls != 1 || r.Incident == nil || r.Incident.Kind != "usage_limit" || r.Incident.Retryable || r.FixIterations != 0 || !inputRequired(r.Incident.Kind) {
+		t.Fatalf("quota triggered retries: calls=%d record=%+v", calls, r)
+	}
+}
+
+func TestAssertionQuotingToolchainErrorStillNeedsCodeInvestigation(t *testing.T) {
+	d := diagnoseCommand(domain.VerificationCommand{Program: "python3"}, "AssertionError: expected diagnostic 'requires a different Python'", errors.New("exit status 1"), true)
+	if d.Kind != "code_failure" {
+		t.Fatal(d)
+	}
+}
+
+type verificationEnvironmentRunner struct {
+	environmentRunner
+	commands []domain.VerificationCommand
+	deny     bool
+}
+
+func (f *verificationEnvironmentRunner) EnvironmentFingerprint(_ string, p domain.EnvironmentPlan) (string, error) {
+	return p.BaseImage, nil
+}
+func (f *verificationEnvironmentRunner) PrepareEnvironment(_ context.Context, _ string, network bool, p domain.EnvironmentPlan) (domain.ExecutionEnvironment, error) {
+	f.preparations++
+	return domain.ExecutionEnvironment{Status: "ready", Image: "repaired-image", Fingerprint: p.BaseImage, Network: network}, nil
+}
+func (f *verificationEnvironmentRunner) Run(_ context.Context, r codex.Request, _ func(json.RawMessage) error) (codex.Result, error) {
+	if r.Role != "environment-planner" {
+		return codex.Result{}, errors.New("unexpected source agent")
+	}
+	f.planners++
+	p := domain.EnvironmentPlan{Summary: "Match the compiler requirement", BaseImage: "fixture:2", Checks: []domain.VerificationCommand{{Program: "compiler", Arguments: []string{"--version"}}}}
+	if f.deny {
+		p.BaseImage = "fixture:1"
+	}
+	b, _ := json.Marshal(p)
+	return codex.Result{Output: string(b)}, nil
+}
+func (f *verificationEnvironmentRunner) Command(_ context.Context, dir string, c domain.VerificationCommand, _ bool) (domain.TestRun, error) {
+	f.commands = append(f.commands, c)
+	r := domain.TestRun{Command: c, Directory: dir, StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC()}
+	if len(f.commands) == 1 {
+		r.ExitCode = 1
+		r.Output = "go: go.mod requires go >= 1.27.0 (running go 1.26.1; GOTOOLCHAIN=local)"
+		return r, errors.New("exit status 1")
+	}
+	r.Output = "PASS"
+	return r, nil
+}
+
+func TestVerificationRepairRerunsExactCommandWithoutCodeFix(t *testing.T) {
+	for _, unchanged := range []bool{false, true} {
+		t.Run(map[bool]string{false: "changed", true: "unchanged"}[unchanged], func(t *testing.T) {
+			runner := &verificationEnvironmentRunner{deny: unchanged}
+			s, c := buildFixture(t, runner)
+			repo, _, err := s.Paths(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := domain.ExecutionRecord{ContributionID: c.ID, Phase: "TESTING", Network: true, Environment: &domain.ExecutionEnvironment{Status: "ready", Image: "old-image", Fingerprint: "fixture:1"}, EnvironmentPlan: &domain.EnvironmentPlan{Summary: "previous", BaseImage: "fixture:1", Checks: []domain.VerificationCommand{{Program: "compiler", Arguments: []string{"--version"}}}}}
+			command := domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-race", "./..."}}
+			var output strings.Builder
+			passed, err := s.verifyWithRecovery(context.Background(), c.ID, repo, command, &r, &output)
+			if unchanged {
+				if err == nil || passed || len(runner.commands) != 1 || runner.preparations != 0 {
+					t.Fatal("unchanged repair reran checks", passed, err, runner.commands)
+				}
+			} else {
+				if err != nil || !passed || len(runner.commands) != 2 || runner.preparations != 1 {
+					t.Fatal("changed repair failed", passed, err, runner.commands)
+				}
+				for _, actual := range runner.commands {
+					if actual.Program != command.Program || strings.Join(actual.Arguments, " ") != strings.Join(command.Arguments, " ") {
+						t.Fatal("weakened verification", actual)
+					}
+				}
+				tests, _ := s.Store.Tests(context.Background(), c.ID)
+				if len(tests) != 2 || tests[0].ExitCode == 0 || tests[1].RecoveryOf != tests[0].ID {
+					t.Fatal("lost failed/recovery evidence", tests)
+				}
+			}
+			if r.FixIterations != 0 || runner.contributors != 0 {
+				t.Fatal("environment repair spent source-fix iteration")
+			}
+		})
 	}
 }

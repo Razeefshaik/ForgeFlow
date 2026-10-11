@@ -15,7 +15,7 @@ import (
 
 func inputRequired(kind string) bool {
 	switch kind {
-	case "environment_blocked", "toolchain_mismatch":
+	case "environment_blocked", "toolchain_mismatch", "usage_limit":
 		return true
 	case "authentication", "runtime_unavailable", "workspace_permissions", "tool_unavailable", "disk_capacity", "dependency_unavailable", "verification_timeout", "test_failure_timeout", "dependency_network", "network_transport", "rate_limit", "dependencies_missing", "resource_busy", "workspace_runtime", "plan_invalid", "agent_output", "input_too_large", "sandbox_process", "generated_path_access", "no_changes":
 		return true

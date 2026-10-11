@@ -81,3 +81,27 @@ Focused container-boundary, explicit-configuration and infrastructure-classifica
 `TestRealCodexWorkflow` passed in **188.04 seconds** and reached **READY**, using distinct authenticated planner, contributor and reviewer sessions. The actual execution recorded two verification commands, zero fix iterations and one review cycle. `workflow.json` retains the execution record, test runs, agent records and audit events; `persisted-workflow.log` records the passing test. Both are in the same successful proof directory above. This used an isolated SQLite database and disposable external repository, not the live application database or existing contributions. The test removed its fixture after exporting evidence.
 
 The validated local image ID is `sha256:b7fad75ae17f99be50e6b750e3a225de6e7979eb290a9aba524d3f72de33756e`. The unused full-execution experiment image was removed. The source/configuration adapter and `bin/forgeflow-container.exe` are ready; live `configs/local.json` and the running backend were intentionally not changed. Enable the documented optional configuration and restart the backend before resuming a real contribution through its existing human approval gate. This proves the disposable Go workflow, not compatibility with every external repository or missing Java/service toolchain.
+
+## Repository-driven environments — 2026-10-12, pipeline version 7
+
+Environment preparation now accepts repository-specific Linux toolchains, libraries and installation commands through a validated, language-independent recipe. It supplies actual container inventory and preparation evidence to the agents, separates known environment failures from source failures, and requires a changed executable recipe before retrying a failed environment. Existing work, including commit `b21f7f3`, was preserved. No existing contribution was resumed and no PR was submitted or merged during this validation.
+
+### Automated checks
+
+- `go test ./... -count=1`: every package passed; output is in `.cache/environment-validation/regression-final.log`.
+- Subsequent targeted tests passed after the final fingerprint and failure-classification changes. They cover missing libraries, incompatible toolchains, provider usage limits, assertion text containing environment errors, structured environment repair requests, and rerunning the exact required command after repair without a source-fix iteration. An unchanged repair stops; both failed and recovered command records remain linked. Output: `.cache/environment-validation/targeted-final.log`.
+- `go vet ./...`: passed. `go build -o bin/forgeflow-environment.exe ./apps/server`: passed. `git diff --check`: passed.
+
+### Real Docker proof
+
+`TestRealGenericEnvironment` passed in **57.36 seconds**. The disposable fixture installed pinned npm library `semver@7.7.2` into a derived image, then ran actual Node checks and Python unit tests offline. Prerequisite and isolation checks also passed. Reusing the same inputs worked offline; changing the manifest to require Node 999 produced a blocked environment instead of accepting the previous image. An explicit private-service blocker prevented commands from running.
+
+Cancellation was exercised during a real workspace setup command after its readiness signal. Its delayed child did not survive to write its output. The runner returned cancellation, removed its containers, and preserved the Git boundary. Go test cleanup removed the disposable workspace; a subsequent filesystem check confirmed it was absent, and no labelled verification containers remained. Reusable image/build layers were retained intentionally.
+
+Evidence: `.cache/environment-validation/generic-completed.log` and `.cache/environment-validation/generic-completed/generic-environment.jsonl`. Earlier failed attempts remain in separate evidence directories. One exposed BuildKit treating a bare configuration SHA in `FROM` as a registry reference; the implementation now uses a locally pinned base tag checked against its immutable image ID.
+
+### Live model boundary
+
+The pipeline-7 persisted live Codex workflow **has not passed end to end**. The first attempt exposed insufficient environment inventory and invalid recipe settings; inventory probes and one bounded validation correction were added. The next attempt stopped during planning because the Codex account reported its usage limit. Its execution/audit evidence remains at `.cache/environment-validation/live-with-inventory/workflow.json`. Usage exhaustion now pauses without automatic retries or code-fix iterations. The pipeline-6 editing/review proof above remains historical evidence, not proof of the new environment-planner stage.
+
+Restart the backend to load pipeline 7. A fresh disposable live workflow is still required after account capacity is available. Automated recovery fixtures and real Node/Python provisioning do not establish universal ecosystem compatibility; platform SDKs, external services and private credentials can still require operator input. See [container execution](container-execution.md) for configuration, repeatable checks and limitations.

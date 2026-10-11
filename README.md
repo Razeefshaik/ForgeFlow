@@ -106,6 +106,8 @@ These tests do not execute the existing detent contribution or submit a remote P
 
 Windows installations with working MXC editing but incompatible Git/MSYS tests can explicitly use [container verification](docs/container-execution.md). This keeps Codex and the application native; only approved verification commands run in Docker. The default remains native execution, and selecting an image does not resume any contribution.
 
+Container execution prepares a repository-specific environment before coding: Codex inspects requirements across languages, ForgeFlow provisions a matching image and dependencies, and real prerequisite checks gate execution. Agents receive environment evidence and can request bounded repairs. Toolchain mismatches and account usage limits stop wasteful source-fix retries. See the linked guide for supported boundaries, validation and operator-required services/credentials.
+
 Human approval precedes contribution execution and PR submission. No automatic PR submission/merge. Config changes wait for Apply. Codex effort never influences canonical ranking.
 
 ## Structure
