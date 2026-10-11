@@ -103,6 +103,9 @@ Remove-Item Env:FORGEFLOW_REAL_CODEX_TEST
 These tests do not execute the existing detent contribution or submit a remote PR.
 
 ## Approval rules
+
+Windows installations with working MXC editing but incompatible Git/MSYS tests can explicitly use [container verification](docs/container-execution.md). This keeps Codex and the application native; only approved verification commands run in Docker. The default remains native execution, and selecting an image does not resume any contribution.
+
 Human approval precedes contribution execution and PR submission. No automatic PR submission/merge. Config changes wait for Apply. Codex effort never influences canonical ranking.
 
 ## Structure

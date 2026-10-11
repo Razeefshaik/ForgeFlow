@@ -47,6 +47,9 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case errors.Is(err, context.Canceled):
 		d.Kind, d.Summary = "cancelled", "Execution was stopped."
 		d.Evidence, d.NextAction = "The execution context was cancelled.", "Inspect the saved work and resume explicitly."
+	case hasAny(text, "container creation failed", "container cleanup failed", "container isolation check failed"):
+		d.Kind, d.Summary = "runtime_unavailable", "The configured container verification environment failed."
+		d.Evidence, d.NextAction = text, "Inspect Docker, the configured local image and any named container cleanup failure before resuming. Repository source changes cannot repair this environment failure."
 	case hasAny(text, "input_too_large", "input exceeds the maximum", "maximum length of 1048576"):
 		d.Kind, d.Summary = "input_too_large", "Codex rejected an oversized request."
 		d.Evidence, d.NextAction = "The agent request was rejected before the turn began.", "Inspect the saved prompt snapshot and size event; reduce inline input and retain full evidence in workspace files before resuming."

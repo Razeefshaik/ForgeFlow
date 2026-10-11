@@ -17,7 +17,7 @@ type sandboxRuntimeInUseError struct {
 }
 
 func (e *sandboxRuntimeInUseError) Error() string {
-	return fmt.Sprintf("Codex's runtime file is in use: %s (Windows error 32). Close active Codex Node/browser sessions in the desktop app and VS Code, then retry sandbox setup. Recorded helper error: %v", e.Path, e.Cause)
+	return fmt.Sprintf("Codex's runtime file is in use: %s (Windows error 32). Close the Codex desktop app and affected VS Code sessions, then retry sandbox setup from ForgeFlow in your browser. Their background helpers can restart while those apps remain open. Recorded helper error: %v", e.Path, e.Cause)
 }
 func (e *sandboxRuntimeInUseError) Unwrap() error { return e.Cause }
 

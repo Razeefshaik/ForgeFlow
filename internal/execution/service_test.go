@@ -235,8 +235,32 @@ func TestRealCodexWorkflow(t *testing.T) {
 		t.Skip("opt in to actual authenticated Codex sessions")
 	}
 	cli := codex.Resolve("", "")
+	cli.VerificationImage = os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")
+	if mode := os.Getenv("FORGEFLOW_TEST_SANDBOX"); mode != "" {
+		if err := cli.SetSandboxMode(mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if base := os.Getenv("FORGEFLOW_TEST_CONTRIBUTIONS_ROOT"); base != "" {
+		if !filepath.IsAbs(base) {
+			t.Fatal("absolute disposable fixture parent required")
+		}
+		t.Setenv("TEMP", base)
+		t.Setenv("TMP", base)
+	}
 	s, c := buildFixture(t, cli)
 	ctx := context.Background()
+	if evidence := os.Getenv("FORGEFLOW_TEST_EVIDENCE"); evidence != "" {
+		defer func() {
+			tests, testErr := s.Store.Tests(ctx, c.ID)
+			agents, agentErr := s.Store.Agents(ctx)
+			events, eventErr := s.Store.Events(ctx, 0, c.ID, 1000)
+			record, recordErr := s.Store.Execution(ctx, c.ID)
+			if err := writeJSON(filepath.Join(evidence, "workflow.json"), map[string]any{"execution": record, "tests": tests, "agents": agents, "events": events, "errors": []error{testErr, agentErr, eventErr, recordErr}}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 	if _, e := s.Start(ctx, c.ID, true, false); e != nil {
 		t.Fatal(e)
 	}

@@ -38,3 +38,46 @@ A real setup attempt in version 3 failed with `orchestrator_elevation_required`.
 - `go build -o bin/forgeflow.exe ./apps/server`: passed.
 - Installed Codex CLI `0.162.1`: the exact app-server launch arguments initialized successfully. Its exported schema includes the setup request/completion types, and a request with a deliberately invalid mode was rejected by the real setup method's enum validation. This capability check did not start provisioning or a model session.
 - The running version 3 backend was left in place while Praetor was executing tests. A backend restart is required to load version 4. Actual UAC approval, successful provisioning and Git compatibility remain machine-specific checks to perform through the corrected Settings action; automated fixtures do not establish those results.
+
+## Runtime file-lock diagnosis — pipeline version 5
+
+Real app-server setup attempts reached native permission refresh and failed with Windows error 32. ForgeFlow's bounded current-attempt diagnostic identified `node_repl.exe` rather than presenting only `helper_unknown_error: setup refresh had errors`. The two identified Node helpers were stopped after explicit approval. The next attempt identified `VCRUNTIME140_1.dll`, loaded by Codex's desktop-control helper; the desktop app restarted that helper immediately after it was stopped. The setup refresh therefore remains incomplete while those Codex clients are open.
+
+Verified selection of the installed elevated mode also triggered the same native refresh failure. Diagnostics now cover this verification path, retain the failed check and original cause, report `needs_input`, and do not select or save an unverified mode. The regression uses a fresh public helper-log fixture, a failed isolation check and assertions against accidental mode adoption.
+
+An actual explicit MXC selection passed offline workspace writes and denied writes to the sibling and control-plane paths, then failed Git shell startup with `NtCreateDirectoryObject(\\BaseNamedObjects\\msys-2.0S5-1888ae32e00d56aa): 0xC0000022`. MXC was not saved. No contribution was resumed and no model session or PR publication was started. The next native setup attempt must run through ForgeFlow in an ordinary browser after the Codex desktop app and affected VS Code sessions are closed; stopping automatically restarted helpers repeatedly is not a recovery.
+
+- `gofmt` and `git diff --check`: passed for the changed files.
+- `npm run build`: passed, including every Go package's tests, `go vet ./...`, the server binary build, frontend TypeScript and Vite production build. The execution package's existing real-command fixtures took approximately five minutes. An extra verbose diagnostic run was stopped once it confirmed progress; the original complete suite passed.
+- A running version 5 server exposed the configured external contributions root and the current build revision through `/api/runtime`. Native elevated verification is still refused until the runtime file lock is released; automated regression success does not establish a working native sandbox.
+
+## Native editing with container verification — 2026-10-12, pipeline version 6
+
+The original five uncommitted files were preserved. The initial patch is retained locally at `.cache/windows-execution-validation/pre-existing.patch`; no existing contribution or live database record was resumed or replaced.
+
+### Independently reproduced causes
+
+The bounded disposable host comparison in `scripts/probe-windows-execution.mjs` used installed Codex 0.162.1 and Git 2.47.0. Host Git shell exited 0. Explicit MXC exited 66 with `NtCreateDirectoryObject(\\BaseNamedObjects\\msys-2.0S5-1888ae32e00d56aa): 0xC0000022`; explicit unelevated mode exited 66 with `couldn't create signal pipe, Win32 error 5`. Elevated mode failed before Git startup. Its fresh helper log at `2026-10-11T18:08:07Z` reported error 32 opening `node_repl.exe` for runtime ACL validation. The desktop helper processes were independently observed running, and the desktop-control process had the reported `VCRUNTIME140_1.dll` loaded. Disabling configured desktop integration settings did not fix the refresh. No helper was killed or global ACL changed during this investigation.
+
+Docker Desktop was installed but stopped. It started successfully. Ubuntu WSL existed but had no Linux Go or Node executable available on its command path. The selected implementation therefore keeps native MXC editing/authentication and adds optional, explicit Docker verification; it does not migrate ForgeFlow. Native Git/MSYS compatibility remains unresolved. See [container verification](container-execution.md).
+
+### Live disposable proof
+
+`TestRealContainerVerification` passed in **141.14 seconds** using the real native CLI and `forgeflow-verification:go1.26-node22`. Local evidence: `.cache/windows-execution-validation/proof-2026-10-11T20-53-39.870Z/container-validation.jsonl` and `boundary-edit-test-cancel.log`.
+
+- Native MXC allowed writes in the active repository and denied sibling/control-plane writes. Container checks proved UID 1000, allowed workspace writes, denied root and `.git` writes, an absent Docker socket, and loopback as the only offline interface.
+- The baseline `go test -v ./...` really failed with `addition incorrect`, while its Git-shell test passed.
+- An authenticated native Codex session changed `sum.go` from subtraction to addition and added negative-number coverage in `sum_test.go`. The session ID and actual event stream were retained. No container received authentication files.
+- The same complete Go suite then passed: `TestAdd`, `TestAddNegativeNumbers`, and `TestGitShell`. Both original and executed command arguments, times, working directory, output, exit status, image and container name are recorded.
+- A real Node process spawned a delayed child. Cancellation was exercised only after the readiness file appeared. The runner returned cancellation, removed the container, and the child's delayed write did not occur.
+- The exact disposable `.forgeflow-validation-228757124` directory was resolved, checked against the configured Contriss root, and removed. JSONL logs and edited-file contents remain outside the deleted fixture.
+
+Two earlier failed proof attempts are also retained. First-time image unpacking delayed Docker create beyond the initial 30-second deadline; a minimal unmounted container subsequently ran successfully, and the late-created container was explicitly removed. The adapter now retains context timeout errors and allows bounded two-minute creation. The next attempt exposed Docker tmpfs's non-executable default: Go compiled but could not execute its test binary. Adding `exec` to the private `/tmp` tmpfs fixed that exact failure; it did not change host write access.
+
+Focused container-boundary, explicit-configuration and infrastructure-classification regressions passed. `go test ./... -count=1` passed every package (the execution package took 306.514 seconds). `go vet ./...` and `go build -o bin/forgeflow-container.exe ./apps/server` passed. No PR was submitted or merged.
+
+### Persisted live workflow
+
+`TestRealCodexWorkflow` passed in **188.04 seconds** and reached **READY**, using distinct authenticated planner, contributor and reviewer sessions. The actual execution recorded two verification commands, zero fix iterations and one review cycle. `workflow.json` retains the execution record, test runs, agent records and audit events; `persisted-workflow.log` records the passing test. Both are in the same successful proof directory above. This used an isolated SQLite database and disposable external repository, not the live application database or existing contributions. The test removed its fixture after exporting evidence.
+
+The validated local image ID is `sha256:b7fad75ae17f99be50e6b750e3a225de6e7979eb290a9aba524d3f72de33756e`. The unused full-execution experiment image was removed. The source/configuration adapter and `bin/forgeflow-container.exe` are ready; live `configs/local.json` and the running backend were intentionally not changed. Enable the documented optional configuration and restart the backend before resuming a real contribution through its existing human approval gate. This proves the disposable Go workflow, not compatibility with every external repository or missing Java/service toolchain.

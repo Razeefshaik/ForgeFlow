@@ -34,8 +34,11 @@ type Runner interface {
 }
 type CLI struct {
 	Binary, Model string
-	modeMu        sync.RWMutex
-	sandboxMode   string
+	// Explicit, optional Linux image for deterministic verification only.
+	// Model sessions continue to use the native sandbox and local authentication.
+	VerificationImage string
+	modeMu            sync.RWMutex
+	sandboxMode       string
 }
 
 // ConfigureProcess makes cancellation terminate the owned process tree.
@@ -74,6 +77,9 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	var result Result
 	if c.Binary == "" {
 		return result, errors.New("Codex CLI unavailable; install it and run codex login")
+	}
+	if c.VerificationImage != "" && (r.Role == "contributor" || r.Role == "planner" || r.Role == "reviewer") {
+		r.Prompt += "\nForgeFlow runs the plan's verification commands separately in a Linux container (Go, Node, Python and Git). Use portable repository-relative commands in the plan. Native Windows tools remain available for inspection and editing. Do not replace required tests with Windows-only commands or claim container tests ran unless supplied execution evidence proves it."
 	}
 	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator" || r.Role == "assistant-reader"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
@@ -257,6 +263,11 @@ func (c *CLI) Command(ctx context.Context, dir string, command domain.Verificati
 	if err := ValidateCommand(command); err != nil {
 		return domain.TestRun{}, err
 	}
+	if c.VerificationImage != "" {
+		rec, err := c.containerCommand(ctx, dir, boundedGoTest(command), network)
+		rec.Command = command
+		return rec, err
+	}
 	resolved, err := resolveCommand(boundedGoTest(command), dir)
 	if err != nil {
 		return domain.TestRun{}, err
@@ -270,7 +281,13 @@ func (c *CLI) Command(ctx context.Context, dir string, command domain.Verificati
 // Check proves both an allowed workspace write and denied writes to sibling metadata
 // and the application directory, using a harmless marker before any repository script runs.
 func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
-	return c.checkWithNetwork(ctx, dir, appRoot, false)
+	if err := c.checkWithNetwork(ctx, dir, appRoot, false); err != nil {
+		return err
+	}
+	if c.VerificationImage != "" {
+		return c.checkContainer(ctx, dir)
+	}
+	return nil
 }
 
 func (c *CLI) checkWithNetwork(ctx context.Context, dir, appRoot string, network bool) error {
@@ -324,6 +341,9 @@ func (c *CLI) ProbeGitShell(ctx context.Context, dir string) (domain.TestRun, er
 
 func (c *CLI) probeGitShellWithNetwork(ctx context.Context, dir string, network bool) (domain.TestRun, error) {
 	probe := domain.VerificationCommand{Program: "git", Arguments: []string{"-c", "core.fsmonitor=false", "-c", "alias.forgeflow-runtime-probe=!exit 0", "forgeflow-runtime-probe"}}
+	if c.VerificationImage != "" {
+		return c.containerCommand(ctx, dir, probe, network)
+	}
 	return c.sandbox(ctx, dir, probe, network)
 }
 

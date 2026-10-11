@@ -11,6 +11,8 @@ Go modular monolith, embedded SQLite migrations, React/TypeScript/Vite dashboard
 
 Workspace preparation binds reviewed inputs to human approval, then allocates an independent clone under the configured external root. Execution owns finite native Codex sessions, deterministic actual verification and bounded fixes/review. SQLite records each phase, agent/test outcome and event; metadata exports support inspection. Fresh review contexts have no contributor conversation history.
 
+An optional `verification_image` routes deterministic verification through one restricted Docker container per command, while native Codex sessions retain their existing authentication and permissions. The default does not require Docker. See [container verification](container-execution.md) for mounts, network approval, cancellation and toolchain limitations.
+
 The domain dispatcher applies validated configuration proposals and contribution controls. AI Operator produces structured actions and human confirmation cards. Temporary configuration expiry never overwrites newer manual settings. CLI and GitHub credentials belong to runtime services, not chat plugins.
 
 PR preparation makes a local reviewed commit. Submission is separately human-approved and bound to commit/title/body; remote writes use a fixed fork/push/PR flow. No raw state setter or merge endpoint exists. See workflow.md, security.md and api.md.

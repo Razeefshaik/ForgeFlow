@@ -158,6 +158,7 @@ func run() error {
 	workspaces.Base = settings.ContributionsDir
 	workspaces.DefaultModel = settings.CodexModel
 	cli := codex.Resolve(settings.CodexBinary, settings.CodexModel)
+	cli.VerificationImage = settings.VerificationImage
 	if settings.CodexSandbox != "" {
 		if err = cli.SetSandboxMode(settings.CodexSandbox); err != nil {
 			return err

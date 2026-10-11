@@ -30,3 +30,27 @@ func TestLocateRootFromSubdirectoryAndExecutable(t *testing.T) {
 		t.Fatal("absolute override changed")
 	}
 }
+
+func TestVerificationImageIsExplicitAndEnvironmentOverridesLocal(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("FORGEFLOW_VERIFICATION_IMAGE", "")
+	s, err := LoadSettings(root)
+	if err != nil || s.VerificationImage != "" {
+		t.Fatal("Docker became mandatory", s, err)
+	}
+	if err = os.Mkdir(filepath.Join(root, "configs"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(root, "configs", "local.json"), []byte(`{"verification_image":"fixture:1"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err = LoadSettings(root)
+	if err != nil || s.VerificationImage != "fixture:1" {
+		t.Fatal(s, err)
+	}
+	t.Setenv("FORGEFLOW_VERIFICATION_IMAGE", "fixture:2")
+	s, err = LoadSettings(root)
+	if err != nil || s.VerificationImage != "fixture:2" {
+		t.Fatal(s, err)
+	}
+}

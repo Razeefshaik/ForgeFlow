@@ -89,3 +89,38 @@ func TestRuntimeLockNeedsInputWithoutAdoptingOrProbingSandbox(t *testing.T) {
 		t.Fatal("adopted an unverified sandbox")
 	}
 }
+
+func TestVerificationRefreshLockPreservesFailedCheckAndSelectedMode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	if err := os.Mkdir(filepath.Join(home, ".sandbox"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	m, cli := environmentFixture(t)
+	path := `C:\Codex\runtime\VCRUNTIME140_1.dll`
+	cause := errors.New("sandbox environment check could not run: helper_unknown_error: setup refresh had errors")
+	m.probe = func(context.Context, *CLI) ([]EnvironmentCheck, error) {
+		data := runtimeLockLine(time.Now().UTC(), path, "32")
+		if err := os.WriteFile(filepath.Join(home, ".sandbox", "sandbox.log"), []byte(data), 0600); err != nil {
+			return nil, err
+		}
+		return []EnvironmentCheck{{Name: "Workspace isolation", Evidence: cause.Error()}}, cause
+	}
+	if _, err := m.Start("select", "elevated", true); err != nil {
+		t.Fatal(err)
+	}
+	m.Wait()
+	s := m.Status()
+	if s.Status != "needs_input" || s.Running || cli.SandboxMode() != "auto" || !strings.Contains(s.Error, path) {
+		t.Fatal(s)
+	}
+	if len(s.Checks) != 1 || s.Checks[0].Passed || !strings.Contains(s.Checks[0].Evidence, "Windows error 32") || !strings.Contains(s.Checks[0].Evidence, cause.Error()) {
+		t.Fatal("lost failed check or original error", s)
+	}
+	if !strings.Contains(s.Message, "desktop app") || !strings.Contains(s.Error, "helpers can restart") {
+		t.Fatal("missing persistent-lock recovery guidance", s)
+	}
+	if _, err := os.Stat(m.settingsPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("adopted an unverified sandbox")
+	}
+}

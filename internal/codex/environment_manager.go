@@ -20,16 +20,17 @@ type EnvironmentCheck struct {
 	Evidence string `json:"evidence,omitempty"`
 }
 type EnvironmentStatus struct {
-	Available     bool               `json:"available"`
-	Platform      string             `json:"platform"`
-	Mode          string             `json:"mode"`
-	RequestedMode string             `json:"requested_mode,omitempty"`
-	Status        string             `json:"status"`
-	Message       string             `json:"message"`
-	Running       bool               `json:"running"`
-	Checks        []EnvironmentCheck `json:"checks"`
-	Error         string             `json:"error,omitempty"`
-	CheckedAt     *time.Time         `json:"checked_at,omitempty"`
+	Available         bool               `json:"available"`
+	Platform          string             `json:"platform"`
+	Mode              string             `json:"mode"`
+	RequestedMode     string             `json:"requested_mode,omitempty"`
+	VerificationImage string             `json:"verification_image,omitempty"`
+	Status            string             `json:"status"`
+	Message           string             `json:"message"`
+	Running           bool               `json:"running"`
+	Checks            []EnvironmentCheck `json:"checks"`
+	Error             string             `json:"error,omitempty"`
+	CheckedAt         *time.Time         `json:"checked_at,omitempty"`
 }
 
 // EnvironmentManager manages host setup, never arbitrary repository commands.
@@ -54,6 +55,7 @@ func NewEnvironmentManager(ctx context.Context, cli *CLI, root, base string, aud
 	m.setup = setupWindowsSandbox
 	m.probe = m.probeEnvironment
 	m.state = EnvironmentStatus{Available: cli.Binary != "", Platform: runtime.GOOS, Mode: cli.SandboxMode(), Status: "unverified", Message: "Check workspace isolation and Git shell compatibility before execution.", Checks: []EnvironmentCheck{}}
+	m.state.VerificationImage = cli.VerificationImage
 	b, err := os.ReadFile(m.settingsPath())
 	if err == nil {
 		var saved struct {
@@ -149,9 +151,10 @@ func (m *EnvironmentManager) publish(status, message string) error {
 }
 func (m *EnvironmentManager) run(action, mode string) {
 	defer m.wg.Done()
+	started := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Minute)
 	defer cancel()
-	candidate := &CLI{Binary: m.cli.Binary, Model: m.cli.Model}
+	candidate := &CLI{Binary: m.cli.Binary, Model: m.cli.Model, VerificationImage: m.cli.VerificationImage}
 	_ = candidate.SetSandboxMode(mode)
 	var err error
 	var checks []EnvironmentCheck
@@ -182,6 +185,21 @@ func (m *EnvironmentManager) run(action, mode string) {
 	if err == nil && ctx.Err() != nil {
 		err = ctx.Err()
 	}
+	// Probes may trigger the same native setup refresh as explicit setup.
+	// Preserve the failed check, but expose its current-attempt lock diagnosis.
+	if err != nil {
+		var locked *sandboxRuntimeInUseError
+		if !errors.As(err, &locked) {
+			if diagnosed := diagnoseSandboxSetupFailure(err, started); diagnosed != nil {
+				err = diagnosed
+				for i := range checks {
+					if !checks[i].Passed && strings.Contains(checks[i].Evidence, "setup refresh had errors") {
+						checks[i].Evidence = boundedEvidence(diagnosed.Error())
+					}
+				}
+			}
+		}
+	}
 	if err == nil {
 		err = m.audit(ctx, "EnvironmentVerificationPassed", "Selected environment passed isolation and Git shell checks", map[string]any{"mode": mode, "checks": checks})
 	}
@@ -202,7 +220,7 @@ func (m *EnvironmentManager) run(action, mode string) {
 		var locked *sandboxRuntimeInUseError
 		if errors.As(err, &locked) {
 			m.state.Status = "needs_input"
-			m.state.Message = "Codex could not refresh sandbox permissions because its runtime file is in use. Close the active Codex runtime sessions, then retry sandbox setup."
+			m.state.Message = "A Codex tool is holding a runtime file open. Close the Codex desktop app and affected VS Code sessions, then retry sandbox setup from ForgeFlow in your browser."
 		}
 	}
 	snapshot := m.state
@@ -313,6 +331,19 @@ func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]En
 			return checks, err
 		}
 		checks = append(checks, check)
+		if c.VerificationImage != "" {
+			checkCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
+			containerErr := c.checkContainer(checkCtx, repo)
+			cancel()
+			containerCheck := EnvironmentCheck{Name: "Container verification isolation", Passed: containerErr == nil, Evidence: "Image: " + c.VerificationImage}
+			if containerErr != nil {
+				containerCheck.Evidence = boundedEvidence(containerErr.Error())
+			}
+			checks = append(checks, containerCheck)
+			if containerErr != nil {
+				return checks, containerErr
+			}
+		}
 		checkCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
 		run, shellErr := c.probeGitShellWithNetwork(checkCtx, repo, network)
 		cancel()
