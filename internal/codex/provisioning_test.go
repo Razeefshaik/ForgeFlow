@@ -163,20 +163,31 @@ func TestRealGenericEnvironment(t *testing.T) {
 	}
 	// Exercise cancellation during a real dependency command, including a child
 	// which would write after cancellation if container cleanup were incomplete.
-	plan.Blockers=nil
-	plan.Checks=[]domain.VerificationCommand{{Program:"node",Arguments:[]string{"--version"}}}
-	plan.WorkspaceCommands=[]domain.VerificationCommand{{Program:"node",Arguments:[]string{"-e",`const {spawn}=require('node:child_process');spawn(process.execPath,['-e',"setTimeout(()=>require('node:fs').writeFileSync('/workspace/escaped-child','bad'),6000)"],{stdio:'inherit'});require('node:fs').writeFileSync('setup-ready','ready');setInterval(()=>{},1000)`}}}
-	setupCtx,stopSetup:=context.WithCancel(ctx)
-	type completion struct {report domain.ExecutionEnvironment;err error}
-	done:=make(chan completion,1)
-	go func(){r,e:=c.PrepareEnvironment(setupCtx,dir,false,plan);done<-completion{r,e}}()
-	deadline:=time.Now().Add(90*time.Second)
-	for statError(filepath.Join(dir,"setup-ready"))!=nil && time.Now().Before(deadline){time.Sleep(100*time.Millisecond)}
-	ready:=statError(filepath.Join(dir,"setup-ready"))==nil
-	stopSetup();completed:=<-done;record(completed.report)
-	if !ready||!errors.Is(completed.err,context.Canceled){t.Fatal("real setup cancellation failed",ready,completed.err)}
-	time.Sleep(7*time.Second)
-	if !errors.Is(statError(filepath.Join(dir,"escaped-child")),os.ErrNotExist){t.Fatal("setup descendant survived cancellation")}
+	plan.Blockers = nil
+	plan.Checks = []domain.VerificationCommand{{Program: "node", Arguments: []string{"--version"}}}
+	plan.WorkspaceCommands = []domain.VerificationCommand{{Program: "node", Arguments: []string{"-e", `const {spawn}=require('node:child_process');spawn(process.execPath,['-e',"setTimeout(()=>require('node:fs').writeFileSync('/workspace/escaped-child','bad'),6000)"],{stdio:'inherit'});require('node:fs').writeFileSync('setup-ready','ready');setInterval(()=>{},1000)`}}}
+	setupCtx, stopSetup := context.WithCancel(ctx)
+	type completion struct {
+		report domain.ExecutionEnvironment
+		err    error
+	}
+	done := make(chan completion, 1)
+	go func() { r, e := c.PrepareEnvironment(setupCtx, dir, false, plan); done <- completion{r, e} }()
+	deadline := time.Now().Add(90 * time.Second)
+	for statError(filepath.Join(dir, "setup-ready")) != nil && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	ready := statError(filepath.Join(dir, "setup-ready")) == nil
+	stopSetup()
+	completed := <-done
+	record(completed.report)
+	if !ready || !errors.Is(completed.err, context.Canceled) {
+		t.Fatal("real setup cancellation failed", ready, completed.err)
+	}
+	time.Sleep(7 * time.Second)
+	if !errors.Is(statError(filepath.Join(dir, "escaped-child")), os.ErrNotExist) {
+		t.Fatal("setup descendant survived cancellation")
+	}
 	stopped, stop := context.WithCancel(ctx)
 	stop()
 	_, err = c.PrepareEnvironment(stopped, dir, false, plan)

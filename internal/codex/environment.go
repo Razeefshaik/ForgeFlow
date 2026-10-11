@@ -34,6 +34,33 @@ var environmentKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 func (c *CLI) EnvironmentBase() string { return c.VerificationImage }
 
+// InspectEnvironment supplies facts the read-only agent cannot obtain through
+// its native editing shell. No repository script or installation runs.
+func (c *CLI) InspectEnvironment(ctx context.Context, dir string) (domain.ExecutionEnvironment, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	r := domain.ExecutionEnvironment{Status: "inspected", Capabilities: []string{"The configured image is locally available; below are actual offline tool probes, not inferred versions"}}
+	id, err := localImage(ctx, c.VerificationImage)
+	if err != nil {
+		return r, err
+	}
+	r.BaseImage, r.Image = id, id
+	probe := `for tool in go node npm python python3 java javac mvn gradle cargo rustc dotnet ruby bundle php composer gcc clang cmake make ninja uv bun yarn pnpm swift; do
+ if command -v "$tool" >/dev/null 2>&1; then
+  echo "=== $tool ==="
+  case "$tool" in go) "$tool" version;; java) "$tool" -version;; dotnet) "$tool" --list-sdks;; *) "$tool" --version;; esac 2>&1 | head -n 4
+ else echo "=== $tool: unavailable ==="; fi
+done
+git --version
+git rev-parse --is-inside-work-tree`
+	rec, err := c.containerCommandImage(ctx, id, dir, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", probe}}, false)
+	r.Checks = []domain.TestRun{rec}
+	if err != nil {
+		r.Status, r.Error = "blocked", err.Error()
+	}
+	return r, err
+}
+
 func (c *CLI) workspaceImage(dir string) string {
 	c.environmentMu.Lock()
 	defer c.environmentMu.Unlock()
@@ -73,14 +100,16 @@ func ValidateContainerCommand(command domain.VerificationCommand) error {
 }
 
 func ValidateEnvironmentPlan(plan domain.EnvironmentPlan) error {
-	if strings.TrimSpace(plan.Summary) == "" || !imageReference.MatchString(plan.BaseImage) || strings.HasSuffix(plan.BaseImage,":latest") || (!strings.Contains(plan.BaseImage,"@") && strings.LastIndex(plan.BaseImage,":")<=strings.LastIndex(plan.BaseImage,"/")) {
+	if strings.TrimSpace(plan.Summary) == "" || !imageReference.MatchString(plan.BaseImage) || strings.HasSuffix(plan.BaseImage, ":latest") || (!strings.Contains(plan.BaseImage, "@") && strings.LastIndex(plan.BaseImage, ":") <= strings.LastIndex(plan.BaseImage, "/")) {
 		return errors.New("environment plan needs a summary and explicit image reference")
 	}
-	if len(plan.Files) > 64 || len(plan.ImageCommands) > 24 || len(plan.WorkspaceCommands) > 24 || (len(plan.Checks) == 0 && len(plan.Blockers)==0) || len(plan.Checks) > 24 || len(plan.Environment) > 32 {
+	if len(plan.Files) > 64 || len(plan.ImageCommands) > 24 || len(plan.WorkspaceCommands) > 24 || (len(plan.Checks) == 0 && len(plan.Blockers) == 0) || len(plan.Checks) > 24 || len(plan.Environment) > 32 {
 		return errors.New("environment plan exceeds bounds or has no prerequisite checks")
 	}
-	encoded,_:=json.Marshal(plan)
-	if len(encoded)>256<<10{return errors.New("environment recipe exceeds 256 KiB")}
+	encoded, _ := json.Marshal(plan)
+	if len(encoded) > 256<<10 {
+		return errors.New("environment recipe exceeds 256 KiB")
+	}
 	for _, commands := range [][]domain.VerificationCommand{plan.ImageCommands, plan.WorkspaceCommands, plan.Checks} {
 		for _, command := range commands {
 			if err := validateProvisionCommand(command); err != nil {
@@ -331,8 +360,10 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	}
 	// Inherited ONBUILD directives could add network fetches or mounts that do
 	// not appear in the generated recipe. Require an ordinary Linux base.
-	metadata,e:=dockerControl(ctx,"image","inspect","--format","{{.Os}} {{json .Config.OnBuild}}",report.BaseImage)
-	if e!=nil || (strings.TrimSpace(metadata)!="linux null" && strings.TrimSpace(metadata)!="linux []") {return report,errors.New("environment base must be a Linux image without inherited ONBUILD instructions")}
+	metadata, e := dockerControl(ctx, "image", "inspect", "--format", "{{.Os}} {{json .Config.OnBuild}}", report.BaseImage)
+	if e != nil || (strings.TrimSpace(metadata) != "linux null" && strings.TrimSpace(metadata) != "linux []") {
+		return report, errors.New("environment base must be a Linux image without inherited ONBUILD instructions")
+	}
 	report.Image, err = buildEnvironmentImage(ctx, report.BaseImage, report.Fingerprint, dir, network, plan, &report)
 	if err != nil {
 		return report, err
@@ -344,7 +375,9 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	run := func(command domain.VerificationCommand, online bool) error {
 		rec, e := c.containerCommandImage(ctx, report.Image, dir, command, online)
 		report.Checks = append(report.Checks, rec)
-		if ctx.Err()!=nil{return ctx.Err()}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if e != nil || rec.ExitCode != 0 {
 			return fmt.Errorf("environment prerequisite failed: %s %s: %v; %s", command.Program, strings.Join(command.Arguments, " "), e, rec.Output)
 		}
