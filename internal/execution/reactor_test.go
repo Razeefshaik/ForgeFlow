@@ -77,14 +77,14 @@ func TestReactorRetriesApprovedDependencyFailureAndRetainsBothAttempts(t *testin
 func TestReactorStopsSetupFailuresWithoutCodeRetryOrApprovalEscalation(t *testing.T) {
 	for _, network := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unapproved", true: "persistent"}[network], func(t *testing.T) {
-			runner := &reactorRunner{outputs: []string{"proxyconnect tcp: dial tcp 127.0.0.1:9: connection refused", "proxyconnect tcp: dial tcp 127.0.0.1:9: connection refused"}}
+			runner := &reactorRunner{outputs: []string{"proxyconnect tcp: dial tcp 127.0.0.1:9: connection refused", "proxyconnect tcp: dial tcp 127.0.0.1:9: connection refused", "proxyconnect tcp: dial tcp 127.0.0.1:9: connection refused"}}
 			s, c := buildFixture(t, runner)
 			repo, meta, _ := s.Paths(c)
 			r := domain.ExecutionRecord{ContributionID: c.ID, Network: network, Plan: &domain.Plan{}}
 			passed, err := s.tests(context.Background(), c.ID, repo, meta, &r)
 			expected := 1
 			if network {
-				expected = 2
+				expected = 3
 			}
 			if passed || err == nil || len(runner.commands) != expected || r.FixIterations != 0 || r.Incident == nil || r.Incident.Kind != "network_transport" {
 				t.Fatalf("incorrect setup recovery: %+v, %v, calls=%d", r, err, len(runner.commands))

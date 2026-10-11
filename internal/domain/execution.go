@@ -37,6 +37,7 @@ type AgentRun struct {
 	StartedAt      time.Time        `json:"started_at"`
 	FinishedAt     *time.Time       `json:"finished_at"`
 	Output         string           `json:"output"`
+	Error          string           `json:"error,omitempty"`
 	Usage          map[string]int64 `json:"usage,omitempty"`
 }
 type TestRun struct {
@@ -58,6 +59,7 @@ type TestRun struct {
 type ExecutionIncident struct {
 	ID         string               `json:"id"`
 	Kind       string               `json:"kind"`
+	Source     string               `json:"source,omitempty"`
 	Summary    string               `json:"summary"`
 	Evidence   string               `json:"evidence"`
 	NextAction string               `json:"next_action"`
@@ -66,6 +68,8 @@ type ExecutionIncident struct {
 	Command    *VerificationCommand `json:"command,omitempty"`
 	Attempt    int                  `json:"attempt"`
 	CanRecover bool                 `json:"can_recover"`
+	RetryAt    *time.Time           `json:"retry_at,omitempty"`
+	Retryable  bool                 `json:"retryable,omitempty"`
 	DetectedAt time.Time            `json:"detected_at"`
 }
 type ExecutionRecord struct {

@@ -235,7 +235,7 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 			err = s.prepareRuntime(repo)
 		}
 		if err == nil {
-			err = s.freshIssue(ctx, a)
+			err = s.recoverOperation(ctx, &r, "Fresh GitHub issue check", func() error { return s.freshIssue(ctx, a) })
 		}
 		if err == nil {
 			err = s.workflow(ctx, c, a, &r, repo, meta)
@@ -273,6 +273,9 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 			}
 			if r.Incident != nil {
 				r.Incident.Status = "blocked"
+				if state == "BLOCKED" && inputRequired(r.Incident.Kind) {
+					state, r.Status, r.Incident.Status = "PAUSED", "NEEDS_INPUT", "needs_input"
+				}
 				if strings.Contains(err.Error(), "maximum ") {
 					r.Incident.CanRecover = false
 					r.Incident.NextAction = "The configured fix or review limit was reached. Inspect the patch and latest findings before resuming."
@@ -332,20 +335,12 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err := s.phase(ctx, r, "PLANNING"); err != nil {
 			return err
 		}
-		output, err := s.agent(ctx, c.ID, repo, meta, "planner", instructions+"Read the repository without editing. Return a concrete plan: root cause, affected files, strategy, real verification commands, risks and unknowns. Each verification program must be a single executable name from go, python, python3, pytest, npm, node, mvn, ./mvnw, gradle, ./gradlew. Put every argument in the arguments array, never inside program. Do not propose shell commands, formatting commands, pipelines or environment assignments as verification.", planSchema, c.CodexModel, r.Network)
+		plan, err := s.planning(ctx, c, r, repo, meta, instructions)
 		if err != nil {
 			return err
 		}
-		var plan domain.Plan
-		if err = json.Unmarshal([]byte(output), &plan); err != nil || strings.TrimSpace(plan.Summary) == "" {
-			return errors.New("planner returned an invalid plan")
-		}
-		for _, cmd := range plan.Tests {
-			if err = codex.ValidateCommand(cmd); err != nil {
-				return err
-			}
-		}
 		r.Plan = &plan
+		r.PlanApproved = false
 		if err = writeJSON(filepath.Join(meta, "plan.json"), plan); err != nil {
 			return err
 		}
@@ -354,6 +349,11 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		}
 		if err = s.Store.SaveExecution(ctx, *r, "planner", "Implementation plan persisted before coding"); err != nil {
 			return err
+		}
+		if r.Incident != nil && r.Incident.Kind == "plan_invalid" {
+			if err = s.resolveIncident(ctx, r); err != nil {
+				return err
+			}
 		}
 	}
 	if a.Config.Config.Contributions.RequirePlanApproval && !r.PlanApproved {
@@ -364,7 +364,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err := s.phase(ctx, r, "CODING"); err != nil {
 			return err
 		}
-		output, err := s.agent(ctx, c.ID, repo, meta, "contributor", instructions+"Implement the saved plan and meaningful regression tests. The control plane will execute verification independently. Plan:\n"+formatPlan(*r.Plan), implementationSchema, c.CodexModel, r.Network)
+		output, err := s.recoveringAgent(ctx, c, r, repo, meta, "contributor", instructions+"Implement the saved plan and meaningful regression tests. The control plane will execute verification independently. Plan:\n"+formatPlan(*r.Plan), implementationSchema)
 		if err != nil {
 			return err
 		}
@@ -395,7 +395,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 				return err
 			}
 			review, _ := json.Marshal(r.Review)
-			output, err := s.agent(ctx, c.ID, repo, meta, "contributor", instructions+"Fix the persisted test failures/reviewer findings without unrelated changes. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review), implementationSchema, c.CodexModel, r.Network)
+			output, err := s.recoveringAgent(ctx, c, r, repo, meta, "contributor", instructions+"Fix the persisted test failures/reviewer findings without unrelated changes. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review), implementationSchema)
 			if err != nil {
 				return err
 			}
@@ -449,7 +449,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		}
 		output, err := func() (string, error) {
 			defer release()
-			return s.agent(ctx, c.ID, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema, c.CodexModel, r.Network)
+			return s.recoveringAgent(ctx, c, r, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema)
 		}()
 		if err != nil {
 			return err
@@ -500,26 +500,9 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 	}
 }
 func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.ExecutionRecord) (bool, error) {
-	if r.Plan == nil {
-		return false, errors.New("a saved contribution plan is required before verification")
-	}
-	commands := verification.Detect(repo)
-	for _, extra := range r.Plan.Tests {
-		found := false
-		for _, cmd := range commands {
-			if cmd.Program == extra.Program && strings.Join(cmd.Arguments, "\x00") == strings.Join(extra.Arguments, "\x00") {
-				found = true
-			}
-		}
-		if !found {
-			commands = append(commands, extra)
-		}
-	}
-	if len(commands) == 0 {
-		return false, errors.New("no verification commands detected; a concrete repository test plan is required")
-	}
-	if len(commands) > 12 {
-		return false, errors.New("too many verification commands; narrow the plan")
+	commands, err := verificationCommands(repo, r.Plan)
+	if err != nil {
+		return false, err
 	}
 	passed := true
 	var all strings.Builder
@@ -544,6 +527,37 @@ func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.Ex
 		}
 	}
 	return passed, nil
+}
+
+func verificationCommands(repo string, plan *domain.Plan) ([]domain.VerificationCommand, error) {
+	if plan == nil {
+		return nil, errors.New("a saved contribution plan is required before verification")
+	}
+	commands := verification.Detect(repo)
+	for _, extra := range plan.Tests {
+		found := false
+		for _, command := range commands {
+			if command.Program == extra.Program && strings.Join(command.Arguments, "\x00") == strings.Join(extra.Arguments, "\x00") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			commands = append(commands, extra)
+		}
+	}
+	if len(commands) == 0 {
+		return nil, errors.New("planner returned an invalid plan; no verification commands detected, specify concrete repository tests")
+	}
+	if len(commands) > 12 {
+		return nil, errors.New("planner returned an invalid plan; at most 12 combined detected and planned verification commands are allowed")
+	}
+	for _, command := range commands {
+		if err := codex.ValidateCommand(command); err != nil {
+			return nil, err
+		}
+	}
+	return commands, nil
 }
 func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schema, model string, network bool) (output string, agentErr error) {
 	bounded, snapshot, err := boundedAgentPrompt(repo, prompt)
@@ -595,6 +609,9 @@ func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schem
 		return s.Store.WorkspaceEvent(agentCtx, id, "AgentActivity", agentActivityMessage(role, event), event)
 	})
 	stopHeartbeat()
+	if err == nil && agentCtx.Err() != nil {
+		err = agentCtx.Err()
+	}
 	end := time.Now().UTC()
 	run.FinishedAt = &end
 	run.SessionID = result.SessionID
@@ -603,6 +620,10 @@ func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schem
 	run.Status = "SUCCEEDED"
 	if err != nil {
 		run.Status = "FAILED"
+		run.Error = err.Error()
+		if len(run.Error) > 8000 {
+			run.Error = run.Error[:8000] + " (truncated; inspect the saved agent event log)"
+		}
 	}
 	if ctx.Err() != nil {
 		run.Status = "CANCELLED"

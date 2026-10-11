@@ -63,3 +63,38 @@ func TestWorkspaceCacheCollisionFailsBeforeCommandLaunch(t *testing.T) {
 		t.Fatal("existing repository file was replaced")
 	}
 }
+
+func TestRealSandboxGoRuntimeAndAlternation(t *testing.T) {
+	if os.Getenv("FORGEFLOW_REAL_SANDBOX_TEST") != "1" {
+		t.Skip("opt in to actual installed Codex sandbox; no model session is used")
+	}
+	cli := Resolve("", "")
+	repo, appRoot := t.TempDir(), t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"go.mod":          "module example.com/sandboxprobe\n\ngo 1.23\n",
+		"runtime_test.go": "package sandboxprobe\nimport \"testing\"\nfunc TestOne(t *testing.T){};func TestTwo(t *testing.T){};func TestExcluded(t *testing.T){t.Fatal(\"filter lost\")}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wrong := filepath.Join(appRoot, "forbidden-temp")
+	if err := os.WriteFile(wrong, []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOTMPDIR", wrong)
+	t.Setenv("GOTOOLCHAIN", "local")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := cli.Check(ctx, repo, appRoot); err != nil {
+		t.Fatal(err)
+	}
+	run, err := cli.Command(ctx, repo, domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-v", "-run=TestOne|TestTwo", "./..."}}, false)
+	if err != nil || run.ExitCode != 0 || !strings.Contains(run.Output, "PASS: TestOne") || !strings.Contains(run.Output, "PASS: TestTwo") || strings.Contains(run.Output, "RUN   TestExcluded") {
+		t.Fatalf("actual sandbox runtime/filter execution: %v\n%s", err, run.Output)
+	}
+	t.Log(run.Output)
+}

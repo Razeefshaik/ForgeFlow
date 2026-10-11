@@ -336,10 +336,15 @@
   display: block;
   font-size: 11px;
 }
+.reactor-evidence p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .reactor-attempts {
   font-size: 11px !important;
 }
 .reactor-recovering,
+.reactor-waiting_retry,
 .reactor-verifying {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }

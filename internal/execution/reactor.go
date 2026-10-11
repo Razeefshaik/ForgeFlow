@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"forgeflow/internal/codex"
 	"forgeflow/internal/domain"
+	"forgeflow/internal/github"
 	"forgeflow/internal/storage"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-const maxRecoveryActions = 3
+const maxRecoveryActions = 6
+const maxTransientRetries = 2
 
 func hasAny(text string, values ...string) bool {
 	for _, value := range values {
@@ -29,38 +32,74 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	if err != nil {
 		text += "\n" + strings.ToLower(err.Error())
 	}
-	d := &domain.ExecutionIncident{Status: "blocked", Command: &command, DetectedAt: time.Now().UTC()}
+	d := &domain.ExecutionIncident{Status: "blocked", Source: "verification", Command: &command, DetectedAt: time.Now().UTC()}
+	var api *github.APIError
+	var invalid *codex.CommandValidationError
+	isAPI := errors.As(err, &api)
 	switch {
 	case hasAny(text, "sandbox isolation", "outside active workspace", "writes outside", "git configuration changed", "changed git history", "left its approved branch", "crosses a link boundary", "must be an independent directory"):
 		d.Kind, d.Summary = "isolation", "Workspace isolation or approved Git identity could not be verified."
 		d.Evidence, d.NextAction = "The execution boundary rejected this operation.", "Inspect the workspace and restore its approved boundary before resuming."
+	case errors.As(err, &invalid) || hasAny(text, "unsafe verification argument", "verification program is not allowlisted", "planner returned an invalid plan"):
+		d.Kind, d.Summary, d.CanRecover = "plan_invalid", "A proposed verification plan did not pass validation.", true
+		d.Evidence, d.NextAction = text, "The read-only planner will receive the exact validation failure and correct its command arguments before coding."
+	case errors.Is(err, context.Canceled):
+		d.Kind, d.Summary = "cancelled", "Execution was stopped."
+		d.Evidence, d.NextAction = "The execution context was cancelled.", "Inspect the saved work and resume explicitly."
+	case hasAny(text, "input_too_large", "input exceeds the maximum", "maximum length of 1048576"):
+		d.Kind, d.Summary = "input_too_large", "Codex rejected an oversized request."
+		d.Evidence, d.NextAction = "The agent request was rejected before the turn began.", "Inspect the saved prompt snapshot and size event; reduce inline input and retain full evidence in workspace files before resuming."
+	case hasAny(text, "invalid implementation result", "reviewer returned an invalid verdict", "reviewer verdict conflicts"):
+		d.Kind, d.Summary = "agent_output", "An agent result could not be accepted as workflow evidence."
+		d.Evidence, d.NextAction = text, "Inspect the saved agent response. Resume the current stage for a valid result; unresolved review findings must be addressed before approval."
+	case hasAny(text, "--- fail:", "assertionerror", "assertion failed"):
+		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository assertion failed.", "fixing", true
+		d.Evidence, d.NextAction = "An actual test reported a failure; quoted environment errors inside an assertion are not setup failures.", "Codex will investigate the failed assertion and rerun all required checks."
+	case (isAPI && (!api.RetryAt.IsZero() || api.Status == 429)) || hasAny(text, "429 too many requests", "http 429", "rate limit reached", "rate limit exceeded"):
+		d.Kind, d.Summary, d.CanRecover, d.Retryable = "rate_limit", "A required service is rate limiting requests.", network, network
+		d.Evidence, d.NextAction = "The service requested a delay before another request.", "Wait for the recorded retry time, then retry the original operation without changing code."
+		if isAPI && !api.RetryAt.IsZero() {
+			at := api.RetryAt
+			d.RetryAt = &at
+		}
 	case hasAny(text, "cannot connect to the docker daemon", "docker daemon is not running", "linux daemon is unavailable", "dockerdesktoplinuxengine", "pipe/docker_engine", "pipe\\docker_engine", "wsl access is denied", "wsl_e", "wsl/service", "wsl access denied"):
 		d.Kind, d.Summary = "runtime_unavailable", "Required Docker or WSL verification is unavailable."
 		d.Evidence, d.NextAction = "The command reported that the required runtime could not be reached.", "Restore the required runtime or use an approved environment that can run the same checks, then recover verification."
-	case hasAny(text, "401 unauthorized", "403 forbidden", "authentication required", "could not read username", "invalid credentials"):
+	case (isAPI && (api.Status == 401 || api.Status == 403)) || (!strings.Contains(text, "codex cli unavailable") && hasAny(text, "401 unauthorized", "403 forbidden", "authentication required", "authentication rejected", "authentication failed", "could not read username", "invalid credentials", "codex login", "not logged in")):
 		d.Kind, d.Summary = "authentication", "A required service rejected authentication."
 		d.Evidence, d.NextAction = "The service rejected access; retries cannot supply credentials.", "Configure the required service authentication outside the agent, then recover verification."
+	case hasAny(text, "no space left on device", "there is not enough space on the disk", "enospc", "disk quota exceeded"):
+		d.Kind, d.Summary = "disk_capacity", "The workspace disk has insufficient free space."
+		d.Evidence, d.NextAction = "A filesystem allocation failed.", "Free disk space without deleting contribution work or audit evidence, then resume."
+	case hasAny(text, "go: creating work dir", "go: creating temporary", "go: failed to create temporary", "gotmpdir") && hasAny(text, "access is denied", "permission denied", "no such file", "cannot find the path"):
+		d.Kind, d.Summary, d.CanRecover, d.Retryable = "workspace_runtime", "Go could not create its temporary build directory.", true, true
+		d.Evidence, d.NextAction = "Go failed before tests ran while preparing temporary files.", "Verify the workspace-local runtime directory and rerun the same check with an isolated GOTMPDIR."
+	case hasAny(text, "sharing violation", "being used by another process", "resource temporarily unavailable", "text file busy"):
+		d.Kind, d.Summary, d.CanRecover, d.Retryable = "resource_busy", "A required local resource is temporarily busy.", true, true
+		d.Evidence, d.NextAction = "The process reported a transient resource or file sharing error.", "Retry after bounded backoff without removing files or changing permissions."
 	case hasAny(text, "access is denied", "permission denied", "read-only file system", "eacces", "cache is not writable"):
 		d.Kind, d.Summary = "workspace_permissions", "Verification setup failed because a required path is not writable."
 		d.Evidence, d.NextAction = "The process reported a filesystem permission error.", "Inspect the command output and workspace cache permissions, then recover verification."
-	case errors.Is(err, exec.ErrNotFound) || hasAny(text, "executable file not found", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2"):
+	case errors.Is(err, exec.ErrNotFound) || hasAny(text, "executable file not found", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2", "codex cli unavailable"):
 		d.Kind, d.Summary = "tool_unavailable", "A required verification tool is unavailable."
 		d.Evidence, d.NextAction = "The runner could not launch the required executable.", "Install or configure the required tool, then recover verification."
 	case hasAny(text, "proxyconnect tcp", "127.0.0.1:9:", "localhost:9:", "[::1]:9:"):
 		d.Kind, d.Summary = "network_transport", "Dependency setup could not reach its configured proxy."
 		d.Evidence = "The command failed before verification while connecting through a proxy."
 		d.CanRecover = network
+		d.Retryable = network
 		d.NextAction = "Allow dependency downloads when resuming to retry with the approved network policy."
 		if network {
 			d.NextAction = "Retry the same check with approved network access. Inherited loopback discard proxies are removed only from the child environment."
 		}
-	case hasAny(text, "sockettimeoutexception", "unknownhostexception", "tls handshake timeout", "i/o timeout", "connection reset by peer", "temporary failure in name resolution", "eai_again", "econnreset", "502 bad gateway", "503 service unavailable", "network is unreachable", "could not resolve host", "enotfound", "connection refused", "actively refused") || (errors.Is(err, context.DeadlineExceeded) && hasAny(text, "downloading", "download", "fetching")):
+	case (isAPI && api.Status >= 500) || hasAny(text, "sockettimeoutexception", "unknownhostexception", "tls handshake timeout", "i/o timeout", "connection reset by peer", "temporary failure in name resolution", "eai_again", "econnreset", "502 bad gateway", "503 service unavailable", "http 502", "http 503", "http 504", "network is unreachable", "could not resolve host", "enotfound", "connection refused", "actively refused", "stream disconnected", "stream closed", "connection closed before response", "overloaded") || (errors.Is(err, context.DeadlineExceeded) && hasAny(text, "downloading", "download", "fetching")):
 		d.Kind, d.Summary = "dependency_network", "Dependency access failed before verification could complete."
 		d.Evidence = "The command reported a network or dependency download failure."
 		d.CanRecover = network
+		d.Retryable = network
 		d.NextAction = "Allow dependency downloads when resuming; the same required check will run again."
 		if network {
-			d.NextAction = "Retry the same required check once with backoff; stop if the dependency service remains unavailable."
+			d.NextAction = "Retry the same required check with bounded backoff; request input if the service remains unavailable."
 		}
 	case hasAny(text, "404 not found", "410 gone", "no matching version found", "etarget") && hasAny(text, "toolchain", "download", "module", "npm"):
 		d.Kind, d.Summary = "dependency_unavailable", "A required dependency or toolchain version is unavailable."
@@ -77,6 +116,13 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		d.Kind, d.Summary = "code_failure", "A repository check failed."
 		d.Status, d.CanRecover = "fixing", true
 		d.Evidence, d.NextAction = "The actual command exited unsuccessfully.", "Codex will investigate the latest failure, make a focused fix, and rerun required checks."
+	}
+	observed := strings.TrimSpace(output)
+	if err != nil && !strings.Contains(observed, err.Error()) {
+		observed += "\n" + err.Error()
+	}
+	if observed != "" {
+		d.Evidence += "\nObserved failure:\n" + promptExcerpt(strings.TrimSpace(observed), 2048)
 	}
 	return d
 }
@@ -99,11 +145,11 @@ func (s *Service) resolveIncident(ctx context.Context, r *domain.ExecutionRecord
 	}
 	resolved := *r.Incident
 	resolved.Status = "resolved"
-	if err := s.Store.WorkspaceEvent(ctx, r.ContributionID, "IssueResolved", "Fresh verification resolved the current execution issue", resolved); err != nil {
+	if err := s.Store.WorkspaceEvent(ctx, r.ContributionID, "IssueResolved", "Fresh execution evidence resolved the current issue", resolved); err != nil {
 		return err
 	}
 	r.Incident = nil
-	return s.Store.SaveExecution(ctx, *r, "reactor", "Current execution issue cleared by fresh verification")
+	return s.Store.SaveExecution(ctx, *r, "reactor", "Current execution issue cleared by fresh execution evidence")
 }
 
 func verificationOnlyBlock(summary string) bool {
@@ -151,14 +197,23 @@ func (s *Service) Diagnose(ctx context.Context, id string) (*domain.ExecutionInc
 		}
 		return nil, err
 	}
-	if r.Incident != nil {
+	// Older versions stored generic incidents for rejected plans. Re-diagnose
+	// those from the current stop reason; keep specific boundary diagnoses intact.
+	if r.Incident != nil && r.Incident.Kind != "execution_blocked" {
 		return r.Incident, nil
 	}
-	if r.Status != "BLOCKED" {
+	if r.Status != "BLOCKED" && r.Status != "NEEDS_INPUT" {
 		return nil, nil
 	}
 	if hasAny(strings.ToLower(r.Summary), "scope changed", "issue is no longer", "issue is closed", "execution stopped;", "interrupted by server restart", "changed git history", "git configuration changed", "left its approved branch", "sandbox isolation") {
 		return &domain.ExecutionIncident{Kind: "execution_boundary", Summary: "Execution requires inspection before resuming.", Evidence: "The current stop concerns approval, isolation, or an explicit interruption.", NextAction: "Inspect the current execution message and saved inputs, then resume explicitly.", Status: "blocked", DetectedAt: r.UpdatedAt}, nil
+	}
+	if r.Plan == nil && r.Phase == "PLANNING" && hasAny(strings.ToLower(r.Summary), "verification argument", "verification program", "verification command", "invalid plan") {
+		d := &domain.ExecutionIncident{Kind: "plan_invalid", Summary: "The planner's proposed commands were rejected before coding.", Evidence: r.Summary, NextAction: "Recover planning to validate the saved planner result or request a corrected read-only plan.", Status: "needs_input", CanRecover: true, DetectedAt: r.UpdatedAt}
+		return d, nil
+	}
+	if r.Incident != nil {
+		return r.Incident, nil
 	}
 	tests, err := s.Store.Tests(ctx, id)
 	if err != nil {
@@ -202,9 +257,16 @@ func (s *Service) Recover(ctx context.Context, id string, approved, allowDownloa
 	if err != nil {
 		return domain.ExecutionRecord{}, err
 	}
-	networkIssue := d != nil && (d.Kind == "dependency_network" || d.Kind == "network_transport" || d.Kind == "dependencies_missing")
-	if d == nil || (!d.CanRecover && !(allowDownloads && networkIssue)) {
+	networkIssue := d != nil && (d.Kind == "dependency_network" || d.Kind == "network_transport" || d.Kind == "dependencies_missing" || d.Kind == "rate_limit")
+	if d == nil || (!d.CanRecover && !inputRequired(d.Kind) && !(allowDownloads && networkIssue)) {
 		return domain.ExecutionRecord{}, errors.New("this issue requires its recommended action before automatic recovery")
+	}
+	r, err := s.Store.Execution(ctx, id)
+	if err != nil {
+		return r, err
+	}
+	if r.Phase == "PLANNING" || (d.Command == nil && d.TestRunID == "" && (r.Phase == "CODING" || r.Phase == "FIXING")) {
+		return s.Start(ctx, id, true, r.Network || allowDownloads)
 	}
 	// Retry enforces state, approval, workspace and concurrency checks. It keeps
 	// saved network approval and reruns required tests before any further fixing.

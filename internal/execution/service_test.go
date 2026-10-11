@@ -83,6 +83,9 @@ func buildFixture(t *testing.T, runner codex.Runner) (*Service, domain.Contribut
 	return buildFixtureWithModel(t, runner, "")
 }
 func buildFixtureWithModel(t *testing.T, runner codex.Runner, model string) (*Service, domain.Contribution) {
+	return buildFixtureWithApproval(t, runner, model, false)
+}
+func buildFixtureWithApproval(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool) (*Service, domain.Contribution) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -137,6 +140,7 @@ func buildFixtureWithModel(t *testing.T, runner codex.Runner, model string) (*Se
 	cfg := domain.ConfigVersion{Version: 1, Config: config.Default()}
 	cfg.Config.Codex.MaxFixIterations = 3
 	cfg.Config.Codex.MaxReviewCycles = 2
+	cfg.Config.Contributions.RequirePlanApproval = requirePlanApproval
 	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: o, Issue: json.RawMessage(`{"number":1,"state":"open","title":"Correct Add","body":"The Add function subtracts instead of adding. Fix addition and add positive and negative regression coverage."}`), Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
 	if e = store.ApproveWorkspace(ctx, c, a); e != nil {
 		t.Fatal(e)
