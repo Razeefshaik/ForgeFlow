@@ -15,6 +15,9 @@ import (
 func verificationDeadline(command domain.VerificationCommand) time.Duration {
 	deadline := 10 * time.Minute
 	if command.Program == "go" {
+		if len(command.Arguments) > 0 && command.Arguments[0] == "test" {
+			deadline = 12 * time.Minute
+		}
 		for i, arg := range command.Arguments {
 			value := ""
 			if strings.HasPrefix(arg, "-timeout=") {
@@ -220,6 +223,9 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 		}
 		if d.Kind == "code_failure" {
 			return false, nil
+		}
+		if d.Kind == "test_failure_timeout" {
+			return s.investigateTimedOutTests(ctx, id, repo, command, run, r, saveOutput)
 		}
 		budget := r.RecoveryAttempts < maxRecoveryActions
 		if d.Kind == "sandbox_process" && budget && retries < maxTransientRetries {

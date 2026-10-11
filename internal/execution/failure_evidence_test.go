@@ -24,7 +24,7 @@ func TestObservedWindowsFailuresHaveCausalDiagnoses(t *testing.T) {
 		{generatedPathFailure, "generated_path_access", nil},
 		{"--- FAIL: TestAuth\nexpected 401 Unauthorized, got 200", "code_failure", nil},
 		{"--- FAIL: TestFile\nexpected permission denied, got nil", "code_failure", nil},
-		{"--- FAIL: TestLong\nwaiting for service", "verification_timeout", context.DeadlineExceeded},
+		{"--- FAIL: TestLong\nwaiting for service", "test_failure_timeout", context.DeadlineExceeded},
 	} {
 		d := diagnoseCommand(cmd, tc.output, tc.err, true)
 		if d.Kind != tc.kind || !strings.Contains(d.Evidence, tc.output) || d.DiagnosisVersion != diagnosisVersion {
@@ -151,7 +151,7 @@ func TestRunnerTimeoutSurvivesPersistenceAlongsidePartialOutput(t *testing.T) {
 	s, c := buildFixture(t, &timeoutEvidenceRunner{})
 	repo, _, _ := s.Paths(c)
 	run, err := s.recordedCommand(context.Background(), c.ID, repo, domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./..."}}, false, "")
-	if !errors.Is(err, context.DeadlineExceeded) || run.FailureKind != "verification_timeout" {
+	if !errors.Is(err, context.DeadlineExceeded) || run.FailureKind != "test_failure_timeout" {
 		t.Fatal(run, err)
 	}
 	runs, e := s.Store.Tests(context.Background(), c.ID)

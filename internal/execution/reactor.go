@@ -68,9 +68,18 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "no issue-related changes were produced"):
 		d.Kind, d.Summary = "no_changes", "Verification finished without an issue-related patch to review."
 		d.Evidence, d.NextAction = "The workspace diff was empty after verification.", "Inspect whether the approved base already solves the issue. Close the contribution if no change is needed, or provide a concrete remaining requirement. No PR can be prepared from an empty patch."
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text,"panic: test timed out after"):
 		d.Kind, d.Summary = "verification_timeout", "The verification command exceeded its allowed duration."
 		d.Evidence, d.NextAction = "The runner deadline expired; any partial test output is retained.", "Inspect the last command output and required services. Restore prerequisites before rerunning the complete check."
+		d.FailedTests = failedGoTests(command, output)
+		if len(d.FailedTests) > 0 {
+			d.Kind, d.Summary, d.Status, d.CanRecover = "test_failure_timeout", "Repository assertions failed before the remaining verification timed out.", "investigating", true
+			d.SecondaryKinds = []string{"code_failure", "verification_timeout"}
+			d.NextAction = "ForgeFlow will run bounded checks for the named failures, then ask Codex to investigate confirmed assertions. A focused check never replaces the complete required suite."
+		} else if hasAny(text, "downloading", "fetching") {
+			d.Kind, d.Summary, d.CanRecover, d.Retryable = "dependency_network", "Dependency downloads did not finish before the runner deadline.", network, network
+			d.NextAction = "Retry the same required check with approved downloads and bounded backoff."
+		}
 	case hasAny(text, "--- fail:", "assertionerror", "assertion failed"):
 		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository assertion failed.", "fixing", true
 		d.Evidence, d.NextAction = "An actual test reported a failure; quoted environment errors inside an assertion are not setup failures.", "Codex will investigate the failed assertion and rerun all required checks."

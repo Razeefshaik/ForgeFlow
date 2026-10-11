@@ -41,18 +41,19 @@ type AgentRun struct {
 	Usage          map[string]int64 `json:"usage,omitempty"`
 }
 type TestRun struct {
-	ID             string              `json:"id"`
-	ContributionID string              `json:"contribution_id"`
-	Command        VerificationCommand `json:"command"`
-	Directory      string              `json:"directory"`
-	StartedAt      time.Time           `json:"started_at"`
-	FinishedAt     time.Time           `json:"finished_at"`
-	ExitCode       int                 `json:"exit_code"`
-	Output         string              `json:"output"`
-	Truncated      bool                `json:"truncated"`
-	FailureKind    string              `json:"failure_kind,omitempty"`
-	RecoveryOf     string              `json:"recovery_of,omitempty"`
-	Error          string              `json:"error,omitempty"`
+	ID              string               `json:"id"`
+	ContributionID  string               `json:"contribution_id"`
+	Command         VerificationCommand  `json:"command"`
+	Directory       string               `json:"directory"`
+	StartedAt       time.Time            `json:"started_at"`
+	FinishedAt      time.Time            `json:"finished_at"`
+	ExitCode        int                  `json:"exit_code"`
+	Output          string               `json:"output"`
+	Truncated       bool                 `json:"truncated"`
+	FailureKind     string               `json:"failure_kind,omitempty"`
+	RecoveryOf      string               `json:"recovery_of,omitempty"`
+	Error           string               `json:"error,omitempty"`
+	ExecutedCommand *VerificationCommand `json:"executed_command,omitempty"`
 }
 
 // ExecutionIncident is the current diagnosis. Historical diagnoses and actions
@@ -74,6 +75,8 @@ type ExecutionIncident struct {
 	DetectedAt       time.Time            `json:"detected_at"`
 	DiagnosisVersion int                  `json:"diagnosis_version,omitempty"`
 	Path             string               `json:"path,omitempty"`
+	SecondaryKinds   []string             `json:"secondary_kinds,omitempty"`
+	FailedTests      []string             `json:"failed_tests,omitempty"`
 }
 type ExecutionRecord struct {
 	ContributionID   string             `json:"contribution_id"`

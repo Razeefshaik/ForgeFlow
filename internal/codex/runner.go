@@ -32,7 +32,11 @@ type Runner interface {
 	Command(context.Context, string, domain.VerificationCommand, bool) (domain.TestRun, error)
 	Check(context.Context, string, string) error
 }
-type CLI struct{ Binary, Model string }
+type CLI struct {
+	Binary, Model string
+	modeMu        sync.RWMutex
+	sandboxMode   string
+}
 
 // ConfigureProcess makes cancellation terminate the owned process tree.
 func ConfigureProcess(cmd *exec.Cmd) { configureProcess(cmd) }
@@ -62,10 +66,7 @@ func (c *CLI) policy(readOnly, network bool) []string {
 	}
 	args := []string{"-c", "permissions.forgeflow.filesystem=" + filesystem, "-c", fmt.Sprintf("permissions.forgeflow.network.enabled=%t", network), "-c", `approval_policy="never"`}
 	if runtime.GOOS == "windows" {
-		// Compatible modern CLIs use MXC without administrator setup. Devices
-		// without MXC retain the existing restricted-token fallback; preflight
-		// verifies actual boundaries and Git subprocess compatibility either way.
-		args = append(args, "-c", `features.prefer_mxc=true`, "-c", `windows.sandbox="unelevated"`)
+		args = append(args, windowsPolicy(c.SandboxMode())...)
 	}
 	return args
 }
@@ -256,12 +257,13 @@ func (c *CLI) Command(ctx context.Context, dir string, command domain.Verificati
 	if err := ValidateCommand(command); err != nil {
 		return domain.TestRun{}, err
 	}
-	resolved, err := resolveCommand(command, dir)
+	resolved, err := resolveCommand(boundedGoTest(command), dir)
 	if err != nil {
 		return domain.TestRun{}, err
 	}
 	rec, err := c.sandbox(ctx, dir, resolved, network)
 	rec.Command = command
+	rec.ExecutedCommand = &resolved
 	return rec, err
 }
 
@@ -294,7 +296,8 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 	}
 	rec, err := c.sandbox(ctx, dir, probe, false)
 	if err != nil || rec.ExitCode != 0 {
-		return errors.New("sandbox isolation check failed: " + rec.Output)
+		if err != nil { return fmt.Errorf("sandbox environment check could not run: %w; %s",err,rec.Output) }
+		return errors.New("sandbox environment check could not run: " + rec.Output)
 	}
 	if _, err = os.Stat(inside); err != nil {
 		return errors.New("sandbox could not write inside active workspace")

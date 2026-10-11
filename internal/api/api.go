@@ -28,19 +28,22 @@ import (
 )
 
 type Server struct {
-	Auth       *githubauth.Service
-	Store      *storage.Store
-	WebDir     string
-	Discovery  *discovery.Service
-	Workspaces *workspace.Service
-	Execution  *execution.Service
-	Runtime    map[string]any
-	OperatorAI codex.Runner
-	Assistant  *operator.WorkspaceAssistant
+	Auth        *githubauth.Service
+	Store       *storage.Store
+	WebDir      string
+	Discovery   *discovery.Service
+	Workspaces  *workspace.Service
+	Execution   *execution.Service
+	Runtime     map[string]any
+	OperatorAI  codex.Runner
+	Assistant   *operator.WorkspaceAssistant
+	Environment *codex.EnvironmentManager
 }
 
 func (s Server) Handler() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /api/runtime/environment", s.environmentStatus)
+	m.HandleFunc("POST /api/runtime/environment/{action}", s.environmentAction)
 	m.HandleFunc("GET /api/auth/github", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if s.Auth == nil {

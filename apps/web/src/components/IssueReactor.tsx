@@ -1,5 +1,6 @@
 import { ShieldCheck } from "./icons";
 import { Button } from "./ui/button";
+import { Link } from "react-router-dom";
 
 export type ExecutionIncident = {
   id: string;
@@ -18,6 +19,8 @@ export type ExecutionIncident = {
   detected_at: string;
   diagnosis_version?: number;
   path?: string;
+  secondary_kinds?: string[];
+  failed_tests?: string[];
 };
 
 export default function IssueReactor({ incident, running, blocked, network, attempts, busy, diagnosing, diagnosisError, onRecover, onEvidence }: {
@@ -40,6 +43,8 @@ export default function IssueReactor({ incident, running, blocked, network, atte
     {incident ? <>
       <h4>{incident.summary}</h4>
       <p>{incident.next_action}</p>
+      {incident.failed_tests?.length ? <p>Recorded failing tests: <code>{incident.failed_tests.join(", ")}</code></p> : null}
+      {!running && incident.kind === "sandbox_process" && <Link className="text-link" to="/settings#sandbox">Set up execution environment</Link>}
       {incident.retry_at && <p className="reactor-attempts" role="status">{running ? "Next retry" : "Service retry time"}: <time dateTime={incident.retry_at}>{new Date(incident.retry_at).toLocaleString()}</time></p>}
       <details className="reactor-evidence"><summary>Diagnosis evidence</summary><p>{incident.evidence}</p>
         {incident.command && <code>{incident.command.program} {incident.command.arguments.join(" ")}</code>}

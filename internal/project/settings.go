@@ -11,6 +11,7 @@ type Settings struct {
 	ContributionsDir string `json:"contributions_dir"`
 	CodexBinary      string `json:"codex_binary,omitempty"`
 	CodexModel       string `json:"codex_model,omitempty"`
+	CodexSandbox     string `json:"codex_sandbox,omitempty"`
 }
 
 func LoadSettings(root string) (Settings, error) {
@@ -23,7 +24,7 @@ func LoadSettings(root string) (Settings, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return settings, err
 	}
-	for key, target := range map[string]*string{"FORGEFLOW_CONTRIBUTIONS_DIR": &settings.ContributionsDir, "FORGEFLOW_CODEX_BIN": &settings.CodexBinary, "FORGEFLOW_CODEX_MODEL": &settings.CodexModel} {
+	for key, target := range map[string]*string{"FORGEFLOW_CONTRIBUTIONS_DIR": &settings.ContributionsDir, "FORGEFLOW_CODEX_BIN": &settings.CodexBinary, "FORGEFLOW_CODEX_MODEL": &settings.CodexModel, "FORGEFLOW_CODEX_SANDBOX": &settings.CodexSandbox} {
 		if value := os.Getenv(key); value != "" {
 			*target = value
 		}
