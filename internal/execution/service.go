@@ -397,7 +397,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 				return err
 			}
 			review, _ := json.Marshal(r.Review)
-			output, err := s.recoveringAgent(ctx, c, r, repo, meta, "contributor", instructions+"Fix the persisted test failures/reviewer findings without unrelated changes. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review), implementationSchema)
+			output, err := s.recoveringAgent(ctx, c, r, repo, meta, "contributor", instructions+"Investigate the persisted test failures/reviewer findings. Determine whether each failure predates this patch before changing source. Fix only issue-related behavior; report unrelated baseline failures and unmet fixtures rather than weakening tests or expanding scope. Focused diagnostic passes never replace required full verification. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review), implementationSchema)
 			if err != nil {
 				return err
 			}
@@ -431,7 +431,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err := s.Store.SaveExecution(ctx, *r, "execution", "Independent review cycle started"); err != nil {
 			return err
 		}
-			diff, files, err := s.diff(ctx, repo, c.BaseCommit)
+		diff, files, err := s.diff(ctx, repo, c.BaseCommit)
 		if err != nil {
 			return err
 		}

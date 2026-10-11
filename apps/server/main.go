@@ -158,6 +158,18 @@ func run() error {
 	workspaces.Base = settings.ContributionsDir
 	workspaces.DefaultModel = settings.CodexModel
 	cli := codex.Resolve(settings.CodexBinary, settings.CodexModel)
+	if settings.CodexSandbox != "" {
+		if err = cli.SetSandboxMode(settings.CodexSandbox); err != nil {
+			return err
+		}
+	}
+	environment, err := codex.NewEnvironmentManager(ctx, cli, root, settings.ContributionsDir, func(auditCtx context.Context, kind, message string, evidence any) error {
+		return s.WorkspaceEvent(auditCtx, "execution-environment", kind, message, evidence)
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { cancel(); environment.Wait() }()
 	var operatorAI codex.Runner
 	if !*demo && cli.Binary != "" {
 		operatorAI = cli
@@ -208,7 +220,7 @@ func run() error {
 		return err
 	}
 	defer func() { cancel(); assistant.Wait() }()
-	server := &http.Server{Addr: *listen, Handler: (api.Server{Auth: account, Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Assistant: assistant, Runtime: map[string]any{"project_root": root, "contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	server := &http.Server{Addr: *listen, Handler: (api.Server{Auth: account, Store: s, WebDir: webDir, Discovery: discover, Workspaces: workspaces, Execution: executor, OperatorAI: operatorAI, Assistant: assistant, Environment: environment, Runtime: map[string]any{"project_root": root, "contributions_root": settings.ContributionsDir, "codex_available": cli.Binary != "", "codex_model": settings.CodexModel, "mode": map[bool]string{true: "demo", false: "live"}[*demo]}}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	done := make(chan error, 1)
 	go func() {
 		slog.Info("ForgeFlow listening", "address", *listen, "demo", *demo)

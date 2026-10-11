@@ -8,7 +8,24 @@ import (
 	"strings"
 )
 
-const diagnosisVersion = 2
+const diagnosisVersion = 3
+
+var goAssertion = regexp.MustCompile(`(?m)^\s*--- FAIL: (Test[A-Za-z0-9_]+)(?:[/ (]|$)`)
+
+func failedGoTests(command domain.VerificationCommand, output string) []string {
+	if command.Program != "go" || len(command.Arguments) == 0 || command.Arguments[0] != "test" {
+		return nil
+	}
+	seen := map[string]bool{}
+	var tests []string
+	for _, match := range goAssertion.FindAllStringSubmatch(output, 12) {
+		if !seen[match[1]] {
+			tests = append(tests, match[1])
+			seen[match[1]] = true
+		}
+	}
+	return tests
+}
 
 // Match the Go package loader's own diagnostic, not a path mentioned in a test.
 var deniedGoPackage = regexp.MustCompile(`(?mi)^pattern [^\r\n]+: open (.+): (?:Access is denied\.|permission denied)\s*$`)

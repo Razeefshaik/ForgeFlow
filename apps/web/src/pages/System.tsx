@@ -1,4 +1,5 @@
 import SystemHealth from "../components/SystemHealth";
+import ExecutionEnvironment from "../components/ExecutionEnvironment";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -416,6 +417,7 @@ export function Settings({
             <Terminal size={18} />
             Execution
           </a>
+          <a href="#sandbox">Sandbox setup</a>
           <a href="#github">
             <Github size={18} />
             GitHub
@@ -516,6 +518,7 @@ export function Settings({
               </Link>
             </p>
           </section>
+          <ExecutionEnvironment />
           <section className="surface" id="github">
             <SectionHeader
               title="GitHub connection"
