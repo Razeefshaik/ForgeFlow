@@ -254,22 +254,11 @@ func setupWindowsSandbox(ctx context.Context, c *CLI) (string, error) {
 	if runtime.GOOS != "windows" {
 		return "", errors.New("Windows sandbox setup is unsupported on this platform")
 	}
-	// Codex launches its official elevated setup helper and owns Windows UAC.
-	// ForgeFlow remains unelevated; no repository command runs as administrator.
-	cmd := exec.CommandContext(ctx, c.Binary, "sandbox", "setup", "--elevated", "--current-user")
-	cmd.Env = environment()
-	cmd.WaitDelay = 3 * time.Second
-	configureProcess(cmd)
-	out := &bounded{limit: 8192}
-	cmd.Stdout, cmd.Stderr = out, out
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		err = ctx.Err()
-	}
-	if err != nil {
-		return out.String(), fmt.Errorf("Windows sandbox setup failed or was declined: %w; %s", err, out.String())
-	}
-	return out.String(), nil
+	// The deployment CLI's `sandbox setup --elevated` requires an already
+	// elevated orchestrator. The app-server API owns interactive UAC setup,
+	// allowing ForgeFlow and contribution commands to remain unelevated.
+	cmd := exec.CommandContext(ctx, c.Binary, "app-server", "--listen", "stdio://", "-c", "mcp_servers={}", "-c", "features.apps=false", "-c", "features.plugins=false")
+	return runSandboxSetupAppServer(ctx, cmd)
 }
 
 func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]EnvironmentCheck, error) {
