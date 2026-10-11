@@ -26,11 +26,12 @@ func TestPartialAssertionsAndTimeoutAreBothDiagnosed(t *testing.T) {
 
 type investigationRunner struct {
 	reactorRunner
-	first bool
+	first  bool
+	repeat bool
 }
 
 func (f *investigationRunner) Command(ctx context.Context, dir string, cmd domain.VerificationCommand, network bool) (domain.TestRun, error) {
-	if !f.first {
+	if !f.first || (f.repeat && len(cmd.Arguments) == 2 && cmd.Arguments[0] == "test") {
 		f.first = true
 		f.commands = append(f.commands, cmd)
 		return domain.TestRun{ExitCode: 1, Output: assertionBeforeTimeout}, context.DeadlineExceeded
@@ -40,7 +41,7 @@ func (f *investigationRunner) Command(ctx context.Context, dir string, cmd domai
 func TestTimeoutInvestigationNeverReplacesCompleteVerification(t *testing.T) {
 	for _, output := range []string{"--- FAIL: TestLSP_Boundary_FallbackLengthMatchesScanner\nassertion failed", "", "couldn't create signal pipe, Win32 error 5"} {
 		t.Run(output, func(t *testing.T) {
-			f := &investigationRunner{reactorRunner: reactorRunner{outputs: []string{output}}}
+			f := &investigationRunner{reactorRunner: reactorRunner{outputs: []string{output}}, repeat: output == ""}
 			s, c := buildFixture(t, f)
 			repo, meta, _ := s.Paths(c)
 			if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/fixture\n\ngo 1.23\n"), 0600); err != nil {
@@ -58,7 +59,7 @@ func TestTimeoutInvestigationNeverReplacesCompleteVerification(t *testing.T) {
 			if runs[1].RecoveryOf != runs[0].ID || runs[0].Error != context.DeadlineExceeded.Error() {
 				t.Fatal(runs)
 			}
-			if output == "" && (err == nil || r.Incident.Kind != "verification_timeout") {
+			if output == "" && (err == nil || len(f.commands) != 3 || r.Incident.Status != "needs_input") {
 				t.Fatal("focused pass became full pass", r, err)
 			}
 			if strings.Contains(output, "assertion") && (err != nil || r.Incident.Kind != "test_failure_timeout") {
@@ -68,5 +69,26 @@ func TestTimeoutInvestigationNeverReplacesCompleteVerification(t *testing.T) {
 				t.Fatal("setup sent to code fix", r, err)
 			}
 		})
+	}
+}
+
+func TestFocusedPassRequiresSuccessfulCompleteSuiteBeforeContinuing(t *testing.T) {
+	f := &investigationRunner{}
+	s, c := buildFixture(t, f)
+	repo, meta, _ := s.Paths(c)
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/fixture\n\ngo 1.23\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "cmd", "lsp"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r := domain.ExecutionRecord{ContributionID: c.ID, Status: "RUNNING", Phase: "TESTING", Plan: &domain.Plan{}}
+	passed, err := s.tests(context.Background(), c.ID, repo, meta, &r)
+	if !passed || err != nil || len(f.commands) != 4 || r.Incident != nil {
+		t.Fatal(passed, err, f.commands, r)
+	}
+	runs, _ := s.Store.Tests(context.Background(), c.ID)
+	if runs[0].ExitCode == 0 || runs[1].RecoveryOf != runs[0].ID || runs[2].RecoveryOf != runs[0].ID || strings.Join(runs[2].Command.Arguments, " ") != "test ./..." {
+		t.Fatal("focused check replaced suite", runs)
 	}
 }

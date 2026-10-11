@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -161,5 +162,60 @@ func TestExplicitLegacyModeDisablesMXCPreference(t *testing.T) {
 		if !strings.Contains(args, "features.prefer_mxc=false") || !strings.Contains(args, `windows.sandbox="`+mode+`"`) {
 			t.Fatal(args)
 		}
+	}
+}
+
+func TestDeclinedWindowsSetupPreservesEvidenceWithoutProbingOrSaving(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows setup action")
+	}
+	m, c := environmentFixture(t)
+	m.setup = func(context.Context, *CLI) (string, error) {
+		return "UAC declined", errors.New("operation canceled by user")
+	}
+	probed := false
+	m.probe = func(context.Context, *CLI) ([]EnvironmentCheck, error) { probed = true; return nil, nil }
+	if _, err := m.Start("setup", "elevated", true); err != nil {
+		t.Fatal(err)
+	}
+	m.Wait()
+	if s := m.Status(); s.Status != "failed" || probed || c.SandboxMode() != "auto" || len(s.Checks) != 1 || s.Checks[0].Evidence != "UAC declined" {
+		t.Fatal(s, probed)
+	}
+}
+
+func TestIncompleteProbeCannotBecomeReady(t *testing.T) {
+	m, c := environmentFixture(t)
+	m.probe = func(context.Context, *CLI) ([]EnvironmentCheck, error) {
+		return []EnvironmentCheck{{Name: "one check", Passed: true}}, nil
+	}
+	if _, err := m.Start("select", "mxc", true); err != nil {
+		t.Fatal(err)
+	}
+	m.Wait()
+	if m.Status().Status != "failed" || c.SandboxMode() != "auto" {
+		t.Fatal(m.Status())
+	}
+}
+
+func TestCorruptSavedSandboxDoesNotTakeDownControlPlane(t *testing.T) {
+	m, c := environmentFixture(t)
+	if err := os.Mkdir(filepath.Join(m.root, "configs"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(m.settingsPath(), []byte("{broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := NewEnvironmentManager(context.Background(), c, m.root, m.base, m.audit)
+	if err != nil || reloaded.Status().Status != "failed" || c.SandboxMode() != "auto" {
+		t.Fatal(reloaded, err)
+	}
+	reloaded.probe = m.probe
+	if _, err = reloaded.Start("select", "mxc", true); err != nil {
+		t.Fatal(err)
+	}
+	reloaded.Wait()
+	if reloaded.Status().Status != "ready" || c.SandboxMode() != "mxc" {
+		t.Fatal(reloaded.Status())
 	}
 }

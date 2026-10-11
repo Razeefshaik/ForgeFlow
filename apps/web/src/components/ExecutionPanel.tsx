@@ -66,6 +66,8 @@ type TestRun = {
   truncated: boolean;
   failure_kind?: string;
   recovery_of?: string;
+  executed_command?: { program: string; arguments: string[] };
+  error?: string;
 };
 export default function ExecutionPanel({
   contribution: c,
@@ -718,6 +720,8 @@ export default function ExecutionPanel({
                       </span>
                       <ChevronRight className="test-output-chevron" size={14} />
                     </summary>
+                    {t.executed_command && <p className="muted">Executed command: <code>{t.executed_command.program} {t.executed_command.arguments.join(" ")}</code></p>}
+                    {t.error && <p className="muted">Runner result: {t.error}</p>}
                     {t.recovery_of && (
                       <p className="muted">
                         Rerun after a saved recovery attempt.

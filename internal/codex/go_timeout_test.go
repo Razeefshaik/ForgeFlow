@@ -16,6 +16,7 @@ func TestGoTimeoutPreservesScopeAndRaceFlags(t *testing.T) {
 		{[]string{"test", "./...", "-timeout=20m"}, "-timeout=20m"},
 		{[]string{"test", "./...", "-timeout", "1h"}, "-timeout 28m"},
 		{[]string{"test", "./...", "-timeout=0"}, "-timeout=28m"},
+		{[]string{"test", "./...", "-args", "fixture"}, "-timeout=10m -args fixture"},
 	} {
 		before := append([]string{}, tc.args...)
 		got := boundedGoTest(domain.VerificationCommand{Program: "go", Arguments: tc.args})
