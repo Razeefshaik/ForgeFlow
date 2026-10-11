@@ -196,6 +196,7 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 		}
 	}
 	retries, installed, runtimePrepared := 0, false, false
+	investigatedTimeout := false
 	quarantined := map[string]bool{}
 	saveOutput := func(run domain.TestRun) error {
 		fmt.Fprintf(all, "$ %s %s\nrun: %s\nexit: %d\n%s\n", run.Command.Program, strings.Join(run.Command.Arguments, " "), run.ID, run.ExitCode, run.Output)
@@ -229,7 +230,18 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 			return false, nil
 		}
 		if d.Kind == "test_failure_timeout" {
-			return s.investigateTimedOutTests(ctx, id, repo, command, run, r, saveOutput)
+			if investigatedTimeout {
+				d.Status, d.Retryable = "needs_input", false
+				d.NextAction = "The complete required suite timed out again after focused checks passed. Inspect saved timeout stacks and service/fixture requirements; repeated source fixes are not justified."
+				return false, setupFailure(d)
+			}
+			investigatedTimeout = true
+			passed, investigationErr := s.investigateTimedOutTests(ctx, id, repo, command, run, r, saveOutput)
+			if errors.Is(investigationErr, retryCompleteVerification) {
+				recoveryOf = run.ID
+				continue
+			}
+			return passed, investigationErr
 		}
 		budget := r.RecoveryAttempts < maxRecoveryActions
 		if d.Kind == "sandbox_process" && budget && retries < maxTransientRetries {

@@ -270,6 +270,10 @@ func (c *CLI) Command(ctx context.Context, dir string, command domain.Verificati
 // Check proves both an allowed workspace write and denied writes to sibling metadata
 // and the application directory, using a harmless marker before any repository script runs.
 func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
+	return c.checkWithNetwork(ctx, dir, appRoot, false)
+}
+
+func (c *CLI) checkWithNetwork(ctx context.Context, dir, appRoot string, network bool) error {
 	if c.Binary == "" {
 		return errors.New("Codex CLI unavailable; install it and run codex login")
 	}
@@ -294,7 +298,7 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 	} else {
 		probe = domain.VerificationCommand{Program: "python3", Arguments: []string{"-c", "import os,sys;open(sys.argv[1],'w').write('allowed');\nfor path in sys.argv[2:]:\n try: open(path,'w').write('forbidden');sys.exit(9)\n except PermissionError: pass", inside, outside, control}}
 	}
-	rec, err := c.sandbox(ctx, dir, probe, false)
+	rec, err := c.sandbox(ctx, dir, probe, network)
 	if err != nil || rec.ExitCode != 0 {
 		if err != nil {
 			return fmt.Errorf("sandbox environment check could not run: %w; %s", err, rec.Output)
@@ -315,8 +319,12 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 // ProbeGitShell is a short capability check after an actual Git-shell failure.
 // It is not a global prerequisite: repositories that do not use MSYS can run.
 func (c *CLI) ProbeGitShell(ctx context.Context, dir string) (domain.TestRun, error) {
+	return c.probeGitShellWithNetwork(ctx, dir, false)
+}
+
+func (c *CLI) probeGitShellWithNetwork(ctx context.Context, dir string, network bool) (domain.TestRun, error) {
 	probe := domain.VerificationCommand{Program: "git", Arguments: []string{"-c", "core.fsmonitor=false", "-c", "alias.forgeflow-runtime-probe=!exit 0", "forgeflow-runtime-probe"}}
-	return c.sandbox(ctx, dir, probe, false)
+	return c.sandbox(ctx, dir, probe, network)
 }
 
 // CommandValidationError gives the planner actionable feedback without ever
@@ -473,12 +481,28 @@ type bounded struct {
 	buf       strings.Builder
 	limit     int
 	truncated bool
+	tail      []byte
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	n := len(p)
+	// Preserve the final error/timeout stack after verbose build output. Input
+	// remains bounded; discarded middle output is explicitly labeled.
+	tailLimit := b.limit / 2
+	if tailLimit > 0 {
+		if n >= tailLimit {
+			b.tail = append(b.tail[:0], p[n-tailLimit:]...)
+		} else {
+			excess := len(b.tail) + n - tailLimit
+			if excess > 0 {
+				copy(b.tail, b.tail[excess:])
+				b.tail = b.tail[:len(b.tail)-excess]
+			}
+			b.tail = append(b.tail, p...)
+		}
+	}
 	left := b.limit - b.buf.Len()
 	if len(p) > left {
 		p = p[:left]
@@ -487,6 +511,13 @@ func (b *bounded) Write(p []byte) (int, error) {
 	b.buf.Write(p)
 	return n, nil
 }
-func (b *bounded) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.buf.String() }
+func (b *bounded) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.truncated && b.limit >= 128 {
+		return b.buf.String()[:b.limit/2] + "\n[output truncated; showing beginning and end]\n" + string(b.tail)
+	}
+	return b.buf.String()
+}
 
 var _ io.Writer = (*bounded)(nil)

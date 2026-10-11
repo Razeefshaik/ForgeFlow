@@ -15,6 +15,8 @@ import (
 var failedGoPackage = regexp.MustCompile(`(?m)^FAIL\s+([A-Za-z0-9_./+-]+)\s+[0-9.]+s\s*$`)
 var goModuleName = regexp.MustCompile(`(?m)^module\s+([^\s]+)\s*$`)
 
+var retryCompleteVerification = errors.New("focused checks passed; retry complete verification")
+
 func focusedGoCommands(repo string, original domain.VerificationCommand, output string) []domain.VerificationCommand {
 	tests := failedGoTests(original, output)
 	if len(tests) == 0 {
@@ -118,12 +120,12 @@ func (s *Service) investigateTimedOutTests(ctx context.Context, id, repo string,
 		d.NextAction = "A focused command confirmed a repository failure. Codex must check whether it predates the patch, fix only issue-related behavior, and rerun every complete required check."
 		return false, s.incident(ctx, r, d)
 	}
-	// Passing focused tests do not explain the incomplete suite. Preserve both
-	// outcomes and avoid sending a code fixer after a nonexistent reproduction.
-	d.Kind, d.Status = "verification_timeout", "needs_input"
-	d.NextAction = "Focused checks passed, but the required suite remains incomplete. Inspect the saved Go timeout stacks and fixture/service requirements, then rerun the full suite."
-	if err := s.incident(ctx, r, d); err != nil {
+	// A transient assertion may disappear in isolation. Retry the full command
+	// once before asking for intervention, without inventing a passing suite.
+	d.Kind, d.Status = "verification_timeout", "recovering"
+	d.NextAction = "Focused checks passed. ForgeFlow will retry the complete required suite once; if it still times out, inspect the saved stacks and fixture requirements."
+	if err := s.recoveryAction(ctx, r, d, "Focused checks passed; retrying complete required verification once"); err != nil {
 		return false, err
 	}
-	return false, errors.New("verification remains incomplete after focused timeout investigation")
+	return false, retryCompleteVerification
 }

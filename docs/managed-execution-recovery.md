@@ -12,3 +12,15 @@ The control plane must distinguish broken execution prerequisites from failed re
 6. Validate configuration persistence, approval rejection, setup/probe failures, concurrency, deadline/cancellation, saved legacy diagnoses, API contracts and accessible desktop/mobile controls. Run full Go checks, frontend build and browser tests; execute installed-CLI probes without starting model sessions or publishing PRs.
 
 No recovery can guarantee a working third-party service, credentials or platform-specific test fixture. When intervention is necessary, report the exact unmet prerequisite and offer an actionable recovery flow rather than repeatedly rerunning an expensive failed command.
+
+## Operation
+
+Open **Settings → Sandbox setup**. **Check environment** runs disposable isolation and Git-shell probes without a model session. For Windows setup, select the approval checkbox and click **Set up Windows sandbox**. Approve the native Windows prompt. ForgeFlow invokes only `codex sandbox setup --elevated --current-user`, verifies the resulting policy and saves the working mode in ignored `configs/sandbox.json`. Other sandbox modes can be tested with **Verify and save mode**. `FORGEFLOW_CODEX_SANDBOX` or `codex_sandbox` in `configs/local.json` overrides the saved mode after restart.
+
+A sandbox incident links to this section with the contribution ID. Once verification passes, **Resume contribution** uses the existing recovery endpoint, preserves download approval and reruns required checks. It never publishes a PR. No working mode is claimed when setup is declined or Git shell startup still fails.
+
+Go verification retains the planned command plus `executed_command` with its resolved executable and timeout. Default Go test-process timeout is ten minutes with a twelve-minute supervisor; explicit durations are respected up to a twenty-eight-minute process limit and thirty-minute supervisor. Focused reproductions use saved failed package/test names, preserve race/build-tag flags, stay inside the active module, and carry `recovery_of`. Assertion failures before a timeout are diagnosed as `test_failure_timeout` with both secondary causes.
+
+If focused checks pass, ForgeFlow retries the complete required command once. A second incomplete run requests the missing fixture/environment information rather than entering a speculative source-fix loop. Verbose command output keeps a bounded beginning and end so the final failure or timeout stack is not discarded; truncated output is explicitly marked.
+
+Windows sandbox behavior follows the [official OpenAI Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox). Explicit legacy modes disable MXC preference so that a provisioned elevated sandbox is actually selected.

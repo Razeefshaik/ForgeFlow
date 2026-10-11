@@ -27,10 +27,12 @@ test("Windows setup requires approval, preserves real failures and permits a ver
   await expect(panel.getByRole("button", { name: "Resume contribution" })).toHaveCount(0);
   await panel.getByText("View check output").click();
   await expect(panel.getByText("sh.exe: signal pipe access denied")).toBeVisible();
-  state = { ...state, mode: "elevated", status: "ready", message: "Workspace isolation and Git shell startup passed." };
+  state = { ...state, mode: "elevated", status: "ready", message: "Workspace isolation and Git shell startup passed.", checks: [{ name: "Workspace write and denied writes outside it", passed: true }, { name: "Git shell startup", passed: true }] };
   await page.route("**/api/runtime/environment/check", async r => { state = { ...state }; await r.fulfill({ status: 202, json: state }); });
   await panel.getByRole("button", { name: "Check environment" }).click();
   await expect(panel.getByRole("button", { name: "Resume contribution" })).toBeVisible();
+  await expect(panel.getByText("Passed", { exact: true })).toHaveCount(2);
+  await expect(panel.getByText("Failed", { exact: true })).toHaveCount(0);
   const artifacts = fileURLToPath(new URL("../../../artifacts/", import.meta.url));
   await panel.screenshot({ path: path.join(artifacts, "environment-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });

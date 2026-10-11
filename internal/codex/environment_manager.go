@@ -51,6 +51,8 @@ func NewEnvironmentManager(ctx context.Context, cli *CLI, root, base string, aud
 		return nil, errors.New("environment audit sink is required")
 	}
 	m := &EnvironmentManager{cli: cli, root: root, base: base, ctx: ctx, audit: audit}
+	m.setup = setupWindowsSandbox
+	m.probe = m.probeEnvironment
 	m.state = EnvironmentStatus{Available: cli.Binary != "", Platform: runtime.GOOS, Mode: cli.SandboxMode(), Status: "unverified", Message: "Check workspace isolation and Git shell compatibility before execution.", Checks: []EnvironmentCheck{}}
 	b, err := os.ReadFile(m.settingsPath())
 	if err == nil {
@@ -58,7 +60,8 @@ func NewEnvironmentManager(ctx context.Context, cli *CLI, root, base string, aud
 			Mode string `json:"mode"`
 		}
 		if json.Unmarshal(b, &saved) != nil || !ValidSandboxMode(saved.Mode) {
-			return nil, errors.New("invalid configs/sandbox.json")
+			m.state.Status, m.state.Error = "failed", "Saved sandbox selection in configs/sandbox.json is invalid. Verify and save a compatible mode to repair it."
+			return m, nil
 		}
 		// An explicit environment/local config selection takes precedence.
 		if cli.sandboxMode == "" {
@@ -66,10 +69,9 @@ func NewEnvironmentManager(ctx context.Context, cli *CLI, root, base string, aud
 			m.state.Mode = saved.Mode
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		m.state.Status, m.state.Error = "failed", "Cannot read saved sandbox selection: "+err.Error()
+		return m, nil
 	}
-	m.setup = setupWindowsSandbox
-	m.probe = m.probeEnvironment
 	return m, nil
 }
 func (m *EnvironmentManager) settingsPath() string {
@@ -165,6 +167,17 @@ func (m *EnvironmentManager) run(action, mode string) {
 		probeChecks, probeErr := m.probe(ctx, candidate)
 		checks = append(checks, probeChecks...)
 		err = probeErr
+		if err == nil {
+			if len(probeChecks) < 2 {
+				err = errors.New("environment probe did not provide isolation and Git shell evidence")
+			}
+			for _, check := range probeChecks {
+				if !check.Passed {
+					err = errors.New("environment probe reported a failed check: " + check.Name)
+					break
+				}
+			}
+		}
 	}
 	if err == nil && ctx.Err() != nil {
 		err = ctx.Err()
@@ -288,20 +301,31 @@ func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]En
 	if out, e := init.CombinedOutput(); e != nil {
 		return nil, fmt.Errorf("cannot initialize disposable probe repository: %w; %s", e, out)
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	err = c.Check(checkCtx, repo, m.root)
-	cancel()
-	checks := []EnvironmentCheck{{Name: "Workspace write and denied writes outside it", Passed: err == nil}}
-	if err != nil {
-		checks[0].Evidence = boundedEvidence(err.Error())
-		return checks, err
-	}
-	checkCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
-	run, err := c.ProbeGitShell(checkCtx, repo)
-	cancel()
-	checks = append(checks, EnvironmentCheck{Name: "Git shell startup", Passed: err == nil && run.ExitCode == 0, Evidence: boundedEvidence(run.Output)})
-	if err != nil || run.ExitCode != 0 {
-		return checks, fmt.Errorf("Git shell startup failed in %s mode: %s", c.SandboxMode(), run.Output)
+	var checks []EnvironmentCheck
+	// Legacy online/offline execution uses different sandbox users. Verify
+	// both identities with fixed probes; no external request is made here.
+	for _, network := range []bool{false, true} {
+		policy := "offline"
+		if network {
+			policy = "downloads enabled"
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		err = c.checkWithNetwork(checkCtx, repo, m.root, network)
+		cancel()
+		check := EnvironmentCheck{Name: "Workspace write and denied writes outside it (" + policy + ")", Passed: err == nil}
+		if err != nil {
+			check.Evidence = boundedEvidence(err.Error())
+			checks = append(checks, check)
+			return checks, err
+		}
+		checks = append(checks, check)
+		checkCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
+		run, shellErr := c.probeGitShellWithNetwork(checkCtx, repo, network)
+		cancel()
+		checks = append(checks, EnvironmentCheck{Name: "Git shell startup (" + policy + ")", Passed: shellErr == nil && run.ExitCode == 0, Evidence: boundedEvidence(run.Output)})
+		if shellErr != nil || run.ExitCode != 0 {
+			return checks, fmt.Errorf("Git shell startup failed in %s mode (%s): %s", c.SandboxMode(), policy, run.Output)
+		}
 	}
 	return checks, nil
 }
