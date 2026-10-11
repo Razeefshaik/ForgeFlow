@@ -199,6 +199,11 @@ func (m *EnvironmentManager) run(action, mode string) {
 	if err != nil {
 		m.state.Status, m.state.Error = "failed", boundedEvidence(err.Error())
 		m.state.Message = "The environment did not pass verification. The previous sandbox mode remains selected."
+		var locked *sandboxRuntimeInUseError
+		if errors.As(err, &locked) {
+			m.state.Status = "needs_input"
+			m.state.Message = "Codex could not refresh sandbox permissions because its runtime file is in use. Close the active Codex runtime sessions, then retry sandbox setup."
+		}
 	}
 	snapshot := m.state
 	m.mu.Unlock()

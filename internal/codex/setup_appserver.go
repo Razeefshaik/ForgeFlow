@@ -20,6 +20,7 @@ type sandboxSetupCompletion struct {
 // Setup has its own short-lived connection. No model thread, turn, arbitrary
 // command, or contribution repository is passed to the app-server.
 func runSandboxSetupAppServer(ctx context.Context, cmd *exec.Cmd) (string, error) {
+	started := time.Now().UTC()
 	cmd.Env = environment()
 	cmd.WaitDelay = 3 * time.Second
 	configureProcess(cmd)
@@ -47,6 +48,9 @@ func runSandboxSetupAppServer(ctx context.Context, cmd *exec.Cmd) (string, error
 		protocolErr = ctx.Err()
 	}
 	if protocolErr != nil {
+		if diagnosed := diagnoseSandboxSetupFailure(protocolErr, started); diagnosed != nil {
+			return boundedEvidence(diagnosed.Error()), diagnosed
+		}
 		message := fmt.Sprintf("Windows sandbox setup failed or was declined: %v", protocolErr)
 		if output := stderr.String(); output != "" {
 			message += "\n" + output

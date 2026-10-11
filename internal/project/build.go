@@ -4,7 +4,7 @@ import "runtime/debug"
 
 // Values describe this executable, not whichever checkout happens to be its data root.
 func BuildInfo() map[string]any {
-	result := map[string]any{"revision": "unknown", "modified": false, "recovery_version": 4}
+	result := map[string]any{"revision": "unknown", "modified": false, "recovery_version": 5}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
 			switch setting.Key {
