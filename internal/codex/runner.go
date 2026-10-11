@@ -279,8 +279,12 @@ func ValidateCommand(c domain.VerificationCommand) error {
 	if !allowed[c.Program] || len(c.Arguments) > 30 {
 		return errors.New("verification program is not allowlisted")
 	}
-	for _, a := range c.Arguments {
-		if len(a) > 300 || strings.ContainsAny(a, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
+	for i, a := range c.Arguments {
+		unsafe := a
+		if c.Program == "go" && len(c.Arguments) > 0 && c.Arguments[0] == "test" && i > 0 && c.Arguments[i-1] == "-run" {
+			unsafe = strings.ReplaceAll(a, "|", "")
+		}
+		if len(a) > 300 || strings.ContainsAny(unsafe, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
 			return errors.New("unsafe verification argument")
 		}
 	}
@@ -331,7 +335,7 @@ func workspaceEnvironmentForNetwork(dir string, network bool) ([]string, error) 
 	if err := prepareWorkspaceCaches(dir); err != nil {
 		return nil, err
 	}
-	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+	overrides := map[string]string{"GRADLE_USER_HOME": filepath.Join(base, "gradle"), "TMP": filepath.Join(base, "tmp"), "TEMP": filepath.Join(base, "tmp"), "TMPDIR": filepath.Join(base, "tmp"), "GOTMPDIR": filepath.Join(base, "tmp"), "GOCACHE": filepath.Join(base, "go-cache"), "GOMODCACHE": filepath.Join(base, "go-mod"), "GOPATH": filepath.Join(base, "go"), "npm_config_cache": filepath.Join(base, "npm"), "PIP_CACHE_DIR": filepath.Join(base, "python"), "UV_CACHE_DIR": filepath.Join(base, "python"), "XDG_CACHE_HOME": filepath.Join(base, "xdg"), "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 	result := []string{}
 	for _, entry := range approvedNetworkEnvironment(environment(), network) {
 		key, _, _ := strings.Cut(entry, "=")
