@@ -1,3 +1,4 @@
+import SystemHealth from "../components/SystemHealth";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -402,6 +403,7 @@ export function Settings({
       </div>
       <div className="settings-layout">
         <nav className="settings-sections" aria-label="Settings sections">
+<a href="#health">System health</a>
           <a href="#appearance">
             <Sun size={18} />
             Appearance
@@ -424,6 +426,7 @@ export function Settings({
           </a>
         </nav>
         <div className="settings-content">
+<SystemHealth />
           <section className="surface surface-elevated" id="appearance">
             <SectionHeader title="Appearance" />
             <div className="settings-row">

@@ -84,13 +84,13 @@ test("pointer overlays have entry motion while command search and keyboard dismi
     await expect(dialog).toHaveCount(0);
     await expect(help).toBeFocused();
   }
-  const operator = page.getByRole("button", { name: "Operator", exact: true });
+  const operator = page.getByRole("button", { name: "Arnyx", exact: true });
   await operator.click();
-  const drawer = page.getByRole("dialog", { name: "Operator", exact: true });
+  const drawer = page.getByRole("dialog", { name: "Arnyx", exact: true });
   await expect(drawer).toBeVisible();
   expect(
     await drawer.evaluate((el) => getComputedStyle(el).animationName),
-  ).toBe("drawer-in");
+  ).toBe("arnyx-arrive");
   await page.keyboard.press("Escape");
   await expect(operator).toBeFocused();
   const search = page.getByRole("button", { name: "Open command search" });
@@ -245,8 +245,8 @@ test("reduced motion removes overlay, navigation, shimmer and activity animation
       .locator(".sidebar")
       .evaluate((el) => getComputedStyle(el).transitionDuration),
   ).toBe("0s");
-  await page.getByRole("button", { name: "Operator", exact: true }).click();
-  const drawer = page.getByRole("dialog", { name: "Operator", exact: true });
+  await page.getByRole("button", { name: "Arnyx", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Arnyx", exact: true });
   expect(
     await drawer.evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");

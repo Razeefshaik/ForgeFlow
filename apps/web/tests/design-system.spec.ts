@@ -12,7 +12,7 @@ const routes = [
   "/configuration",
   "/settings",
   "/login",
-  "/operator",
+  "/arnyx",
 ];
 for (const theme of ["dark", "light"]) {
   for (const width of [1440, 1024, 390]) {

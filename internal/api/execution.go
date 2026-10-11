@@ -6,6 +6,9 @@ import (
 
 func (s Server) executionAction(w http.ResponseWriter, r *http.Request) {
 	var b struct {
+		Title       string `json:"title"`
+		Body        string `json:"body"`
+		Revision    string `json:"revision"`
 		Approved    bool   `json:"approved"`
 		Network     bool   `json:"network"`
 		Token       string `json:"token"`
@@ -60,6 +63,9 @@ func (s Server) executionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, 202, map[string]string{"status": "accepted"})
+	case "pr-text":
+		v, e := s.Execution.SavePRText(r.Context(), id, b.Title, b.Body, b.Revision)
+		respond(w, v, e)
 	case "prepare-pr":
 		v, e := s.Execution.PreparePR(r.Context(), id)
 		respond(w, v, e)

@@ -72,6 +72,13 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
 	args = append(args, c.policy(readOnly, r.Network)...)
+	if r.Role == "operator" {
+		args = append(args, "--skip-git-repo-check")
+		for _, feature := range []string{"shell_tool", "unified_exec", "apps", "plugins", "multi_agent", "browser_use", "computer_use", "image_generation", "view_image", "memories", "skill_search", "code_mode_host"} {
+			args = append(args, "-c", "features."+feature+"=false")
+		}
+		args = append(args, "-c", "features.skip_host_skill_discovery=true")
+	}
 	model := r.Model
 	if model == "" {
 		model = c.Model
@@ -90,13 +97,14 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, c.Binary, args...)
 	cmd.Dir = r.Directory
-	env, err := workspaceEnvironmentForNetwork(r.Directory, r.Network)
-	if err != nil {
-		return result, err
-	}
-	cmd.Env = env
 	if r.Role == "operator" {
 		cmd.Env = environment()
+	} else {
+		env, err := workspaceEnvironmentForNetwork(r.Directory, r.Network)
+		if err != nil {
+			return result, err
+		}
+		cmd.Env = env
 	}
 	cmd.Stdin = strings.NewReader(r.Prompt)
 	cmd.WaitDelay = 3 * time.Second
