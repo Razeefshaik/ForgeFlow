@@ -228,7 +228,11 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 		}()
 		if err == nil {
 			err = s.recoverOperation(ctx, &r, "Workspace sandbox preflight", func() error {
-				probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+				probeTimeout := 45 * time.Second
+				if runner, ok := s.Runner.(interface{ CheckTimeout() time.Duration }); ok {
+					probeTimeout = runner.CheckTimeout()
+				}
+				probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 				defer cancel()
 				return s.Runner.Check(probeCtx, repo, s.Root)
 			})

@@ -285,12 +285,24 @@ func (c *CLI) Command(ctx context.Context, dir string, command domain.Verificati
 
 // Check proves both an allowed workspace write and denied writes to sibling metadata
 // and the application directory, using a harmless marker before any repository script runs.
+func (c *CLI) CheckTimeout() time.Duration {
+	if c.VerificationImage != "" {
+		return 45*time.Second + containerCheckTimeout
+	}
+	return 45 * time.Second
+}
+
 func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
-	if err := c.checkWithNetwork(ctx, dir, appRoot, false); err != nil {
+	nativeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	err := c.checkWithNetwork(nativeCtx, dir, appRoot, false)
+	cancel()
+	if err != nil {
 		return err
 	}
 	if c.VerificationImage != "" {
-		return c.checkContainer(ctx, dir)
+		containerCtx, stop := context.WithTimeout(ctx, containerCheckTimeout)
+		defer stop()
+		return c.checkContainer(containerCtx, dir)
 	}
 	return nil
 }

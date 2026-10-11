@@ -50,6 +50,33 @@ func TestContainerBoundaryAndNetworkArguments(t *testing.T) {
 	}
 }
 
+func TestContainerPreflightBudgetIncludesCreationAndNativeProbe(t *testing.T) {
+	c := &CLI{VerificationImage: "fixture:1"}
+	if c.CheckTimeout() < 45*time.Second+containerCreateTimeout+containerProbeTimeout+containerCleanupTimeout {
+		t.Fatal("outer deadline can expire during container creation")
+	}
+	if (&CLI{}).CheckTimeout() != 45*time.Second {
+		t.Fatal("native deadline changed")
+	}
+}
+
+func TestRealContainerPreflight(t *testing.T) {
+	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
+		t.Skip("opt in to real Docker preflight")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLI{VerificationImage: os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")}
+	ctx, cancel := context.WithTimeout(context.Background(), c.CheckTimeout())
+	defer cancel()
+	if err := c.checkContainer(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("Real workspace write, root/Git write denial, UID 1000, offline networking and absent Docker socket passed; fixture removed by test cleanup")
+}
+
 // Explicit opt-in: real native model editing, real Docker tests, and exact
 // fixture/container cleanup. Evidence is retained outside the disposable clone.
 func TestRealContainerVerification(t *testing.T) {

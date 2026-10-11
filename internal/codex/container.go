@@ -14,6 +14,13 @@ import (
 	"time"
 )
 
+const containerCreateTimeout = 2 * time.Minute
+const containerProbeTimeout = 30 * time.Second
+const containerCleanupTimeout = 30 * time.Second
+
+// Include daemon startup/create time before the short isolation command runs.
+const containerCheckTimeout = containerCreateTimeout + containerProbeTimeout + containerCleanupTimeout
+
 // containerArguments exposes exactly one independent clone to an unprivileged
 // Linux process. The host environment, home, Docker socket and parent metadata
 // are deliberately absent. Docker is an explicit verification backend, never a
@@ -81,14 +88,14 @@ func (c *CLI) containerCommandImage(ctx context.Context, image, dir string, comm
 	// Observe create completion before honoring cancellation; killing the Docker
 	// client during creation can orphan a daemon-owned container. Every subsequent
 	// exit path removes this exact randomly named container, including descendants.
-	createCtx, stop := context.WithTimeout(context.Background(), 2*time.Minute)
+	createCtx, stop := context.WithTimeout(context.Background(), containerCreateTimeout)
 	out, createErr := dockerControl(createCtx, args...)
 	stop()
 	if createErr != nil {
 		rec.Output = out
 		err = fmt.Errorf("container creation failed: %w; %s", createErr, out)
 		// A timed-out create may have reached the daemon; use the reserved name.
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
 		defer cancel()
 		cleanup, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
 		if cleanupErr != nil && !strings.Contains(cleanup, "No such container") {
@@ -97,7 +104,7 @@ func (c *CLI) containerCommandImage(ctx context.Context, image, dir string, comm
 		return rec, err
 	}
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
 		defer cancel()
 		output, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
 		if cleanupErr != nil {

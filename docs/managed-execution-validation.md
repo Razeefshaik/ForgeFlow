@@ -105,3 +105,17 @@ Evidence: `.cache/environment-validation/generic-completed.log` and `.cache/envi
 The pipeline-7 persisted live Codex workflow **has not passed end to end**. The first attempt exposed insufficient environment inventory and invalid recipe settings; inventory probes and one bounded validation correction were added. The next attempt stopped during planning because the Codex account reported its usage limit. Its execution/audit evidence remains at `.cache/environment-validation/live-with-inventory/workflow.json`. Usage exhaustion now pauses without automatic retries or code-fix iterations. The pipeline-6 editing/review proof above remains historical evidence, not proof of the new environment-planner stage.
 
 Restart the backend to load pipeline 7. A fresh disposable live workflow is still required after account capacity is available. Automated recovery fixtures and real Node/Python provisioning do not establish universal ecosystem compatibility; platform SDKs, external services and private credentials can still require operator input. See [container execution](container-execution.md) for configuration, repeatable checks and limitations.
+
+## Container preflight deadline correction — 2026-10-12
+
+The Bitbucket contribution's latest approved resume stopped at container isolation before environment planning, coding or repository verification. Its saved error was `context deadline exceeded`, and the named container was cleaned up. The running backend reported recovery version 7. No new source-fix iteration was started by that attempt.
+
+Inspection found conflicting deadlines: the execution caller allowed 45 seconds for native plus Docker preflight, while Docker creation independently allowed two minutes. Settings also allowed only 60 seconds for the container check. A slow create could finish after either caller's deadline, preventing the actual isolation command from starting. The saved failure lacks per-stage timings, so the exact reason that creation was slow is not established.
+
+The CLI now declares its preflight budget: 45 seconds for native verification plus three minutes for container creation, the short probe and cleanup. Execution honors that budget; Settings uses the same container budget. Native verification keeps its own 45-second deadline. Parent cancellation still prevents the probe from running, and cleanup retains its independent bounded context.
+
+- Focused deadline, isolation-argument and infrastructure-failure regressions passed. The execution fixture proves the runner receives its declared budget and a failed preflight starts zero agents and consumes zero source-fix iterations.
+- `TestRealContainerPreflight` passed in **4.14 seconds** against the configured local image. It proved real workspace writes, denied root/Git writes, UID 1000, offline networking and absent Docker socket in a disposable fixture. Test cleanup removed the fixture. Output: `.cache/preflight-validation/docker.log`.
+- `go vet ./internal/codex ./internal/execution` and `go build -o bin/forgeflow-preflight.exe ./apps/server` passed. `git diff --check` passed.
+
+The running backend was not restarted and the contribution remains paused. Restart ForgeFlow to load the correction before explicitly recovering the contribution through its existing approval gate. This successful disposable preflight does not establish that the contribution's environment setup, code or full tests will pass.

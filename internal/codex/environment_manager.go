@@ -332,7 +332,7 @@ func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]En
 		}
 		checks = append(checks, check)
 		if c.VerificationImage != "" {
-			checkCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
+			checkCtx, cancel = context.WithTimeout(ctx, containerCheckTimeout)
 			containerErr := c.checkContainer(checkCtx, repo)
 			cancel()
 			containerCheck := EnvironmentCheck{Name: "Container verification isolation", Passed: containerErr == nil, Evidence: "Image: " + c.VerificationImage}
