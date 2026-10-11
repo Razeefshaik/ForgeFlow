@@ -81,7 +81,9 @@ export default function Arnyx() {
           {chat.history.data?.length === 50 && <button onClick={() => chat.setHistoryOffset(chat.historyOffset + 50)}>Older chats</button>}
         </div>
       </div>}
-      {chat.workspaceAvailable && <div className="arnyx-access">
+      {chat.workspaceAvailable && <details className="arnyx-access" open={chat.route === "/arnyx"}>
+        <summary>Workspace access · {chat.mode === "edit" ? "Make changes" : chat.mode === "controls" ? "ForgeFlow controls" : "Inspect files"}</summary>
+        <div>
         <label>Access mode<select aria-label="Arnyx access mode" value={chat.mode} onChange={e => chat.setMode(e.target.value)} disabled={mutation.isPending || chat.running}>
           <option value="inspect">Inspect files</option><option value="edit">Make changes</option><option value="controls">ForgeFlow controls</option>
         </select></label>
@@ -93,7 +95,8 @@ export default function Arnyx() {
           <label className="arnyx-network"><input type="checkbox" checked={chat.network} onChange={e => chat.setNetwork(e.target.checked)} disabled={mutation.isPending || chat.running} />Allow network and dependency downloads</label>
           <p>{chat.mode === "edit" ? "Your request and folder will appear for approval before Codex edits files." : "Codex can read local files and use diagnostic tools. Project files remain read-only."}</p>
         </>}
-      </div>}
+        </div>
+      </details>}
       {needsRestart && (
         <p className="arnyx-restart" role="status">
           Restart ForgeFlow once to load Arnyx’s updated backend.

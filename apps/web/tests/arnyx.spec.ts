@@ -112,6 +112,24 @@ test("Arnyx sends only bounded conversation and page focus, then renders a contr
   expect(Object.keys(payload!)).toEqual(["message", "history", "view", "conversation_id"]);
 });
 
+test("loading an earlier saved snapshot preserves a just-returned proposal", async ({ page }) => {
+  const answer = "Proposed adding Rust. Review the configuration proposal.";
+  await page.route("**/api/arnyx/chat", route => route.fulfill({json:{action:"proposeConfigChange",message:answer,proposal:{id:"fixture-proposal"}}}));
+  await page.route("**/api/arnyx/conversations/**", async route => {
+    if (route.request().method() !== "GET") return route.continue();
+    await expect(page.getByText(answer,{exact:true})).toBeVisible();
+    await route.fulfill({json:{messages:[{sequence:777,role:"user",text:"Add Rust"}],tasks:[]}});
+  });
+  await page.goto("/arnyx");
+  await page.getByLabel("Message Arnyx").fill("Add Rust");
+  await page.getByRole("button",{name:"Send message"}).click();
+  const review = page.getByRole("link",{name:/Review configuration proposal/});
+  await expect(review).toBeVisible();
+  await expect(page.getByText("Loading saved conversation…",{exact:true})).toHaveCount(0);
+  await expect(review).toBeVisible();
+  await expect(page.getByText(answer,{exact:true})).toHaveCount(1);
+});
+
 test("Arnyx workspace approvals persist, then show activity and a stop control", async ({ page }) => {
   let task = { id: "ui-scoped-task", conversation_id: "", directory: "S:/fixtures/project", mode: "edit", prompt: "Fix the parser and run its tests", network: false, status: "AWAITING_APPROVAL", activity: "Review this request", updated_at: new Date().toISOString() };
   let approved = false;
@@ -120,7 +138,7 @@ test("Arnyx workspace approvals persist, then show activity and a stop control",
     const response = await route.fetch();
     await route.fulfill({ json: { ...(await response.json()), mode: "live", codex_available: true, arnyx_workspace_available: true, project_root: "S:/fixtures/project" } });
   });
-  await page.route("**/api/arnyx/conversations/*", async route => {
+  await page.route("**/api/arnyx/conversations/**", async route => {
     const url = new URL(route.request().url());
     if (route.request().method() === "POST" && url.pathname.endsWith("/tasks")) {
       const body = route.request().postDataJSON();
@@ -145,6 +163,9 @@ test("Arnyx workspace approvals persist, then show activity and a stop control",
   await page.getByRole("button", {name:"Send message"}).click();
   const approval = page.getByRole("button", {name:"Approve changes in this folder"});
   await expect(approval).toBeVisible();expect(approved).toBe(false);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(approval).toBeVisible();
   await page.reload();
   await expect(approval).toBeVisible();expect(approved).toBe(false);
   await approval.click();

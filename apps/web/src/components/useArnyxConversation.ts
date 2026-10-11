@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import { request, useAPI } from "../api";
 import type { Reply } from "../types";
 
-export type ChatMessage = { role: "user" | "assistant"; text: string; sequence?: number; proposal?: boolean; confirmation?: Reply["confirmation"] };
+export type ChatMessage = { role: "user" | "assistant"; text: string; sequence?: number; afterSequence?: number; proposal?: boolean; confirmation?: Reply["confirmation"] };
 export type WorkspaceTask = { id: string; conversation_id: string; directory: string; mode: string; prompt: string; network: boolean; status: string; activity: string; error?: string; updated_at: string };
 type SavedChat = { id: string; title: string; updated_at: string };
 type Detail = { messages: ChatMessage[]; tasks: WorkspaceTask[] };
@@ -44,13 +44,17 @@ export function useArnyxConversation() {
     setMessages(previous => {
       const first = fetched[0]?.sequence || 0;
       const older = previous.filter(m => m.sequence && m.sequence < first);
-      return [...older, ...fetched.map(m => {
+      // A GET can finish between saving the user turn and saving its reply.
+      // Keep optimistic turns until a newer persisted row acknowledges them.
+      const pending = previous.filter(p => !p.sequence && !fetched.some(m => (m.sequence || 0) > (p.afterSequence || 0) && m.role === p.role && m.text === p.text));
+      return [...older, ...fetched.map((m,index) => {
         const existing = previous.find(p => p.sequence === m.sequence || (p.role === "assistant" && p.text === m.text));
-        return { ...m, proposal: existing?.proposal, confirmation: existing?.confirmation };
-      })];
+        const currentReply = index === fetched.length - 1 && m.role === "assistant" && m.text === lastReply?.message ? lastReply : undefined;
+        return { ...m, proposal: currentReply ? !!currentReply.proposal : existing?.proposal, confirmation: currentReply ? currentReply.confirmation : existing?.confirmation };
+      }),...pending];
     });
     setOlderAvailable(fetched.length === 100);
-  }, [detail.data]);
+  }, [detail.data,lastReply]);
   const tasks = detail.data?.tasks || [];
   const running = tasks.some(t => t.status === "RUNNING");
   function selectChat(next: string) {
@@ -79,7 +83,7 @@ export function useArnyxConversation() {
       if (result.reply) {
         const reply = result.reply;setLastReply(reply);
         setMessages(m => {
-          const response: ChatMessage = {role:"assistant",text:reply.message,proposal:!!reply.proposal,confirmation:reply.confirmation};
+          const response: ChatMessage = {role:"assistant",text:reply.message,proposal:!!reply.proposal,confirmation:reply.confirmation,afterSequence:Math.max(0,...m.map(item => item.sequence || 0))};
           return m.at(-1)?.role === "assistant" && m.at(-1)?.text === reply.message ? [...m.slice(0,-1),{...m.at(-1),...response}] : [...m,response];
         });
         await client.invalidateQueries({ queryKey:["/config/proposals"] });
@@ -95,7 +99,7 @@ export function useArnyxConversation() {
   });
   function send(text: string) {
     if (!text.trim() || mutation.isPending || running || confirming !== null || detail.isFetching || !runtime.data?.arnyx_version) return;
-    const message = text.trim();mutation.mutate({message,previous:messages});setMessages(m => [...m,{role:"user",text:message}]);
+    const message = text.trim();mutation.mutate({message,previous:messages});setMessages(m => [...m,{role:"user",text:message,afterSequence:Math.max(0,...m.map(item => item.sequence || 0))}]);
   }
   async function confirm(index: number) {
     const c = messages[index]?.confirmation;if (!c || confirming !== null || mutation.isPending) return;
@@ -103,6 +107,7 @@ export function useArnyxConversation() {
     setConfirming(index);
     try {
       await request(`/contributions/${encodeURIComponent(c.contribution_id)}/${c.action}`,{approved:true,constraints:c.constraints||""});
+      setLastReply(reply => reply ? {...reply,confirmation:undefined} : reply);
       setMessages(items => items.map((m,i) => i===index ? {...m,text:m.text+" Action accepted.",confirmation:undefined}:m));
       await client.invalidateQueries({predicate:q => !String(q.queryKey[0]).startsWith("/arnyx/conversations/")});
     } catch(e) {setMessages(items => [...items,{role:"assistant",text:(e as Error).message}]);}finally{setConfirming(null);}

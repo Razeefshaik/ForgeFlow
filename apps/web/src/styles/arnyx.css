@@ -193,7 +193,9 @@
 .arnyx-history span { overflow-wrap: anywhere; }
 .arnyx-history-pages,.arnyx-folder-shortcuts,.arnyx-task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .arnyx-history-pages button,.arnyx-folder-shortcuts button,.arnyx-load-older { background: transparent; border: 0; color: var(--accent); font-size: 11px; padding: 4px 0; }
-.arnyx-access { padding: 6px 20px 12px; border-bottom: 1px solid var(--border); display: grid; gap: 7px; font-size: 11px; }
+.arnyx-access { padding: 6px 20px 12px; border-bottom: 1px solid var(--border); font-size: 11px; flex-shrink: 0; }
+.arnyx-access summary { cursor: pointer; color: var(--text); padding: 4px 0; }
+.arnyx-access > div { display: grid; gap: 7px; padding-top: 6px; max-height: min(240px, 32dvh); overflow: auto; }
 .arnyx-access label { display: grid; gap: 4px; color: var(--muted); }
 .arnyx-access :is(select,input:not([type="checkbox"])) { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
 .arnyx-access .arnyx-network { display: flex; align-items: center; gap: 7px; }
