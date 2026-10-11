@@ -33,7 +33,7 @@ test("demo dashboard, filtering, score inspection and human gate", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
-test("Operator proposes a configuration change and waits for Apply", async ({
+test("Arnyx proposes a configuration change and waits for Apply", async ({
   page,
 }) => {
   await page.goto("/");
@@ -59,7 +59,7 @@ test("Operator proposes a configuration change and waits for Apply", async ({
       ).ok(),
     ).toBeTruthy();
   }
-  await page.getByRole("button", { name: "Operator", exact: true }).click();
+  await page.getByRole("button", { name: "Arnyx", exact: true }).click();
   await page.getByRole("button", { name: "Add Rust", exact: true }).click();
   await expect(
     page.getByText("Proposed adding Rust", { exact: false }),

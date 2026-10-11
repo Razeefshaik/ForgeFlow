@@ -11,7 +11,6 @@ import (
 	"forgeflow/internal/config"
 	"forgeflow/internal/contributions"
 	"forgeflow/internal/domain"
-	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,7 +34,7 @@ func Open(ctx context.Context, path string, demo bool) (*Store, error) {
 			return nil, err
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("forgeflow-sqlite", path)
 	if err != nil {
 		return nil, err
 	}
@@ -342,8 +341,8 @@ func (s *Store) Rollback(ctx context.Context, version, base int64) (domain.Confi
 	}
 	return s.CurrentConfig(ctx)
 }
-func listJSON[T any](ctx context.Context, db *sql.DB, query string) ([]T, error) {
-	rows, err := db.QueryContext(ctx, query)
+func listJSON[T any](ctx context.Context, db *sql.DB, query string, args ...any) ([]T, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

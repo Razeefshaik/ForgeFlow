@@ -1,6 +1,14 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   NavLink,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -40,7 +48,8 @@ import { Dialog } from "./components/ui/dialog";
 import { Tooltip } from "./components/ui/tooltip";
 import { usePresence } from "./components/ui/presence";
 import { useVisualEffects } from "./components/VisualEffects";
-const Operator = lazy(() => import("./components/Operator"));
+import Arnyx from "./components/Arnyx";
+const FloatingArnyx = lazy(() => import("./components/FloatingArnyx"));
 const Discovery = lazy(() => import("./components/Discovery"));
 const Login = lazy(() => import("./pages/Login"));
 const Configuration = lazy(() => import("./pages/Configuration"));
@@ -84,6 +93,7 @@ const pagePalettes: Record<string, string> = {
   usage: "obsidian-gold",
   configuration: "velvet-garnet",
   operator: "velvet-garnet",
+  arnyx: "velvet-garnet",
   settings: "aurora-jade",
   login: "ember-rose",
 };
@@ -91,8 +101,10 @@ export default function App() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("forgeflow-theme") ?? "dark",
   );
-  const [operatorOpen, setOperatorOpen] = useState(false);
-  const [motionPaused, setMotionPaused] = useState(() => localStorage.getItem("forgeflow-motion") === "paused");
+  const [arnyxOpen, setArnyxOpen] = useState(false);
+  const [motionPaused, setMotionPaused] = useState(
+    () => localStorage.getItem("forgeflow-motion") === "paused",
+  );
   const pageRef = useRef<HTMLDivElement>(null);
   const [resolvedTheme, setResolvedTheme] = useState(() =>
     localStorage.getItem("forgeflow-theme") === "light" ? "light" : "dark",
@@ -138,7 +150,9 @@ export default function App() {
   }, [motionPaused]);
   useLayoutEffect(() => {
     document.documentElement.dataset.palette = palette;
-    return () => { delete document.documentElement.dataset.palette; };
+    return () => {
+      delete document.documentElement.dataset.palette;
+    };
   }, [palette]);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -239,16 +253,21 @@ export default function App() {
   }, [client]);
   useEffect(() => {
     setMenu(false);
-    setOperatorOpen(false);
+    setArnyxOpen(false);
   }, [location.pathname]);
   const label =
     navigation.find(
       (n) =>
         n.to === location.pathname ||
         (n.to !== "/" && location.pathname.startsWith(n.to + "/")),
-    )?.label ?? "Operator";
+    )?.label ?? "Arnyx";
   return (
-    <div className="app" data-page={page} data-palette={palette} data-nav-collapsed={navCollapsed}>
+    <div
+      className="app"
+      data-page={page}
+      data-palette={palette}
+      data-nav-collapsed={navCollapsed}
+    >
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
@@ -378,10 +397,26 @@ export default function App() {
               <ArrowUpRight size={14} />
             </NavLink>
           </Tooltip>
-          <Tooltip content={motionPaused ? "Resume animations" : "Pause animations"} side="right" disabled={!navCollapsed || compact}>
-            <button aria-label={motionPaused ? "Resume animations" : "Pause animations"} aria-pressed={motionPaused} onClick={() => setMotionPaused(value => !value)}>
-              {motionPaused ? <Sparkles size={16} /> : <CirclePause size={16} />}
-              <span>{motionPaused ? "Resume animations" : "Pause animations"}</span>
+          <Tooltip
+            content={motionPaused ? "Resume animations" : "Pause animations"}
+            side="right"
+            disabled={!navCollapsed || compact}
+          >
+            <button
+              aria-label={
+                motionPaused ? "Resume animations" : "Pause animations"
+              }
+              aria-pressed={motionPaused}
+              onClick={() => setMotionPaused((value) => !value)}
+            >
+              {motionPaused ? (
+                <Sparkles size={16} />
+              ) : (
+                <CirclePause size={16} />
+              )}
+              <span>
+                {motionPaused ? "Resume animations" : "Pause animations"}
+              </span>
             </button>
           </Tooltip>
           <Tooltip
@@ -480,9 +515,9 @@ export default function App() {
             <Button
               variant="secondary"
               size="small"
-              onClick={() => setOperatorOpen(true)}
+              onClick={() => setArnyxOpen(true)}
             >
-              <MessageSquare size={14} /> Operator
+              <MessageSquare size={14} /> Arnyx
             </Button>
           </div>
         </header>
@@ -507,7 +542,11 @@ export default function App() {
           )}
         </div>
         <main id="main" tabIndex={-1}>
-          <div className="page-transition" key={location.pathname} ref={pageRef}>
+          <div
+            className="page-transition"
+            key={location.pathname}
+            ref={pageRef}
+          >
             <Suspense
               fallback={<div className="skeleton" aria-label="Loading page" />}
             >
@@ -557,32 +596,36 @@ export default function App() {
                   element={<Settings theme={theme} setTheme={setTheme} />}
                 />
                 <Route
-                  path="/operator"
+                  path="/arnyx"
                   element={
                     <>
                       <div className="page-intro">
                         <div>
-                          <h1>Operator</h1>
+                          <h1>Arnyx</h1>
                           <p>
                             Ask about your workspace. Review every proposed
                             action.
                           </p>
                         </div>
                       </div>
-                      <section className="surface surface-elevated operator-page">
+                      <section className="surface surface-elevated arnyx-page">
                         <Suspense
                           fallback={
                             <div
                               className="skeleton"
-                              aria-label="Loading Operator"
+                              aria-label="Loading Arnyx"
                             />
                           }
                         >
-                          <Operator />
+                          <Arnyx />
                         </Suspense>
                       </section>
                     </>
                   }
+                />
+                <Route
+                  path="/operator"
+                  element={<Navigate to="/arnyx" replace />}
                 />
                 <Route
                   path="*"
@@ -624,7 +667,7 @@ export default function App() {
         <div className="command-results">
           {[
             ...navigation,
-            { to: "/operator", label: "Operator", icon: MessageSquare },
+            { to: "/arnyx", label: "Arnyx", icon: MessageSquare },
           ]
             .filter((item) =>
               item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
@@ -642,24 +685,14 @@ export default function App() {
                 <ArrowUpRight size={14} />
               </button>
             ))}
-          {![...navigation, { label: "Operator" }].some((item) =>
+          {![...navigation, { label: "Arnyx" }].some((item) =>
             item.label.toLowerCase().includes(navigationSearch.toLowerCase()),
           ) && <p className="muted">No matching pages.</p>}
         </div>
       </Dialog>
-      <Dialog
-        open={operatorOpen}
-        onOpenChange={setOperatorOpen}
-        drawer
-        title="Operator"
-        description="Controlled actions, grounded in your persisted system state."
-      >
-        <Suspense
-          fallback={<div className="skeleton" aria-label="Loading Operator" />}
-        >
-          <Operator />
-        </Suspense>
-      </Dialog>
+      <Suspense fallback={null}>
+        <FloatingArnyx open={arnyxOpen} onOpenChange={setArnyxOpen} />
+      </Suspense>
       <Dialog
         open={help}
         onOpenChange={setHelp}
@@ -673,7 +706,7 @@ export default function App() {
         </p>
         <p>
           Use Opportunities to inspect quality factors. Use Configuration to
-          propose, review, apply and restore settings. Ask Operator about your
+          propose, review, apply and restore settings. Ask Arnyx about your
           profile or try “Add Rust”.
         </p>
         <p className="muted">

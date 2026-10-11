@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -53,7 +54,8 @@ func (s Server) health(w http.ResponseWriter, r *http.Request, detailed bool) {
 			add(healthCheck{ID: "runner", Name: "Execution tools", Status: "ok", Message: "Execution tool detected at startup. Sign-in and individual runs require their own checks."})
 		}
 		root, _ := s.Runtime["contributions_root"].(string)
-		for _, disk := range []struct{ id, name, path string }{{"workspace_disk", "Workspace storage", root}, {"temp_disk", "Temporary storage", os.TempDir()}} {
+		profile, _ := os.UserHomeDir()
+		for _, disk := range []struct{ id, name, path string }{{"workspace_disk", "Workspace storage", root}, {"temp_disk", "Temporary storage", os.TempDir()}, {"profile_disk", "User profile storage", profile}} {
 			path := disk.path
 			if path == "" {
 				continue
@@ -81,9 +83,16 @@ func (s Server) health(w http.ResponseWriter, r *http.Request, detailed bool) {
 			}
 			add(c)
 		}
-		cs, err := s.Store.Contributions(ctx)
+		workspaceCtx, stop := context.WithTimeout(r.Context(), 3*time.Second)
+		cs, err := s.Store.Contributions(workspaceCtx)
+		stop()
 		if err != nil {
-			add(healthCheck{ID: "workspaces", Name: "Saved workspaces", Status: "failed", Message: "Saved workspaces could not be read."})
+			check := healthCheck{ID: "workspaces", Name: "Saved workspaces", Status: "failed", Message: "Saved workspaces could not be read."}
+			if errors.Is(err, context.DeadlineExceeded) {
+				check.Status = "warning"
+				check.Message = "Saved workspace check timed out. Refresh after system load settles."
+			}
+			add(check)
 		} else if s.Execution != nil && !s.Store.Demo {
 			missing, blocked := 0, 0
 			for _, c := range cs {

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -6,6 +7,13 @@ const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('Run this through npm run dev or npm run dev:live')
 const demo = process.argv.includes('--demo')
 console.log('ForgeFlow: starting Go backend; waiting for http://127.0.0.1:8080/api/health…')
+// Keep build and command scratch files on the project drive. This is especially
+// useful when a Windows system drive is full; no system environment is changed.
+const scratch = path.resolve(process.env.FORGEFLOW_TEMP_DIR || path.join(root, '.cache', 'runtime-tmp'))
+const goCache = process.env.GOCACHE || path.join(root, '.cache', 'go-build')
+mkdirSync(scratch, { recursive: true })
+if (goCache !== 'off') mkdirSync(goCache, { recursive: true })
+const childEnv = { ...process.env, TEMP: scratch, TMP: scratch, GOTMPDIR: process.env.GOTMPDIR || scratch, GOCACHE: goCache }
 const children = []
 let stopping = false
 const startup = new AbortController()
@@ -20,7 +28,7 @@ function stop(code = 0) {
   process.exitCode = code
 }
 function launch(command, args, cwd) {
-  const child = spawn(command, args, { cwd, stdio: 'inherit' })
+  const child = spawn(command, args, { cwd, stdio: 'inherit', env: childEnv, windowsHide: true })
   children.push(child)
   child.on('error', error => { console.error(error.message); stop(1) })
   child.on('exit', code => { if (!stopping) stop(code ?? 1) })
@@ -40,7 +48,7 @@ try {
   } catch { /* No HTTP backend is listening yet. */ }
   if (occupied) throw new Error('Port 8080 is already serving a backend. Stop the existing dev command before starting another.')
   if (!stopping) launch('go', ['run', './apps/server', ...(demo ? ['--demo'] : [])], root)
-  const deadline = Date.now() + 120_000
+  const deadline = Date.now() + 300_000
   let ready = false
   while (!stopping && Date.now() < deadline) {
     try {
@@ -56,7 +64,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 500))
   }
   if (!stopping) {
-    if (!ready) throw new Error('Go backend did not become ready within two minutes; inspect its output above.')
+    if (!ready) throw new Error('Go backend did not become ready within five minutes; inspect its output above.')
     console.log('ForgeFlow: backend ready. Starting frontend · ' + (demo ? 'explicit DEMO mode' : 'live GitHub discovery'))
     launch(process.execPath, [npmCli, 'run', 'dev'], path.join(root, 'apps/web'))
   }

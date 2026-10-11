@@ -82,7 +82,11 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/health/details", func(w http.ResponseWriter, r *http.Request) { s.health(w, r, true) })
 	m.HandleFunc("GET /api/overview", s.overview)
-	m.HandleFunc("GET /api/runtime", func(w http.ResponseWriter, r *http.Request) { write(w, 200, s.Runtime) })
+	runtime := map[string]any{"arnyx_version": 1}
+	for key, value := range s.Runtime {
+		runtime[key] = value
+	}
+	m.HandleFunc("GET /api/runtime", func(w http.ResponseWriter, r *http.Request) { write(w, 200, runtime) })
 	m.HandleFunc("GET /api/runtime/models", func(w http.ResponseWriter, r *http.Request) {
 		models, err := codex.LocalModels()
 		if err != nil {
@@ -265,9 +269,20 @@ func (s Server) Handler() http.Handler {
 		v, e := s.Store.Rollback(r.Context(), b.Version, b.Base)
 		respond(w, v, e)
 	})
-	m.HandleFunc("POST /api/operator/chat", func(w http.ResponseWriter, r *http.Request) {
+	arnyxSlot := make(chan struct{}, 1)
+	arnyxChat := func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case arnyxSlot <- struct{}{}:
+			defer func() { <-arnyxSlot }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			write(w, 429, map[string]string{"error": "Arnyx is answering another request. Try again shortly."})
+			return
+		}
 		var b struct {
-			Message string `json:"message"`
+			Message string          `json:"message"`
+			History []operator.Turn `json:"history"`
+			View    operator.View   `json:"view"`
 		}
 		if !decode(w, r, &b) {
 			return
@@ -276,9 +291,11 @@ func (s Server) Handler() http.Handler {
 		if s.Execution != nil {
 			root = s.Execution.Root
 		}
-		v, e := (operator.Service{Store: s.Store, AI: s.OperatorAI, Execution: s.Execution, Root: root}).Chat(r.Context(), b.Message)
+		v, e := (operator.Service{Store: s.Store, AI: s.OperatorAI, Execution: s.Execution, Root: root, History: b.History, View: b.View}).Chat(r.Context(), b.Message)
 		respond(w, v, e)
-	})
+	}
+	m.HandleFunc("POST /api/arnyx/chat", arnyxChat)
+	m.HandleFunc("POST /api/operator/chat", arnyxChat) // Backward-compatible clients.
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 404, map[string]string{"error": "API endpoint not found"})
 	})

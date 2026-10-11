@@ -102,6 +102,7 @@ export default function ExecutionPanel({
   const r = execution.data;
   const running = r?.status === "RUNNING";
  useEffect(()=>{setSubmitApproved(false)},[r?.submission_token]);
+ useEffect(()=>{setEditingPR(false);setSubmitApproved(false)},[c.id]);
   const diagnosis = useQuery({
     queryKey: [prefix + "/diagnosis"],
     queryFn: () => request<ExecutionIncident | null>(prefix + "/diagnosis"),
@@ -284,7 +285,7 @@ export default function ExecutionPanel({
             </Button>
           )}
           {c.state === "READY" && !running && (
-            <Button disabled={busy} onClick={() => act("prepare-pr")}>
+            <Button disabled={busy || editingPR} onClick={() => act("prepare-pr")}>
               Prepare local commit & PR
             </Button>
           )}

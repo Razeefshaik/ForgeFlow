@@ -79,6 +79,7 @@ func (s *Service) preparePR(ctx context.Context, id string, internal bool) (doma
 	}
 	r.HeadCommit = strings.TrimSpace(sha)
 	r.Status = "PR_PREPARED"
+	r.Message = "Prepared local commit and PR draft; awaiting human submission approval."
 	r.SubmissionToken = submissionToken(r)
 	if err = s.Store.SaveExecutionCheckpoint(ctx, r, "PR_PREPARED", "user", "Prepared local commit and PR title/body; no push or submission"); err != nil {
 		return r, err
@@ -257,6 +258,7 @@ func (s *Service) recordSubmittedPR(ctx context.Context, repository string, r do
 		return r, errors.New("GitHub returned an invalid PR URL")
 	}
 	r.Status = "PR_OPENED"
+	r.Message = "PR submitted: " + r.PRURL
 	if err := s.Store.SaveExecutionCheckpoint(ctx, r, "PR_OPENED", "user", "Human approved PR submitted: "+r.PRURL); err != nil {
 		return r, err
 	}

@@ -1,5 +1,4 @@
-// Package operator exposes a deterministic, allowlisted foundation dispatcher.
-// An AI adapter can later choose these same operations; no shell is exposed.
+// Package operator implements Arnyx, a bounded, state-aware assistant with approved domain actions.
 package operator
 
 import (
@@ -17,11 +16,16 @@ type Reply struct {
 	Action       string           `json:"action"`
 	Proposal     *domain.Proposal `json:"proposal,omitempty"`
 	Confirmation *Confirmation    `json:"confirmation,omitempty"`
+	Engine       string           `json:"engine,omitempty"`
+	ContextBytes int              `json:"context_bytes,omitempty"`
+	Lookups      int              `json:"lookups,omitempty"`
 }
 type Service struct {
 	Store     *storage.Store
 	AI        codex.Runner
 	Execution *execution.Service
+	History   []Turn
+	View      View
 	Root      string
 }
 
@@ -30,7 +34,10 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 	if m == "" || len(message) > 2000 {
 		return Reply{}, fmt.Errorf("enter a message of at most 2000 characters")
 	}
-	if s.AI != nil && (!s.Store.Demo) && m != "add rust" && m != "include rust" && m != "i want to contribute to rust" {
+	if err := validateConversation(s.History, s.View); err != nil {
+		return Reply{}, err
+	}
+	if s.AI != nil && !s.Store.Demo {
 		return s.aiChat(ctx, message)
 	}
 	c, err := s.Store.CurrentConfig(ctx)
@@ -46,7 +53,7 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 			return Reply{Action: "getConfig", Message: "Rust is already included in the current profile."}, nil
 		}
 		c.Config.Profile.Languages["Rust"] = 0.8
-		p, err := s.Store.Propose(ctx, c.Version, c.Config, "Operator: add Rust to search languages")
+		p, err := s.Store.Propose(ctx, c.Version, c.Config, "Arnyx: add Rust to search languages")
 		if err != nil {
 			return Reply{}, err
 		}
@@ -66,7 +73,7 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 				running++
 			}
 		}
-		return Reply{Action: "getAgentStatus", Message: fmt.Sprintf("%d recorded Codex sessions; %d currently running. Demo records do not start agents.", len(agents), running)}, nil
+		return Reply{Action: "getAgentStatus", Message: fmt.Sprintf("Among the latest %d recorded Codex sessions, %d are running. Demo records do not start agents.", len(agents), running)}, nil
 	}
 	if strings.Contains(m, "discovery") || strings.Contains(m, "scan") {
 		if s.Store.Demo {
@@ -97,7 +104,7 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 		if s.Store.Demo {
 			prefix = "Demo data: "
 		}
-		return Reply{Action: "getContribution", Message: fmt.Sprintf("%s%d contributions, %d ready entries (%s). Execution is not available in this foundation.", prefix, len(cs), len(ready), strings.Join(ready, ", "))}, nil
+		return Reply{Action: "getContribution", Message: fmt.Sprintf("%s%d contributions, %d ready entries (%s). Execution remains subject to the contribution’s saved permissions and approval controls.", prefix, len(cs), len(ready), strings.Join(ready, ", "))}, nil
 	}
 	if strings.Contains(m, "rank") || strings.Contains(m, "score") {
 		os, err := s.Store.Opportunities(ctx)
@@ -118,5 +125,5 @@ func (s Service) Chat(ctx context.Context, message string) (Reply, error) {
 		}
 		return Reply{Action: "getOpportunity", Message: "Ranking is a weighted average of stored quality components. Codex effort is separate. Include a repository's full name to inspect its stored reasons."}, nil
 	}
-	return Reply{Action: "unsupported", Message: "Foundation Operator supports current languages, agent status, ready contributions, ranking explanations, and “Add Rust” proposals. AI-backed chat and execution controls are pending."}, nil
+	return Reply{Action: "unsupported", Message: "Arnyx is in offline mode. I can show current languages, agent status, contributions, rankings, or draft “Add Rust”. Free-form conversation needs the authenticated local Codex CLI in live mode."}, nil
 }

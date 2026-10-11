@@ -108,7 +108,6 @@ func (s *Store) RecoverExecutions(ctx context.Context) error {
 		}
 		if v.Status == "RUNNING" {
 			v.Status = "BLOCKED"
-			v.Summary = "Execution interrupted by server restart. Resume explicitly after inspecting saved outputs."
 			state := c.State
 			switch state {
 			case "READY", "PR_PREPARED", "PR_OPENED", "ABANDONED", "FAILED":
@@ -117,6 +116,9 @@ func (s *Store) RecoverExecutions(ctx context.Context) error {
 				if state != "BLOCKED" && state != "PAUSED" {
 					state = "BLOCKED"
 				}
+				v.Status = state
+				v.Summary = "Execution interrupted by server restart. Resume explicitly after inspecting saved outputs."
+				v.Message = v.Summary
 			}
 			if e = s.SaveExecutionCheckpoint(ctx, v, state, "system", v.Summary); e != nil {
 				return e

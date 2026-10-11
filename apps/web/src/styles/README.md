@@ -10,7 +10,7 @@ variable Latin fonts and their OFL licenses live in public/fonts.
 - tokens.css: semantic themes, palette, spacing, radius, elevation and motion.
 - ../style.css: Tailwind, reset, typography, forms and accessibility foundations.
 - shell.css: navigation, ambient lighting, toolbar and responsive shell.
-- components.css: shared controls, dialogs, data rows, feedback and Operator.
+- components.css: shared controls, dialogs, data rows, feedback and Arnyx.
 - pages.css: dashboard bento layouts and secondary page composition.
 - workspace.css: execution stages, live activity, evidence and recovery.
 - lighting.css: borderless card edges and pointer-positioned, hover-only rims.
@@ -24,7 +24,7 @@ variable Latin fonts and their OFL licenses live in public/fonts.
 | Cosmic Orchid | Overview | Orchid violet + luminous pink |
 | Ember Rose | Opportunities, GitHub account | Coral rose + warm apricot |
 | Aurora Jade | Contributions, Settings | Emerald mint + ice cyan |
-| Velvet Garnet | Activity, Configuration, Operator | Garnet pink + peach |
+| Velvet Garnet | Activity, Configuration, Arnyx | Garnet pink + peach |
 | Obsidian Gold | Usage & effort | Champagne gold + copper |
 | Electric Indigo | Agents, contribution workspace | Indigo blue + electric cyan |
 
@@ -96,7 +96,7 @@ package dependencies are unchanged by this redesign.
   System.tsx and Login.tsx. System.tsx owns Agents, Activity, Usage and Settings.
   Configuration is restyled by the shared page system.
 - Shared components: src/components/ContributionStages.tsx, ExecutionPanel.tsx,
-  Operator.tsx, icons.tsx, primitives.tsx and ui/dialog.tsx.
+  Arnyx.tsx, icons.tsx, primitives.tsx and ui/dialog.tsx.
 - Foundations: src/style.css and src/design.css.
 - Design modules: src/styles/tokens.css, shell.css, components.css, pages.css
   and workspace.css, with this README documenting their ownership.
@@ -105,3 +105,5 @@ package dependencies are unchanged by this redesign.
 Existing routes, mutation handlers and human approval requirements remain in
 place. Regression tests use a disposable demo database. Real-data screenshots
 read the running local app with browser API mutations blocked.
+
+- arnyx.css: floating companion, responsive chat, route-coordinated atmosphere and reduced motion.

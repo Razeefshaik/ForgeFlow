@@ -1,0 +1,509 @@
+/* Arnyx: a small companion, with the active screen's two-color atmosphere. */
+.arnyx-companion {
+  position: fixed;
+  z-index: 49;
+  width: 76px;
+  height: 86px;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  isolation: isolate;
+}
+.arnyx-companion > img {
+  width: 76px;
+  height: 76px;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 9px #0006);
+  transition: transform 0.35s var(--ease-out);
+  animation: arnyx-float 5s ease-in-out infinite;
+}
+.arnyx-companion:hover > img,
+.arnyx-companion:focus-visible > img {
+  animation: arnyx-hello 0.7s var(--ease-out) both;
+}
+.arnyx-companion[data-dragging="true"] {
+  cursor: grabbing;
+}
+.arnyx-companion[data-dragging="true"] > img {
+  animation: none;
+  transform: rotate(-10deg) scale(1.08);
+}
+.arnyx-companion-name {
+  margin-top: -5px;
+  color: var(--text);
+  background: var(--surface-high);
+  border-radius: 20px;
+  padding: 1px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px #0004;
+}
+.arnyx-orbit {
+  position: absolute;
+  inset: 18px -6px 8px;
+  z-index: -1;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      ellipse at 20% 25%,
+      color-mix(in srgb, var(--accent) 50%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse at 85% 65%,
+      color-mix(in srgb, var(--accent-soft) 45%, transparent),
+      transparent 65%
+    );
+  filter: blur(14px);
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+.arnyx-companion:hover .arnyx-orbit {
+  opacity: 1;
+}
+.arnyx-greeting {
+  position: absolute;
+  bottom: 96px;
+  right: 0;
+  width: max-content;
+  padding: 7px 12px;
+  background: var(--surface-high);
+  color: var(--text);
+  border-radius: 12px 12px 3px 12px;
+  font-size: 12px;
+  opacity: 0;
+  transform: translateY(7px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+  box-shadow: var(--elevated-shadow);
+}
+.arnyx-companion:hover .arnyx-greeting,
+.arnyx-companion:focus-visible .arnyx-greeting {
+  opacity: 1;
+  transform: none;
+}
+.arnyx-panel {
+  position: fixed;
+  z-index: 59;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  min-height: min(320px, calc(100dvh - 128px));
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 26px;
+  overflow: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(
+      ellipse at 0 0,
+      color-mix(in srgb, var(--accent) 17%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 100% 25%,
+      color-mix(in srgb, var(--accent-soft) 13%, transparent),
+      transparent 60%
+    ),
+    var(--bg);
+  box-shadow:
+    0 30px 100px -12px #000b,
+    0 0 65px -30px color-mix(in srgb, var(--accent-soft) 35%, transparent);
+  animation: arnyx-arrive 0.32s var(--ease-out);
+  transform-origin: bottom right;
+}
+.arnyx-panel:focus-visible {
+  outline-offset: 3px;
+}
+.arnyx-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px 13px;
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+.arnyx-panel-header > div:nth-child(2) {
+  flex: 1;
+}
+.arnyx-panel-header h2 {
+  font: 600 20px/1.25 var(--font-display);
+  margin: 0;
+  letter-spacing: -0.6px;
+}
+.arnyx-panel-header p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.arnyx-header-avatar {
+  width: 43px;
+  height: 43px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-high));
+}
+.arnyx-header-avatar img {
+  width: 43px;
+  height: 43px;
+}
+.arnyx-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+}
+.arnyx-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.arnyx-status-dot {
+  height: 5px;
+  width: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.arnyx-context button {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  padding: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.arnyx-context button:disabled {
+  opacity: 0.4;
+}
+.arnyx-messages {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px 20px 20px;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.arnyx-welcome {
+  padding: 6px 2px 4px;
+}
+.arnyx-welcome-avatar {
+  position: relative;
+  width: 90px;
+  height: 80px;
+  margin: 0 auto 16px;
+}
+.arnyx-welcome-avatar::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  background: linear-gradient(130deg, var(--accent), var(--accent-soft));
+  filter: blur(24px);
+  opacity: 0.28;
+}
+.arnyx-welcome-avatar img {
+  position: relative;
+  width: 90px;
+  height: 80px;
+}
+.arnyx-welcome-avatar span {
+  position: absolute;
+  right: -5px;
+  top: 18px;
+  font-size: 19px;
+  color: var(--accent-soft);
+}
+.arnyx-welcome .eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+.arnyx-welcome h3 {
+  font: 500 32px/1.1 var(--font-display);
+  letter-spacing: -1.3px;
+  margin: 8px 0 13px;
+}
+.arnyx-welcome > p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0 0 20px;
+  max-width: 310px;
+}
+.arnyx-suggestions {
+  display: grid;
+  gap: 7px;
+}
+.arnyx-suggestions button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+  padding: 11px 13px;
+  background: color-mix(in srgb, var(--surface-high) 80%, transparent);
+  border: 0;
+  border-radius: 11px;
+  box-shadow: 0 4px 10px #0001;
+  transition:
+    background 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.arnyx-suggestions button:hover {
+  transform: translateX(3px);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-high));
+  box-shadow: 0 0 15px -6px var(--accent);
+}
+.arnyx-suggestions svg {
+  color: var(--accent-soft);
+}
+.arnyx-message {
+  margin: 8px 0 14px;
+  padding: 13px 14px;
+  border-radius: 16px 16px 16px 4px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  animation: arnyx-message-in 0.22s var(--ease-out);
+  overflow-wrap: anywhere;
+}
+.arnyx-message .eyebrow {
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.arnyx-message p {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 5px 0 0;
+}
+.arnyx-message-user {
+  margin-left: 28px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-high));
+  border-radius: 16px 16px 4px 16px;
+}
+.arnyx-message-user .eyebrow {
+  color: var(--muted);
+}
+.arnyx-proposal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 0 1px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.arnyx-confirmation {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-high);
+}
+.arnyx-confirmation .btn {
+  margin-top: 10px;
+}
+.arnyx-confirmation code {
+  font-size: 10px;
+}
+.arnyx-thinking {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+  padding: 8px 2px;
+}
+.arnyx-thinking > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: arnyx-dot 1.2s ease-in-out infinite;
+}
+.arnyx-thinking > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.arnyx-thinking > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.arnyx-thinking p {
+  font-size: 11px;
+  margin: 0 0 0 5px;
+}
+.arnyx-error {
+  font-size: 12px;
+  color: var(--red);
+  padding: 10px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.arnyx-error span {
+  color: var(--muted);
+}
+.arnyx-compose {
+  flex-shrink: 0;
+  padding: 10px 16px 14px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+}
+.arnyx-compose form {
+  display: flex;
+  gap: 6px;
+  padding: 7px;
+  background: var(--surface-high);
+  border-radius: 14px;
+  transition: box-shadow 0.2s;
+}
+.arnyx-compose form:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 24px -12px var(--accent-soft);
+}
+.arnyx-compose input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+  outline: 0;
+}
+.arnyx-compose .btn {
+  --primary: var(--accent);
+  min-height: 34px;
+}
+.arnyx-compose > p {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--muted);
+  margin: 9px 1px 0;
+}
+.arnyx-compose > p > span {
+  margin-left: auto;
+  font-size: 9px;
+}
+.arnyx-page {
+  height: min(740px, calc(100dvh - 220px));
+  min-height: 520px;
+  max-width: 850px;
+  padding: 16px;
+}
+.arnyx-page .arnyx-welcome {
+  max-width: 420px;
+  margin: 0 auto;
+}
+.arnyx-page .arnyx-welcome > p {
+  max-width: none;
+}
+@keyframes arnyx-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(2deg);
+  }
+}
+@keyframes arnyx-hello {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-12deg) translateY(-4px);
+  }
+  65% {
+    transform: rotate(10deg) translateY(-4px);
+  }
+}
+@keyframes arnyx-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes arnyx-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes arnyx-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (max-width: 600px) {
+  .arnyx-panel {
+    left: 12px !important;
+    top: auto !important;
+    bottom: max(108px, env(safe-area-inset-bottom));
+    height: min(650px, calc(100dvh - 128px)) !important;
+    width: calc(100vw - 24px);
+    border-radius: 23px;
+  }
+  .arnyx-panel-header {
+    padding: 12px 14px;
+  }
+  .arnyx-compose input {
+    font-size: 16px;
+  }
+  .arnyx-suggestions button {
+    min-height: 44px;
+  }
+  .arnyx-context button {
+    min-height: 32px;
+  }
+  .arnyx-page {
+    min-height: 560px;
+    padding: 4px;
+  }
+  .arnyx-welcome h3 {
+    font-size: 29px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arnyx-companion *,
+  .arnyx-panel,
+  .arnyx-panel * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+html[data-motion="paused"] .arnyx-companion *,
+html[data-motion="paused"] .arnyx-panel,
+html[data-motion="paused"] .arnyx-panel * {
+  animation: none !important;
+  transition: none !important;
+}
+
+.arnyx-restart {
+  font-size: 12px;
+  color: var(--amber);
+  background: var(--surface);
+  margin: 0 20px 8px;
+  border-radius: 10px;
+  padding: 10px;
+}

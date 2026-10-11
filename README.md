@@ -5,20 +5,20 @@ A local-first open-source contribution control plane, built as a React/TypeScrip
 **Current delivery: live discovery, approved Git workspaces, Codex planning/coding, real verification with bounded fixes, independent review, reports and human-approved PR submission.** ForgeFlow lives in this repository root. External clones use the configured workspace root; this installation uses `S:/StudyResource/TechBoooo/Backend/Contriss/<contribution-id>/repo`.
 
 ## Run on Windows
-Requirements: Go 1.26+, Node 24 LTS, npm, Git and an authenticated Codex CLI (`codex login`) for execution/AI Operator. Docker is not required. Codex runs finite CLI sessions with a workspace write sandbox; a real positive/negative write probe must pass before coding.
+Requirements: Go 1.26+, Node 24 LTS, npm, Git and an authenticated Codex CLI (`codex login`) for execution/Arnyx. Docker is not required. Codex runs finite CLI sessions with a workspace write sandbox; a real positive/negative write probe must pass before coding.
 
 From this repository:
 ```powershell
 npm run setup
 npm run dev
 ```
-Open http://127.0.0.1:5173. This starts live mode with real GitHub fetching. Ctrl+C stops both processes.
+Open http://127.0.0.1:5173. This starts live mode with real GitHub fetching. Ctrl+C stops both processes. Development builds and temporary files use the project drive under `.cache`; `FORGEFLOW_TEMP_DIR` overrides the temporary directory without changing your system settings.
 
 For illustrative demo data:
 ```powershell
 npm run dev:demo
 ```
-Open Opportunities and select **Run discovery now**. In live mode, automatic scans start after startup, then run every 15 minutes while the server runs; Pause/Resume persists. Public discovery works without credentials, with smaller scan limits. Open **GitHub account** to sign in through your browser and stay connected across restarts. A [one-time OAuth Client ID setup](docs/github-sign-in.md) identifies ForgeFlow to GitHub; no personal token or client secret is needed. Windows encrypts saved credentials for your account. Environment variables and an existing `gh auth login` remain supported as fallbacks. Never paste tokens into configuration or Operator. The chat's GitHub plugin does not authenticate the running app.
+Open Opportunities and select **Run discovery now**. In live mode, automatic scans start after startup, then run every 15 minutes while the server runs; Pause/Resume persists. Public discovery works without credentials, with smaller scan limits. Open **GitHub account** to sign in through your browser and stay connected across restarts. A [one-time OAuth Client ID setup](docs/github-sign-in.md) identifies ForgeFlow to GitHub; no personal token or client secret is needed. Windows encrypts saved credentials for your account. Environment variables and an existing `gh auth login` remain supported as fallbacks. Never paste tokens into configuration or Arnyx. The chat's GitHub plugin does not authenticate the running app.
 
 Build and run the dashboard with a single Go process:
 ```powershell
@@ -34,14 +34,14 @@ npm --prefix apps/web run dev
 ```
 
 ## Implemented
-- React dashboard with responsive navigation, dark/light themes, opportunities table, filters, score breakdown, contribution records, event timeline, agent/usage status and Operator panel.
+- React dashboard with responsive navigation, dark/light themes, opportunities table, filters, score breakdown, contribution records, event timeline, agent/usage status and floating Arnyx companion.
 - SQLite embedded migrations, mode separation, transactionally persisted events and lifecycle changes, immutable audit/config history.
 - Validated contribution state machine and bounded retry configuration.
 - Configuration proposals, explicit Apply/Cancel, stale-version checks and rollback as a new version.
 - Reconnectable SSE replay and frontend cache invalidation.
 - Explained quality ranking, independent heuristic effort estimates and the required ranking-independence regression test.
 - Explicit, idempotent demo seeding; no mocked data in live mode.
-- AI Operator translates natural language into validated configuration proposals or confirmation cards for contribution controls. Exact Add Rust also has a deterministic shortcut; demo mode uses a deterministic dispatcher.
+- Arnyx connects to the authenticated local LLM with compact current state, short conversation memory and targeted lookups. It explains blockers and drafts validated configuration proposals or contribution confirmation cards. Activity logs, agent transcripts and test output are excluded. Demo/offline mode is explicitly deterministic. See [Arnyx](docs/operator.md).
 - Read-only GitHub discovery: bounded requests, credential lookup, rate-limit backoff, memory cache and ETag revalidation.
 - Repository/issue evidence, eleven explained quality factors, timestamped snapshots and durable scan history.
 - Live Run/Cancel and automatic Pause/Resume controls; demo mode cannot fetch live issues.
@@ -51,6 +51,12 @@ npm --prefix apps/web run dev
 - Pause/resume/stop/abandon, contribution constraints, workspace folder opening, diff/test/review/report views and observed agent/token usage.
 - Temporary configuration proposals expire through a new configuration version only if no newer manual settings superseded them.
 - Local commit/PR preparation and a separate approval bound to the commit and PR text before fork, push and PR creation. No auto submission or merge.
+
+- System health in Settings checks the database, installed tools, saved workspace boundaries and disk space. Checks are read-only and distinguish availability from authentication or contribution verification.
+- Editable PR titles/descriptions with stale-draft detection. Changing prepared text invalidates submission approval. Public descriptions contain changes, actual test outcomes and risks; internal reports retain execution/model evidence.
+- Atomic execution checkpoints, interrupted-run reconciliation, isolated worker panic handling, serialized execution/PR controls, and recovery of an accepted GitHub PR after a lost response.
+
+See [reliability and feature research](docs/reliability-and-features.md) for implementation scope, research and remaining opportunities.
 
 ## Execution and boundaries
 Inspect a real issue, select **Proceed to Contribute**, review fresh inputs and explicitly approve cloning, coding, verification and independent review. Existing preparation-only contributions require **Start coding** approval. Enabling plan approval pauses before edits; approve the plan, then resume. Dependency network access is off by default and can be explicitly enabled when starting/resuming.

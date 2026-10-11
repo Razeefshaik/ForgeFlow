@@ -12,7 +12,9 @@ import (
 
 // Only provenance claims are excluded. Technical subjects such as an LLM API
 // regression remain valid PR content. Internal audit reports keep full evidence.
-var authorshipClaim = regexp.MustCompile(`(?i)(?:\b(?:generated|written|built|created|implemented|authored|produced|developed|assisted|powered)\b[^\n]{0,60}\b(?:by|with|using)\b[^\n]{0,60}\b(?:an?\s+)?(?:llm|ai|codex|chatgpt|claude|copilot|openai|gpt[- ]?\d*)\b|\b(?:ai|llm)[ -](?:generated|assisted|authored|built)\b|\bcodex model\s*:|\bco-authored-by\s*:[^\n]*(?:bot|codex|openai|copilot))`)
+const modelAttribution = `(?:llms?|ai|large language models?|language models?|artificial intelligence|codex|chatgpt|claude|copilot|openai|gpt[- ]?\d*)`
+
+var authorshipClaim = regexp.MustCompile(`(?i)(?:\b(?:generated|written|built|created|implemented|authored|produced|developed|assisted|powered)\b[^\n]*\b(?:by|with|using)\b[^\n]*\b` + modelAttribution + `\b|\b` + modelAttribution + `[^\n]{0,40}\b(?:generated|wrote|built|created|implemented|authored|produced|developed)\b[^\n]{0,40}\b(?:pr|pull request|change|code|implementation)\b|\b(?:ai|llm)[ -](?:generated|assisted|authored|built)\b|\bcodex model\s*:|\bco-authored-by\s*:[^\n]*(?:bot|codex|openai|copilot)|\b(?:i|we)\s+used\b[^\n]*\b` + modelAttribution + `\b[^\n]*\b(?:write|build|create|implement|generate|develop)\b)`)
 
 func publicText(text string) string {
 	lines := []string{}
@@ -108,6 +110,7 @@ func (s *Service) SavePRText(ctx context.Context, id, title, body, revision stri
 		return r, err
 	}
 	r.PRTitle, r.PRBody = title, body
+	r.PRRevision = PRRevision(r)
 	if c.State == "PR_PREPARED" {
 		r.SubmissionToken = submissionToken(r)
 	}
