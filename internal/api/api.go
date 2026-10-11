@@ -11,6 +11,7 @@ import (
 	"forgeflow/internal/github"
 	"forgeflow/internal/githubauth"
 	"forgeflow/internal/operator"
+	"forgeflow/internal/project"
 	"forgeflow/internal/storage"
 	"forgeflow/internal/workspace"
 	"io"
@@ -83,7 +84,7 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/health/details", func(w http.ResponseWriter, r *http.Request) { s.health(w, r, true) })
 	m.HandleFunc("GET /api/overview", s.overview)
-	runtime := map[string]any{"arnyx_version": 2, "arnyx_workspace_available": s.Assistant != nil && s.Assistant.AI != nil && !s.Store.Demo}
+	runtime := map[string]any{"build": project.BuildInfo(), "arnyx_version": 2, "arnyx_workspace_available": s.Assistant != nil && s.Assistant.AI != nil && !s.Store.Demo}
 	for key, value := range s.Runtime {
 		runtime[key] = value
 	}

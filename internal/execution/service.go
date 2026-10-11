@@ -227,9 +227,11 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 			}
 		}()
 		if err == nil {
-			probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-			err = s.Runner.Check(probeCtx, repo, s.Root)
-			cancel()
+			err = s.recoverOperation(ctx, &r, "Workspace sandbox preflight", func() error {
+				probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+				defer cancel()
+				return s.Runner.Check(probeCtx, repo, s.Root)
+			})
 		}
 		if err == nil {
 			err = s.prepareRuntime(repo)
@@ -429,7 +431,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err := s.Store.SaveExecution(ctx, *r, "execution", "Independent review cycle started"); err != nil {
 			return err
 		}
-		diff, files, err := s.diff(ctx, repo, c.BaseCommit)
+			diff, files, err := s.diff(ctx, repo, c.BaseCommit)
 		if err != nil {
 			return err
 		}

@@ -58,6 +58,9 @@ func (s *Service) recordedCommand(ctx context.Context, id, repo string, command 
 	if commandErr != nil && run.ExitCode == 0 {
 		run.ExitCode = -1
 	}
+	if commandErr != nil {
+		run.Error = commandErr.Error()
+	}
 	if commandErr != nil && strings.TrimSpace(run.Output) == "" {
 		run.Output = commandErr.Error()
 	}
@@ -162,7 +165,31 @@ func setupFailure(d *domain.ExecutionIncident) error {
 // failed attempts are recorded separately, then the original command runs again.
 func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, command domain.VerificationCommand, r *domain.ExecutionRecord, all *strings.Builder) (bool, error) {
 	recoveryOf := ""
+	// A resumed execution retains failed evidence. Probe a known broken shell
+	// before spending another full build timeout on exactly the same command.
+	if _, ok := s.Runner.(gitShellProber); ok {
+		previous, e := s.Store.Tests(ctx, id)
+		if e != nil {
+			return false, e
+		}
+		for i := len(previous) - 1; i >= 0; i-- {
+			run := previous[i]
+			if run.Command.Program != command.Program || strings.Join(run.Command.Arguments, "\x00") != strings.Join(command.Arguments, "\x00") {
+				continue
+			}
+			if run.ExitCode != 0 && sandboxProcessFailure(strings.ToLower(run.Output)) {
+				d := diagnoseCommand(command, run.Output, savedCommandError(run), r.Network)
+				d.TestRunID = run.ID
+				if e = s.recoverGitShell(ctx, repo, r, d); e != nil {
+					return false, e
+				}
+				recoveryOf = run.ID
+			}
+			break
+		}
+	}
 	retries, installed, runtimePrepared := 0, false, false
+	quarantined := map[string]bool{}
 	saveOutput := func(run domain.TestRun) error {
 		fmt.Fprintf(all, "$ %s %s\nrun: %s\nexit: %d\n%s\n", run.Command.Program, strings.Join(run.Command.Arguments, " "), run.ID, run.ExitCode, run.Output)
 		return os.WriteFile(filepath.Join(filepath.Dir(repo), "artifacts", "test-output.txt"), []byte(all.String()), 0600)
@@ -195,6 +222,23 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 			return false, nil
 		}
 		budget := r.RecoveryAttempts < maxRecoveryActions
+		if d.Kind == "sandbox_process" && budget && retries < maxTransientRetries {
+			if _, ok := s.Runner.(gitShellProber); ok {
+				if e := s.recoverGitShell(ctx, repo, r, d); e != nil {
+					return false, e
+				}
+			}
+		}
+		if d.Kind == "generated_path_access" && budget && !quarantined[d.Path] {
+			quarantined[d.Path] = true
+			if e := s.quarantineGeneratedDirectory(ctx, id, repo, r, d); e == nil {
+				recoveryOf = run.ID
+				continue
+			} else {
+				d.CanRecover = false
+				d.NextAction = "Automatic path repair was refused: " + e.Error() + ". Inspect the recorded path permissions, then retry."
+			}
+		}
 		if d.Retryable && budget && retries < maxTransientRetries && (d.Kind != "workspace_runtime" || !runtimePrepared) {
 			recoveryOf = run.ID
 			if e := s.waitForRecovery(ctx, r, d, retries, "Issue reactor scheduled a retry of the original verification command"); e != nil {
@@ -246,7 +290,7 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 			d.CanRecover = false
 			d.NextAction = "Inspect dependency setup. Automatic npm installation requires an existing package lock and an absent node_modules directory."
 		}
-		if retries > 0 {
+		if retries > 0 && d.Kind != "sandbox_process" {
 			d.NextAction = "Automatic retries still failed. Restore the required service or environment, then request fresh verification."
 		}
 		if !budget {

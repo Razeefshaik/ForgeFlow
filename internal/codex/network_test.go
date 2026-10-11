@@ -48,6 +48,14 @@ func TestRealApprovedSandboxTransport(t *testing.T) {
 		t.Fatalf("approved sandbox transport failed: %v, %s", err, run.Output)
 	}
 	t.Log(run.Output)
+	// Verify both sides of the approval boundary using the same endpoint. A
+	// successful approved request above prevents an offline host masking a leak.
+	denied := `require('https').get('https://proxy.golang.org/golang.org/toolchain/@v/list',r=>{console.error('network reached without approval: '+r.statusCode);r.resume();process.exit(9)}).on('error',e=>{console.log('unapproved network denied: '+e.code);process.exit(0)})`
+	run, err = cli.sandbox(ctx, repo, domain.VerificationCommand{Program: "node", Arguments: []string{"-e", denied}}, false)
+	if err != nil || run.ExitCode != 0 || !strings.Contains(run.Output, "unapproved network denied:") {
+		t.Fatalf("network approval boundary: %v, %s", err, run.Output)
+	}
+	t.Log(run.Output)
 }
 
 func TestWorkspaceCacheCollisionFailsBeforeCommandLaunch(t *testing.T) {

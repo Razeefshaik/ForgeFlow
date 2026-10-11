@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"forgeflow/internal/project"
 	"net/http"
 	"os"
 	"os/exec"
@@ -114,6 +115,7 @@ func (s Server) health(w http.ResponseWriter, r *http.Request, detailed bool) {
 		}
 	}
 	response := map[string]any{"status": status, "mode": s.mode(), "checked_at": time.Now().UTC()}
+	response["build"] = project.BuildInfo()
 	if detailed {
 		response["checks"] = checks
 	}

@@ -102,7 +102,7 @@ export default function ExecutionPanel({
   const r = execution.data;
   const running = r?.status === "RUNNING";
   const needsRecovery = r?.status === "BLOCKED" || r?.status === "NEEDS_INPUT";
-  const legacyIncident = r?.incident?.kind === "execution_blocked";
+  const legacyIncident = r?.incident?.kind === "execution_blocked" || (!!r?.incident?.test_run_id && (r.incident.diagnosis_version ?? 0) < 2);
  useEffect(()=>{setSubmitApproved(false)},[r?.submission_token]);
  useEffect(()=>{setEditingPR(false);setSubmitApproved(false)},[c.id]);
   const diagnosis = useQuery({

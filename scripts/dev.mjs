@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -6,6 +6,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('Run this through npm run dev or npm run dev:live')
 const demo = process.argv.includes('--demo')
+const gitRead = args => spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).stdout?.trim()
+console.log(`ForgeFlow checkout: ${root} · ${gitRead(['branch', '--show-current']) || 'detached'} @ ${gitRead(['rev-parse', '--short', 'HEAD']) || 'unknown'}`)
+const behind = gitRead(['rev-list', '--count', 'HEAD..master'])
+if (Number(behind) > 0) console.warn(`This checkout is missing ${behind} commit(s) from local master. Merging another worktree does not update this checkout.`)
 console.log('ForgeFlow: starting Go backend; waiting for http://127.0.0.1:8080/api/health…')
 // Keep build and command scratch files on the project drive. This is especially
 // useful when a Windows system drive is full; no system environment is changed.
@@ -65,6 +69,8 @@ try {
   }
   if (!stopping) {
     if (!ready) throw new Error('Go backend did not become ready within five minutes; inspect its output above.')
+    const running = await fetch('http://127.0.0.1:8080/api/health', { signal: AbortSignal.timeout(1500) }).then(r => r.json())
+    console.log(`Running recovery pipeline v${running.build?.recovery_version ?? 'unknown'} · revision ${running.build?.revision ?? 'unknown'}${running.build?.modified ? ' (local changes)' : ''}`)
     console.log('ForgeFlow: backend ready. Starting frontend · ' + (demo ? 'explicit DEMO mode' : 'live GitHub discovery'))
     launch(process.execPath, [npmCli, 'run', 'dev'], path.join(root, 'apps/web'))
   }

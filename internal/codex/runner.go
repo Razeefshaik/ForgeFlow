@@ -50,6 +50,7 @@ func Resolve(binary, model string) *CLI {
 			} else {
 				binary = ""
 			}
+			binary = newestInstalledWindowsCLI(binary, home)
 		}
 	}
 	return &CLI{Binary: binary, Model: model}
@@ -61,7 +62,10 @@ func (c *CLI) policy(readOnly, network bool) []string {
 	}
 	args := []string{"-c", "permissions.forgeflow.filesystem=" + filesystem, "-c", fmt.Sprintf("permissions.forgeflow.network.enabled=%t", network), "-c", `approval_policy="never"`}
 	if runtime.GOOS == "windows" {
-		args = append(args, "-c", `windows.sandbox="unelevated"`)
+		// Compatible modern CLIs use MXC without administrator setup. Devices
+		// without MXC retain the existing restricted-token fallback; preflight
+		// verifies actual boundaries and Git subprocess compatibility either way.
+		args = append(args, "-c", `features.prefer_mxc=true`, "-c", `windows.sandbox="unelevated"`)
 	}
 	return args
 }
@@ -301,6 +305,13 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 		}
 	}
 	return nil
+}
+
+// ProbeGitShell is a short capability check after an actual Git-shell failure.
+// It is not a global prerequisite: repositories that do not use MSYS can run.
+func (c *CLI) ProbeGitShell(ctx context.Context, dir string) (domain.TestRun, error) {
+	probe := domain.VerificationCommand{Program: "git", Arguments: []string{"-c", "core.fsmonitor=false", "-c", "alias.forgeflow-runtime-probe=!exit 0", "forgeflow-runtime-probe"}}
+	return c.sandbox(ctx, dir, probe, false)
 }
 
 // CommandValidationError gives the planner actionable feedback without ever

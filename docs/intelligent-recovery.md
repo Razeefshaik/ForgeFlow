@@ -22,18 +22,40 @@ No new dependency is required. Incident fields are optional additions to existin
 - Invalid plans are saved separately as rejected evidence; only a validated plan can reach coding. Existing stopped planning runs can reuse a saved planner result if it now validates, while retaining the plan approval gate.
 - Unknown failures remain explicit with saved evidence. No finite pipeline can safely repair every failure automatically.
 
-## Development branch
+## Running the updated checkout
 
-Work is isolated in `feat/intelligent-recovery`. The original checkout, running server, live database, and contribution repositories are not modified by validation. Deploy the branch only after stopping the old server; never run two servers against the same SQLite database.
-
-To use the built branch with this installation's existing database and contribution settings, stop the original `npm run dev` with Ctrl+C, then run from the original ForgeFlow folder:
+The initial recovery work was merged into master. Follow-up fixes are on
+`fix/recovery-diagnostics` in the main ForgeFlow folder. Starting an old branch in
+another worktree still starts old application code. Development startup now prints
+the checkout, revision, and recovery version; `/api/health` and `/api/runtime` expose
+the executable's build identity. Stop the existing dev command before starting:
 
 ```powershell
-Set-Location '..\ForgeFlow-intelligent-recovery'
-.\bin\forgeflow.exe --root '..\ForgeFlow' --web "$PWD\apps\web\dist"
+npm run dev
 ```
 
-Open `http://127.0.0.1:8080`. The root flag loads the original installation's `data/forgeflow.db` and local workspace settings; the frontend comes from this branch's build. This command was not used against the live database during validation. Use **Recover planning** for the existing rejected planner command, and **Recover verification** or **Retry after setup is restored** for an existing setup failure. These actions retain recorded download approval and do not submit a PR.
+Open `http://127.0.0.1:5173`. Use **Recover planning** for rejected planner commands,
+**Inspect path and retry** for generated directory access failures, and **Retry after
+setup is restored** for external prerequisites. Existing approval gates still apply.
+See [observed Windows failure recovery](recovery-diagnostics-plan.md) for the follow-up
+architecture and validation. No migration rewrites historical diagnoses; stopped
+executions can display a newer diagnosis derived from their original test record.
+
+## Additional recovery rules
+
+- A denied Go package-discovery path is eligible for quarantine only when it is an
+  empty, ignored, untracked directory below a recognized output root, without links.
+  The original directory and ACL are preserved under `.forgeflow-runtime/quarantine-*`,
+  with source/destination audit events. Required commands and package scope are unchanged.
+- Known Git shell failures trigger short capability probes before another build,
+  sharing the normal recovery budget. Probe results never count as repository tests.
+- Persist runner errors alongside partial output, including deadline cancellation.
+  Report missing CGO/C compiler prerequisites without removing race checks.
+- No issue-related diff after verification needs a scope decision, not repeated
+  code fixing or an empty PR. A successful build alone does not prove the issue solved.
+- Explicit Codex binary settings are honored. Default Windows resolution compares
+  the npm/PATH binary with existing Codex app-server releases, without downloading or
+  installing software. Compatible CLIs prefer MXC; the isolation probe remains mandatory.
 
 ## Validation on 2026-10-11
 

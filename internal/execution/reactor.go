@@ -33,6 +33,7 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		text += "\n" + strings.ToLower(err.Error())
 	}
 	d := &domain.ExecutionIncident{Status: "blocked", Source: "verification", Command: &command, DetectedAt: time.Now().UTC()}
+	d.DiagnosisVersion = diagnosisVersion
 	var api *github.APIError
 	var invalid *codex.CommandValidationError
 	isAPI := errors.As(err, &api)
@@ -52,6 +53,24 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "invalid implementation result", "reviewer returned an invalid verdict", "reviewer verdict conflicts"):
 		d.Kind, d.Summary = "agent_output", "An agent result could not be accepted as workflow evidence."
 		d.Evidence, d.NextAction = text, "Inspect the saved agent response. Resume the current stage for a valid result; unresolved review findings must be addressed before approval."
+	case sandboxProcessFailure(text):
+		d.Kind, d.Summary, d.CanRecover, d.Retryable = "sandbox_process", "Git's Windows shell could not start inside the execution sandbox.", true, true
+		d.Evidence = "MSYS/Cygwin reported a process or signal-pipe startup failure. A later credential prompt is a consequence, not evidence of missing credentials."
+		d.NextAction = "Retry the same sandboxed operation within the recovery budget. If this persists, configure a compatible Codex Windows sandbox; do not change credentials or repository code to fix shell startup."
+	case deniedPackagePath(command, output) != "":
+		d.Kind, d.Summary, d.CanRecover = "generated_path_access", "Go package discovery could not read a workspace directory.", true
+		d.Path = deniedPackagePath(command, output)
+		d.Evidence = "Go failed while enumerating packages, before repository tests could run. The denied path is " + d.Path
+		d.NextAction = "ForgeFlow will inspect the path. An empty, ignored generated directory can be preserved in quarantine before rerunning the unchanged check. Other paths require permission inspection."
+	case hasAny(text, "-race requires cgo", "cgo: c compiler", "cgo is not enabled"):
+		d.Kind, d.Summary = "tool_unavailable", "The required Go verification needs a working C compiler and CGO."
+		d.Evidence, d.NextAction = "The Go toolchain rejected a prerequisite for the requested check.", "Configure a compatible C compiler and enable CGO in the approved environment, then rerun the same race-enabled check. Do not remove -race to obtain a pass."
+	case hasAny(text, "no issue-related changes were produced"):
+		d.Kind, d.Summary = "no_changes", "Verification finished without an issue-related patch to review."
+		d.Evidence, d.NextAction = "The workspace diff was empty after verification.", "Inspect whether the approved base already solves the issue. Close the contribution if no change is needed, or provide a concrete remaining requirement. No PR can be prepared from an empty patch."
+	case errors.Is(err, context.DeadlineExceeded):
+		d.Kind, d.Summary = "verification_timeout", "The verification command exceeded its allowed duration."
+		d.Evidence, d.NextAction = "The runner deadline expired; any partial test output is retained.", "Inspect the last command output and required services. Restore prerequisites before rerunning the complete check."
 	case hasAny(text, "--- fail:", "assertionerror", "assertion failed"):
 		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository assertion failed.", "fixing", true
 		d.Evidence, d.NextAction = "An actual test reported a failure; quoted environment errors inside an assertion are not setup failures.", "Codex will investigate the failed assertion and rerun all required checks."
@@ -109,9 +128,6 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		d.Evidence = "The JavaScript command could not find a required dependency."
 		d.CanRecover = network
 		d.NextAction = "With download approval and an existing package lock, install workspace dependencies and rerun the original check."
-	case errors.Is(err, context.DeadlineExceeded):
-		d.Kind, d.Summary = "verification_timeout", "The verification command exceeded its allowed duration."
-		d.Evidence, d.NextAction = "The command deadline expired; silence alone is not evidence of a stalled process.", "Inspect the saved output and required environment before recovering verification."
 	default:
 		d.Kind, d.Summary = "code_failure", "A repository check failed."
 		d.Status, d.CanRecover = "fixing", true
@@ -199,6 +215,22 @@ func (s *Service) Diagnose(ctx context.Context, id string) (*domain.ExecutionInc
 	}
 	// Older versions stored generic incidents for rejected plans. Re-diagnose
 	// those from the current stop reason; keep specific boundary diagnoses intact.
+	stopped := r.Status == "BLOCKED" || r.Status == "NEEDS_INPUT"
+	if r.Incident != nil && stopped && r.Incident.TestRunID != "" && r.Incident.DiagnosisVersion < diagnosisVersion {
+		tests, e := s.Store.Tests(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		for _, run := range tests {
+			if run.ID != r.Incident.TestRunID || run.ExitCode == 0 {
+				continue
+			}
+			d := diagnoseCommand(run.Command, run.Output, savedCommandError(run), r.Network)
+			d.ID, d.TestRunID, d.DetectedAt, d.Attempt = r.Incident.ID, run.ID, r.Incident.DetectedAt, r.Incident.Attempt
+			d.Status = "needs_input"
+			return d, nil
+		}
+	}
 	if r.Incident != nil && r.Incident.Kind != "execution_blocked" {
 		return r.Incident, nil
 	}
@@ -230,7 +262,7 @@ func (s *Service) Diagnose(ctx context.Context, id string) (*domain.ExecutionInc
 	if len(tests) > 0 {
 		last := tests[len(tests)-1]
 		if last.ExitCode != 0 {
-			d := diagnoseCommand(last.Command, last.Output, nil, r.Network)
+			d := diagnoseCommand(last.Command, last.Output, savedCommandError(last), r.Network)
 			d.ID, d.TestRunID, d.DetectedAt = last.ID, last.ID, last.FinishedAt
 			d.Status = "blocked"
 			return d, nil

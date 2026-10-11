@@ -2,6 +2,29 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+test("old authentication label is refreshed from saved Windows failure evidence", async ({ page }) => {
+  await page.route("**/api/contributions/reactor-ui", r => r.fulfill({ json: { id: "reactor-ui", repository: "fixture/reactor", title: "Git helper test", state: "BLOCKED", config_version: 1 } }));
+  await page.route("**/api/contributions/reactor-ui/execution", r => r.fulfill({ json: { status: "BLOCKED", phase: "TESTING", network: true, fix_iterations: 0, review_cycles: 0, incident: { id: "old", kind: "authentication", test_run_id: "old-run", summary: "A required service rejected authentication.", status: "blocked" } } }));
+  await page.route("**/api/contributions/reactor-ui/diagnosis", r => r.fulfill({ json: { id: "old", kind: "sandbox_process", diagnosis_version: 2, test_run_id: "old-run", summary: "Git's Windows shell could not start inside the execution sandbox.", evidence: "couldn't create signal pipe, Win32 error 5", next_action: "Restore sandbox compatibility, then rerun the original test.", status: "needs_input", can_recover: true } }));
+  await page.route("**/api/contributions/reactor-ui/tests", r => r.fulfill({ json: [] }));
+  await page.goto("/contributions/reactor-ui");
+  const panel = page.getByRole("region", { name: "Issue reactor" });
+  await expect(panel.getByText("Git's Windows shell could not start inside the execution sandbox.")).toBeVisible();
+  await expect(panel.getByText("A required service rejected authentication.")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Retry after setup is restored" })).toBeVisible();
+});
+
+test("generated path recovery is offered explicitly with the denied path evidence", async ({ page }) => {
+  await page.route("**/api/contributions/reactor-ui", r => r.fulfill({ json: { id: "reactor-ui", repository: "fixture/reactor", title: "Package discovery", state: "PAUSED", config_version: 1 } }));
+  await page.route("**/api/contributions/reactor-ui/execution", r => r.fulfill({ json: { status: "NEEDS_INPUT", phase: "TESTING", network: true, fix_iterations: 0, review_cycles: 0, incident: { id: "path", kind: "generated_path_access", diagnosis_version: 2, summary: "Go package discovery could not read a workspace directory.", evidence: "pattern ./...: open bin/generated-empty: Access is denied.", next_action: "Inspect the path and quarantine only empty ignored generated directories.", status: "needs_input", can_recover: true } } }));
+  await page.route("**/api/contributions/reactor-ui/tests", r => r.fulfill({ json: [] }));
+  await page.goto("/contributions/reactor-ui");
+  const panel = page.getByRole("region", { name: "Issue reactor" });
+  await expect(panel.getByRole("button", { name: "Inspect path and retry" })).toBeVisible();
+  await panel.getByText("Diagnosis evidence").click();
+  await expect(panel.getByText("pattern ./...: open bin/generated-empty: Access is denied.")).toBeVisible();
+});
+
 test("recovery requests explicit downloads and clears historical errors after resume", async ({ page }) => {
   // UI contract fixture. Go tests exercise real commands; this never executes a contribution.
   const c = { id: "reactor-ui", repository: "fixture/reactor", title: "Restore dependency verification", state: "BLOCKED", branch: "autopilot/issue-1", config_version: 1, demo: false, workspace: "external/reactor-ui/repo", base_commit: "a".repeat(40) };

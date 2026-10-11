@@ -52,25 +52,28 @@ type TestRun struct {
 	Truncated      bool                `json:"truncated"`
 	FailureKind    string              `json:"failure_kind,omitempty"`
 	RecoveryOf     string              `json:"recovery_of,omitempty"`
+	Error          string              `json:"error,omitempty"`
 }
 
 // ExecutionIncident is the current diagnosis. Historical diagnoses and actions
 // live in immutable events; a resolved incident is removed from current status.
 type ExecutionIncident struct {
-	ID         string               `json:"id"`
-	Kind       string               `json:"kind"`
-	Source     string               `json:"source,omitempty"`
-	Summary    string               `json:"summary"`
-	Evidence   string               `json:"evidence"`
-	NextAction string               `json:"next_action"`
-	Status     string               `json:"status"`
-	TestRunID  string               `json:"test_run_id,omitempty"`
-	Command    *VerificationCommand `json:"command,omitempty"`
-	Attempt    int                  `json:"attempt"`
-	CanRecover bool                 `json:"can_recover"`
-	RetryAt    *time.Time           `json:"retry_at,omitempty"`
-	Retryable  bool                 `json:"retryable,omitempty"`
-	DetectedAt time.Time            `json:"detected_at"`
+	ID               string               `json:"id"`
+	Kind             string               `json:"kind"`
+	Source           string               `json:"source,omitempty"`
+	Summary          string               `json:"summary"`
+	Evidence         string               `json:"evidence"`
+	NextAction       string               `json:"next_action"`
+	Status           string               `json:"status"`
+	TestRunID        string               `json:"test_run_id,omitempty"`
+	Command          *VerificationCommand `json:"command,omitempty"`
+	Attempt          int                  `json:"attempt"`
+	CanRecover       bool                 `json:"can_recover"`
+	RetryAt          *time.Time           `json:"retry_at,omitempty"`
+	Retryable        bool                 `json:"retryable,omitempty"`
+	DetectedAt       time.Time            `json:"detected_at"`
+	DiagnosisVersion int                  `json:"diagnosis_version,omitempty"`
+	Path             string               `json:"path,omitempty"`
 }
 type ExecutionRecord struct {
 	ContributionID   string             `json:"contribution_id"`
