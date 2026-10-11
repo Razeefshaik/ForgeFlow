@@ -101,16 +101,20 @@ export default function ExecutionPanel({
   const cache = useQueryClient();
   const r = execution.data;
   const running = r?.status === "RUNNING";
+  const needsRecovery = r?.status === "BLOCKED" || r?.status === "NEEDS_INPUT";
+  const legacyIncident = r?.incident?.kind === "execution_blocked";
  useEffect(()=>{setSubmitApproved(false)},[r?.submission_token]);
  useEffect(()=>{setEditingPR(false);setSubmitApproved(false)},[c.id]);
   const diagnosis = useQuery({
     queryKey: [prefix + "/diagnosis"],
     queryFn: () => request<ExecutionIncident | null>(prefix + "/diagnosis"),
-    enabled: r?.status === "BLOCKED" && !r.incident,
-    refetchInterval: r?.status === "BLOCKED" ? 5000 : false,
+    enabled: needsRecovery && (!r?.incident || legacyIncident),
+    refetchInterval: needsRecovery ? 5000 : false,
   });
   const currentIncident =
-    r?.incident ?? (r?.status === "BLOCKED" ? diagnosis.data : null);
+    needsRecovery && legacyIncident
+      ? diagnosis.data ?? r?.incident
+      : r?.incident ?? (needsRecovery ? diagnosis.data : null);
   useEffect(() => {
     if (tab !== "Tests" || !evidenceTest) return;
     const details = document.getElementById(
@@ -215,7 +219,9 @@ export default function ExecutionPanel({
                   FIXING: "Fixing the latest findings",
                   REVIEWING: "Independent review",
                 }[r.phase ?? c.state] ?? "Contribution in progress")
-              : r?.status === "BLOCKED"
+              : r?.status === "NEEDS_INPUT"
+                ? "Setup needs your input"
+                : r?.status === "BLOCKED"
                 ? "Execution needs attention"
                 : c.state === "PAUSED"
                   ? "Execution paused"
@@ -232,7 +238,7 @@ export default function ExecutionPanel({
           <p>
             {c.state === "PR_OPENED" && !running
               ? "The pull request has been submitted. Open the PR tab to inspect its recorded link and review evidence."
-              : r?.status === "BLOCKED" && currentIncident
+              : needsRecovery && currentIncident
                 ? "Your changes and execution evidence are saved."
                 : r?.message ||
                   (running
@@ -458,7 +464,7 @@ export default function ExecutionPanel({
           )}
         </section>
       )}
-      {r?.status === "BLOCKED" &&
+      {needsRecovery &&
         currentIncident &&
         r.summary &&
         optionsOpen && (
@@ -467,11 +473,11 @@ export default function ExecutionPanel({
             <pre className="issue-body">{r.summary}</pre>
           </details>
         )}
-      {r && (currentIncident || r.status === "BLOCKED") && (
+      {r && (currentIncident || needsRecovery) && (
         <IssueReactor
           incident={currentIncident}
           running={running}
-          blocked={r.status === "BLOCKED"}
+          blocked={needsRecovery}
           network={r.network}
           attempts={r.recovery_attempts ?? 0}
           busy={busy}

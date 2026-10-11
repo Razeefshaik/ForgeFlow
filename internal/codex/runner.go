@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -157,7 +158,7 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 			result.Usage = event.Usage
 		}
 		if event.Type == "turn.failed" || event.Type == "error" {
-			streamErr = errors.New("Codex session failed; inspect saved agent output")
+			streamErr = errors.New(eventFailure(b))
 		}
 		if event.Type == "item.completed" && event.Item.Type == "agent_message" {
 			result.Output = event.Item.Text
@@ -188,6 +189,33 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 		return result, errors.New("Codex did not finish a response")
 	}
 	return result, nil
+}
+
+// Keep the transport's actual reason available to recovery classification;
+// a generic "inspect output" error hides rate limits and authentication.
+func eventFailure(raw []byte) string {
+	var event struct {
+		Message string          `json:"message"`
+		Error   json.RawMessage `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &event)
+	message := event.Message
+	if message == "" && len(event.Error) > 0 {
+		if json.Unmarshal(event.Error, &message) != nil {
+			var detail struct {
+				Message string `json:"message"`
+			}
+			_ = json.Unmarshal(event.Error, &detail)
+			message = detail.Message
+		}
+	}
+	if message == "" {
+		return "Codex session failed; inspect saved agent output"
+	}
+	if len(message) > 4000 {
+		message = message[:4000] + " (truncated)"
+	}
+	return "Codex session failed: " + message
 }
 func (c *CLI) sandbox(ctx context.Context, dir string, command domain.VerificationCommand, network bool) (domain.TestRun, error) {
 	rec := domain.TestRun{Command: command, Directory: dir, StartedAt: time.Now().UTC(), ExitCode: -1}
@@ -274,18 +302,47 @@ func (c *CLI) Check(ctx context.Context, dir, appRoot string) error {
 	}
 	return nil
 }
+
+// CommandValidationError gives the planner actionable feedback without ever
+// executing a rejected command or dropping a required check.
+type CommandValidationError struct {
+	Program  string
+	Argument int
+	Reason   string
+}
+
+func (e *CommandValidationError) Error() string {
+	return fmt.Sprintf("invalid verification command %q argument %d: %s", e.Program, e.Argument, e.Reason)
+}
+
 func ValidateCommand(c domain.VerificationCommand) error {
 	allowed := map[string]bool{"go": true, "python": true, "python3": true, "pytest": true, "npm": true, "node": true, "mvn": true, "./mvnw": true, "gradle": true, "./gradlew": true}
 	if !allowed[c.Program] || len(c.Arguments) > 30 {
-		return errors.New("verification program is not allowlisted")
+		return &CommandValidationError{c.Program, -1, "program must be allowlisted and have at most 30 arguments"}
 	}
 	for i, a := range c.Arguments {
 		unsafe := a
-		if c.Program == "go" && len(c.Arguments) > 0 && c.Arguments[0] == "test" && i > 0 && c.Arguments[i-1] == "-run" {
-			unsafe = strings.ReplaceAll(a, "|", "")
+		if c.Program == "go" && len(c.Arguments) > 0 && c.Arguments[0] == "test" {
+			pattern, filter := "", false
+			for _, flag := range []string{"-run", "-bench", "-skip"} {
+				if i > 0 && c.Arguments[i-1] == flag {
+					pattern, filter = a, true
+				} else if strings.HasPrefix(a, flag+"=") {
+					pattern, filter = strings.TrimPrefix(a, flag+"="), true
+				} else if a == flag && i+1 == len(c.Arguments) {
+					return &CommandValidationError{c.Program, i, "Go test filter requires a regular expression"}
+				}
+			}
+			if filter {
+				if _, err := regexp.Compile(pattern); err != nil {
+					return &CommandValidationError{c.Program, i, "invalid Go test regular expression: " + err.Error()}
+				}
+				// Go receives native argv, so alternation cannot start a shell pipeline.
+				unsafe = strings.ReplaceAll(a, "|", "")
+			}
 		}
 		if len(a) > 300 || strings.ContainsAny(unsafe, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
-			return errors.New("unsafe verification argument")
+			return &CommandValidationError{c.Program, i, "argument exceeds 300 characters or contains forbidden shell/control characters"}
 		}
 	}
 	return nil
@@ -329,6 +386,25 @@ func environment() []string {
 func workspaceEnvironment(dir string) []string {
 	env, _ := workspaceEnvironmentForNetwork(dir, false)
 	return env
+}
+
+// PrepareWorkspaceRuntime verifies that child tools can actually write their
+// temporary files before a contribution spends time planning or coding.
+func PrepareWorkspaceRuntime(dir string) error {
+	if _, err := workspaceEnvironmentForNetwork(dir, false); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Join(dir, ".forgeflow-runtime", "tmp"), "preflight-*")
+	if err != nil {
+		return fmt.Errorf("workspace runtime cache is not writable: %w", err)
+	}
+	name := f.Name()
+	closeErr := f.Close()
+	removeErr := os.Remove(name)
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
 }
 func workspaceEnvironmentForNetwork(dir string, network bool) ([]string, error) {
 	base := filepath.Join(dir, ".forgeflow-runtime")

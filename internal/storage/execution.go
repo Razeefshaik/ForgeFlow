@@ -73,6 +73,21 @@ func (s *Store) SaveTest(ctx context.Context, v domain.TestRun) error {
 func (s *Store) Agents(ctx context.Context) ([]domain.AgentRun, error) {
 	return listJSON[domain.AgentRun](ctx, s.db, "SELECT data FROM agent_runs ORDER BY rowid DESC LIMIT 200")
 }
+
+// LatestAgent scopes lookup to this contribution and role, rather than the
+// global dashboard's last 200 runs. This also supports legacy stopped plans.
+func (s *Store) LatestAgent(ctx context.Context, id, role string) (domain.AgentRun, error) {
+	var run domain.AgentRun
+	var data string
+	err := s.db.QueryRowContext(ctx, "SELECT data FROM agent_runs WHERE contribution_id=? AND json_extract(data,'$.role')=? ORDER BY rowid DESC LIMIT 1", id, role).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return run, ErrNotFound
+	}
+	if err == nil {
+		err = json.Unmarshal([]byte(data), &run)
+	}
+	return run, err
+}
 func (s *Store) Tests(ctx context.Context, id string) ([]domain.TestRun, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT data FROM test_runs WHERE contribution_id=? ORDER BY rowid", id)
 	if err != nil {

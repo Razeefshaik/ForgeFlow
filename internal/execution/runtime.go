@@ -2,12 +2,16 @@ package execution
 
 import (
 	"errors"
+	"forgeflow/internal/codex"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 func (s *Service) prepareRuntime(repo string) error {
+	if err := codex.PrepareWorkspaceRuntime(repo); err != nil {
+		return err
+	}
 	if err := validateGitTree(repo); err != nil {
 		return err
 	}

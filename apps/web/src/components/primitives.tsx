@@ -13,7 +13,7 @@ export function Badge({
 export function StateBadge({ state }: { state: string }) {
   const tone = ["READY", "PR_PREPARED", "PR_OPENED"].includes(state)
     ? "green"
-    : ["BLOCKED", "PAUSED"].includes(state)
+    : ["BLOCKED", "PAUSED", "NEEDS_INPUT"].includes(state)
       ? "amber"
       : [
             "CODING",

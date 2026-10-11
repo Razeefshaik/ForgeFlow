@@ -80,10 +80,16 @@ func (s *Service) recoveryAction(ctx context.Context, r *domain.ExecutionRecord,
 	if r.RecoveryAttempts >= maxRecoveryActions {
 		d.Status, d.CanRecover = "blocked", false
 		d.NextAction = "Automatic recovery reached its session limit. Inspect the latest evidence before requesting a fresh recovery."
-		return s.incident(ctx, r, d)
+		if err := s.incident(ctx, r, d); err != nil {
+			return err
+		}
+		return setupFailure(d)
 	}
 	r.RecoveryAttempts++
 	d.Status, d.Attempt = "recovering", r.RecoveryAttempts
+	if d.RetryAt != nil {
+		d.Status = "waiting_retry"
+	}
 	r.Incident = d
 	r.Message = action
 	if err := s.Store.WorkspaceMessage(ctx, r.ContributionID, action); err != nil {
@@ -93,6 +99,48 @@ func (s *Service) recoveryAction(ctx context.Context, r *domain.ExecutionRecord,
 		return err
 	}
 	return s.Store.SaveExecution(ctx, *r, "reactor", action)
+}
+
+// waitForRecovery persists the schedule before waiting. Pause/stop cancels the
+// timer, and neither a long rate-limit window nor an exhausted budget spins.
+func (s *Service) waitForRecovery(ctx context.Context, r *domain.ExecutionRecord, d *domain.ExecutionIncident, attempt int, action string) error {
+	if attempt >= maxTransientRetries || r.RecoveryAttempts >= maxRecoveryActions {
+		d.Retryable = false
+		d.NextAction = "Automatic retries reached their limit. Restore the required service or environment, then request fresh recovery."
+		return setupFailure(d)
+	}
+	delay := time.Second * time.Duration(1<<attempt)
+	if d.RetryAt != nil {
+		delay = time.Until(*d.RetryAt)
+	}
+	if delay > time.Minute {
+		d.Retryable = false
+		d.NextAction = "The service retry time is more than one minute away. Resume after that time; no agent is kept running while waiting."
+		return setupFailure(d)
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	at := time.Now().UTC().Add(delay)
+	d.RetryAt = &at
+	if err := s.recoveryAction(ctx, r, d, action); err != nil {
+		return err
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	d.Status, d.RetryAt = "recovering", nil
+	if err := s.Store.WorkspaceEvent(ctx, r.ContributionID, "RecoveryRetryStarted", "Scheduled retry is starting", d); err != nil {
+		return err
+	}
+	return s.Store.SaveExecution(ctx, *r, "reactor", "Recovery delay completed; retrying the original operation")
 }
 
 func lockedNPMDependencies(repo string) bool {
@@ -114,7 +162,7 @@ func setupFailure(d *domain.ExecutionIncident) error {
 // failed attempts are recorded separately, then the original command runs again.
 func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, command domain.VerificationCommand, r *domain.ExecutionRecord, all *strings.Builder) (bool, error) {
 	recoveryOf := ""
-	retried, installed := false, false
+	retries, installed, runtimePrepared := 0, false, false
 	saveOutput := func(run domain.TestRun) error {
 		fmt.Fprintf(all, "$ %s %s\nrun: %s\nexit: %d\n%s\n", run.Command.Program, strings.Join(run.Command.Arguments, " "), run.ID, run.ExitCode, run.Output)
 		return os.WriteFile(filepath.Join(filepath.Dir(repo), "artifacts", "test-output.txt"), []byte(all.String()), 0600)
@@ -147,17 +195,22 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 			return false, nil
 		}
 		budget := r.RecoveryAttempts < maxRecoveryActions
-		if d.CanRecover && budget && !retried && (d.Kind == "dependency_network" || d.Kind == "network_transport") {
-			retried, recoveryOf = true, run.ID
-			if e := s.recoveryAction(ctx, r, d, "Issue reactor is retrying dependency access before changing code"); e != nil {
+		if d.Retryable && budget && retries < maxTransientRetries && (d.Kind != "workspace_runtime" || !runtimePrepared) {
+			recoveryOf = run.ID
+			if e := s.waitForRecovery(ctx, r, d, retries, "Issue reactor scheduled a retry of the original verification command"); e != nil {
 				return false, e
 			}
-			timer := time.NewTimer(2 * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return false, ctx.Err()
-			case <-timer.C:
+			retries++
+			if d.Kind == "workspace_runtime" {
+				runtimePrepared = true
+				if e := s.prepareRuntime(repo); e != nil {
+					failure := diagnoseCommand(command, "", e, r.Network)
+					failure.TestRunID = run.ID
+					if e = s.incident(ctx, r, failure); e != nil {
+						return false, e
+					}
+					return false, setupFailure(failure)
+				}
 			}
 			continue
 		}
@@ -193,13 +246,13 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 			d.CanRecover = false
 			d.NextAction = "Inspect dependency setup. Automatic npm installation requires an existing package lock and an absent node_modules directory."
 		}
-		if retried {
-			d.NextAction = "The automatic retry still failed. Inspect the dependency service or sandbox transport, then request fresh verification."
+		if retries > 0 {
+			d.NextAction = "Automatic retries still failed. Restore the required service or environment, then request fresh verification."
 		}
 		if !budget {
 			d.NextAction = "Automatic recovery reached its session limit. Inspect the latest evidence before requesting a fresh recovery."
 		}
-		d.Status = "blocked"
+		d.Status, d.Retryable = "needs_input", false
 		if e := s.Store.SaveExecution(ctx, *r, "reactor", "Automatic recovery stopped with evidence preserved"); e != nil {
 			return false, e
 		}

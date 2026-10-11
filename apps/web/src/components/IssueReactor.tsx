@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 export type ExecutionIncident = {
   id: string;
   kind: string;
+  source?: string;
   summary: string;
   evidence: string;
   next_action: string;
@@ -12,6 +13,8 @@ export type ExecutionIncident = {
   command?: { program: string; arguments: string[] };
   attempt: number;
   can_recover: boolean;
+  retry_at?: string;
+  retryable?: boolean;
   detected_at: string;
 };
 
@@ -27,18 +30,21 @@ export default function IssueReactor({ incident, running, blocked, network, atte
   onRecover: (allowDownloads: boolean) => void;
   onEvidence: () => void;
 }) {
-  const needsDownloads = !!incident && !network && ["dependency_network", "network_transport", "dependencies_missing"].includes(incident.kind);
+  const service = incident?.source === "github" || incident?.source === "codex";
+  const needsDownloads = !!incident && !service && !network && ["dependency_network", "network_transport", "dependencies_missing", "rate_limit"].includes(incident.kind);
+  const setup = !!incident && ["authentication", "runtime_unavailable", "workspace_permissions", "tool_unavailable", "disk_capacity", "dependency_unavailable", "verification_timeout", "resource_busy", "workspace_runtime", "agent_output"].includes(incident.kind);
   return <section className={`reactor-panel ${incident ? "reactor-" + incident.status : ""}`} aria-label="Issue reactor">
-    <div className="reactor-heading"><ShieldCheck size={17} /><strong>Issue reactor</strong><span className="muted">{incident ? incident.status === "recovering" ? "Recovering automatically" : incident.status === "verifying" ? "Checking the saved patch" : incident.status === "fixing" ? "Investigating a failed check" : "Needs a recovery decision" : "Automatic checks enabled"}</span></div>
+    <div className="reactor-heading"><ShieldCheck size={17} /><strong>Issue reactor</strong><span className="muted">{incident ? incident.status === "waiting_retry" ? "Waiting for scheduled retry" : incident.status === "needs_input" ? "Needs input" : incident.status === "recovering" ? "Recovering automatically" : incident.status === "verifying" ? "Checking the saved patch" : incident.status === "fixing" ? "Investigating a failed check" : "Needs a recovery decision" : "Automatic checks enabled"}</span></div>
     {incident ? <>
       <h4>{incident.summary}</h4>
       <p>{incident.next_action}</p>
+      {incident.retry_at && <p className="reactor-attempts" role="status">{running ? "Next retry" : "Service retry time"}: <time dateTime={incident.retry_at}>{new Date(incident.retry_at).toLocaleString()}</time></p>}
       <details className="reactor-evidence"><summary>Diagnosis evidence</summary><p>{incident.evidence}</p>
         {incident.command && <code>{incident.command.program} {incident.command.arguments.join(" ")}</code>}
         {incident.detected_at && <p className="muted">Recorded {new Date(incident.detected_at).toLocaleString()}</p>}
         {incident.test_run_id && <Button variant="ghost" onClick={onEvidence}>View saved command output</Button>}
       </details>
-      {!running && blocked && (incident.can_recover || needsDownloads) && <Button disabled={busy} onClick={() => onRecover(needsDownloads)}>{needsDownloads ? "Allow downloads and recover" : "Recover verification"}</Button>}
+      {!running && blocked && (incident.can_recover || needsDownloads || setup) && <Button disabled={busy} onClick={() => onRecover(needsDownloads)}>{needsDownloads ? "Allow downloads and recover" : incident.kind === "plan_invalid" ? "Recover planning" : setup ? "Retry after setup is restored" : service ? "Retry service connection" : "Recover verification"}</Button>}
     </> : diagnosing ? <p className="muted" role="status">Checking saved execution evidence…</p> : diagnosisError ? <p role="alert">Diagnosis is unavailable: {diagnosisError}. Inspect the saved execution output before resuming.</p> : <p className="muted">Dependency and environment failures are checked before a code fix. Required tests and independent review decide whether work is ready.</p>}
     {attempts > 0 && <p className="reactor-attempts muted">{attempts} automatic recovery {attempts === 1 ? "action" : "actions"} in this execution. Earlier evidence stays in the timeline.</p>}
   </section>;
