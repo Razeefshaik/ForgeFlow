@@ -60,6 +60,10 @@ func dockerControl(ctx context.Context, args ...string) (string, error) {
 }
 
 func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.VerificationCommand, network bool) (rec domain.TestRun, err error) {
+	return c.containerCommandImage(ctx, c.workspaceImage(dir), dir, command, network)
+}
+
+func (c *CLI) containerCommandImage(ctx context.Context, image, dir string, command domain.VerificationCommand, network bool) (rec domain.TestRun, err error) {
 	rec = domain.TestRun{Command: command, ExecutedCommand: &command, Directory: dir, StartedAt: time.Now().UTC(), ExitCode: -1}
 	defer func() { rec.FinishedAt = time.Now().UTC() }()
 	if err = ctx.Err(); err != nil {
@@ -70,7 +74,7 @@ func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.V
 		return rec, err
 	}
 	name := "forgeflow-verify-" + hex.EncodeToString(nonce[:])
-	args, err := containerArguments(c.VerificationImage, name, dir, command, network)
+	args, err := containerArguments(image, name, dir, command, network)
 	if err != nil {
 		return rec, err
 	}
@@ -86,7 +90,7 @@ func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.V
 		// A timed-out create may have reached the daemon; use the reserved name.
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		cleanup, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", name)
+		cleanup, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
 		if cleanupErr != nil && !strings.Contains(cleanup, "No such container") {
 			err = errors.Join(err, fmt.Errorf("container cleanup failed for %s: %s", name, cleanup))
 		}
@@ -95,13 +99,13 @@ func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.V
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		output, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", name)
+		output, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
 		if cleanupErr != nil {
 			err = errors.Join(err, fmt.Errorf("container cleanup failed for %s: %s", name, output))
 			rec.Output += "\n" + err.Error()
 		}
 	}()
-	rec.Output = fmt.Sprintf("Docker container %s; image %s; working directory /workspace\n", name, c.VerificationImage)
+	rec.Output = fmt.Sprintf("Docker container %s; image %s; working directory /workspace\n", name, image)
 	if err = ctx.Err(); err != nil {
 		return rec, err
 	}
@@ -126,21 +130,22 @@ func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.V
 func (c *CLI) checkContainer(ctx context.Context, dir string) error {
 	// Real positive and negative writes. EACCES/EROFS are required: missing paths
 	// or a broken interpreter must never count as successful isolation.
-	probe := `import os,errno
-assert os.getuid()==1000
-p='/workspace/.forgeflow-container-probe'
-with open(p,'x') as f: f.write('allowed')
-os.unlink(p)
-for p in ['/outside-probe','/workspace/.git/forgeflow-probe']:
- try:
-  with open(p,'x') as f: f.write('forbidden')
- except OSError as e:
-  assert e.errno in (errno.EACCES,errno.EROFS),str(e)
- else: raise AssertionError('outside write succeeded: '+p)
-assert not os.path.exists('/var/run/docker.sock')
-assert os.listdir('/sys/class/net') == ['lo'], 'offline container has a network interface'
-print('container workspace write, root/git denial, non-root identity and absent Docker socket: PASS')`
-	rec, err := c.containerCommand(ctx, dir, domain.VerificationCommand{Program: "python3", Arguments: []string{"-c", probe}}, false)
+	probe := `set -eu
+export LC_ALL=C
+for cmd in id touch rm grep; do command -v "$cmd" >/dev/null; done
+test "$(id -u)" = 1000
+test -d /workspace/.git
+test ! -e /workspace/.forgeflow-container-probe
+(set -C; echo allowed > /workspace/.forgeflow-container-probe)
+rm /workspace/.forgeflow-container-probe
+for p in /outside-probe /workspace/.git/forgeflow-probe; do
+ if touch "$p" 2>/tmp/forgeflow-denial; then exit 1; fi
+ grep -Eq 'Permission denied|Read-only file system' /tmp/forgeflow-denial
+done
+test ! -e /var/run/docker.sock
+for p in /sys/class/net/*; do test "$p" = /sys/class/net/lo; done
+echo 'container workspace write, root/git denial, non-root identity and absent Docker socket: PASS'`
+	rec, err := c.containerCommand(ctx, dir, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", probe}}, false)
 	if err != nil || rec.ExitCode != 0 {
 		return fmt.Errorf("container isolation check failed: %v; %s", err, rec.Output)
 	}

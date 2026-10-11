@@ -197,6 +197,7 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 	}
 	retries, installed, runtimePrepared := 0, false, false
 	investigatedTimeout := false
+	environmentRepaired := false
 	quarantined := map[string]bool{}
 	saveOutput := func(run domain.TestRun) error {
 		fmt.Fprintf(all, "$ %s %s\nrun: %s\nexit: %d\n%s\n", run.Command.Program, strings.Join(run.Command.Arguments, " "), run.ID, run.ExitCode, run.Output)
@@ -228,6 +229,10 @@ func (s *Service) verifyWithRecovery(ctx context.Context, id, repo string, comma
 		}
 		if d.Kind == "code_failure" {
 			return false, nil
+		}
+		if !environmentRepaired && (d.Kind=="toolchain_mismatch" || d.Kind=="tool_unavailable") {
+			environmentRepaired=true
+			if repaired,e:=s.repairVerificationEnvironment(ctx,id,repo,r,d);e!=nil { return false,e } else if repaired { recoveryOf=run.ID;continue }
 		}
 		if d.Kind == "test_failure_timeout" {
 			if investigatedTimeout {

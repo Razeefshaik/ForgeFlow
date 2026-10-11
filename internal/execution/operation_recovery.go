@@ -15,6 +15,8 @@ import (
 
 func inputRequired(kind string) bool {
 	switch kind {
+	case "environment_blocked", "toolchain_mismatch":
+		return true
 	case "authentication", "runtime_unavailable", "workspace_permissions", "tool_unavailable", "disk_capacity", "dependency_unavailable", "verification_timeout", "test_failure_timeout", "dependency_network", "network_transport", "rate_limit", "dependencies_missing", "resource_busy", "workspace_runtime", "plan_invalid", "agent_output", "input_too_large", "sandbox_process", "generated_path_access", "no_changes":
 		return true
 	default:
@@ -76,8 +78,13 @@ func (s *Service) recoverOperation(ctx context.Context, r *domain.ExecutionRecor
 }
 
 func (s *Service) recoveringAgent(ctx context.Context, c domain.Contribution, r *domain.ExecutionRecord, repo, meta, role, prompt, schema string) (string, error) {
+	environment, err := environmentPrompt(repo, r)
+	if err != nil {
+		return "", err
+	}
+	prompt += environment
 	var output string
-	err := s.recoverOperation(ctx, r, "Codex "+role, func() error {
+	err = s.recoverOperation(ctx, r, "Codex "+role, func() error {
 		if role == "contributor" {
 			if err := s.verifyApprovedGit(ctx, repo, c.BaseCommit, c.Branch); err != nil {
 				return err
@@ -91,6 +98,10 @@ func (s *Service) recoveringAgent(ctx context.Context, c domain.Contribution, r 
 }
 
 func validatePlan(output string) (domain.Plan, error) {
+	return validatePlanWith(output, codex.ValidateCommand)
+}
+
+func validatePlanWith(output string, validate func(domain.VerificationCommand) error) (domain.Plan, error) {
 	var plan domain.Plan
 	if err := json.Unmarshal([]byte(output), &plan); err != nil || strings.TrimSpace(plan.Summary) == "" {
 		return plan, errors.New("planner returned an invalid plan; return valid schema JSON with a nonempty summary")
@@ -99,7 +110,7 @@ func validatePlan(output string) (domain.Plan, error) {
 		return plan, errors.New("planner returned an invalid plan; propose at most 12 verification commands")
 	}
 	for _, command := range plan.Tests {
-		if err := codex.ValidateCommand(command); err != nil {
+		if err := validate(command); err != nil {
 			return plan, err
 		}
 	}
@@ -108,6 +119,9 @@ func validatePlan(output string) (domain.Plan, error) {
 
 func (s *Service) planning(ctx context.Context, c domain.Contribution, r *domain.ExecutionRecord, repo, meta, instructions string) (domain.Plan, error) {
 	prompt := instructions + "Read the repository without editing. Return a concrete plan: root cause, affected files, strategy, real verification commands, risks and unknowns. Each verification program must be a single executable name from go, python, python3, pytest, npm, node, mvn, ./mvnw, gradle, ./gradlew. Put every argument in the arguments array, never inside program. Do not propose shell commands, formatting commands, pipelines or environment assignments as verification. Native Go test -run, -bench and -skip regex alternation is allowed; shell pipelines are not."
+	if p, ok := s.Runner.(codex.EnvironmentPreparer); ok && p.EnvironmentBase() != "" {
+		prompt = instructions + "Read the repository without editing. Return a concrete plan: root cause, affected files, strategy, real verification commands, risks and unknowns. Container verification supports any installed language's executable (for example cargo, dotnet, bundle, cmake, uv or a repository script). Supply one program and a separate arguments array; all execution stays in the selected container. Use the supplied environment evidence. Do not omit required tests or claim prerequisite checks replace the test suite."
+	}
 	// A previously rejected legacy command may now validate. Reuse that saved
 	// result, but still pass through fresh preflight and human plan approval.
 	previous, err := s.Store.LatestAgent(ctx, c.ID, "planner")
@@ -115,9 +129,9 @@ func (s *Service) planning(ctx context.Context, c domain.Contribution, r *domain
 		return domain.Plan{}, err
 	}
 	if err == nil && previous.Status == "SUCCEEDED" && previous.Error == "" && r.Constraints == "" {
-		plan, err := validatePlan(previous.Output)
+		plan, err := validatePlanWith(previous.Output, s.validateCommand)
 		if err == nil {
-			_, err = verificationCommands(repo, &plan)
+			_, err = verificationCommands(repo, &plan, s.validateCommand)
 		}
 		if err == nil {
 			if err = s.Store.WorkspaceEvent(ctx, c.ID, "PlanRecovered", "Previously saved planner output now validates; plan approval remains required when configured", map[string]string{"agent_run_id": previous.ID}); err != nil {
@@ -131,9 +145,9 @@ func (s *Service) planning(ctx context.Context, c domain.Contribution, r *domain
 		if err != nil {
 			return domain.Plan{}, err
 		}
-		plan, err := validatePlan(output)
+		plan, err := validatePlanWith(output, s.validateCommand)
 		if err == nil {
-			_, err = verificationCommands(repo, &plan)
+			_, err = verificationCommands(repo, &plan, s.validateCommand)
 		}
 		if err == nil {
 			return plan, nil

@@ -47,6 +47,12 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case errors.Is(err, context.Canceled):
 		d.Kind, d.Summary = "cancelled", "Execution was stopped."
 		d.Evidence, d.NextAction = "The execution context was cancelled.", "Inspect the saved work and resume explicitly."
+	case len(failedGoTests(command, output)) == 0 && toolchainMismatch(text):
+		d.Kind, d.Summary = "toolchain_mismatch", "The repository requires a different runtime or compiler version; verification did not complete."
+		d.Evidence, d.NextAction = text, "Provision a matching environment and retry the unchanged verification. Do not downgrade repository requirements or start a source-fix iteration."
+	case hasAny(text, "environment image build failed", "environment image pull failed", "environment prerequisite failed", "environment requirements need operator input"):
+		d.Kind, d.Summary = "environment_blocked", "Repository environment prerequisites are not ready."
+		d.Evidence, d.NextAction = text, "Inspect provisioning evidence and repair the environment before coding or testing."
 	case hasAny(text, "container creation failed", "container cleanup failed", "container isolation check failed"):
 		d.Kind, d.Summary = "runtime_unavailable", "The configured container verification environment failed."
 		d.Evidence, d.NextAction = text, "Inspect Docker, the configured local image and any named container cleanup failure before resuming. Repository source changes cannot repair this environment failure."
@@ -155,6 +161,10 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	return d
 }
 
+func toolchainMismatch(text string) bool {
+	return hasAny(text, "requires go >=", "unsupported class file major version", "invalid target release:", "ebadengine", "requires a different python", "python version is not supported", "rustc is not supported", "cannot be built because it requires rustc", "net sdk does not support targeting") || (strings.Contains(text, "release version ") && strings.Contains(text, "not supported"))
+}
+
 func (s *Service) incident(ctx context.Context, r *domain.ExecutionRecord, d *domain.ExecutionIncident) error {
 	if d.ID == "" {
 		d.ID = storage.ID()
@@ -194,6 +204,13 @@ func (s *Service) acceptImplementation(ctx context.Context, c domain.Contributio
 	var result struct{ Status, Summary string }
 	if err := json.Unmarshal([]byte(output), &result); err != nil || strings.TrimSpace(result.Summary) == "" {
 		return errors.New("contributor returned an invalid implementation result; inspect saved agent output")
+	}
+	if result.Status == "ENVIRONMENT_BLOCKED" {
+		r.Summary = result.Summary
+		if err := s.incident(ctx, r, &domain.ExecutionIncident{Kind: "environment_blocked", Source: "contributor", Summary: "The contributor requested environment repair.", Evidence: result.Summary, NextAction: "The control plane will validate a bounded environment repair; no source-fix retry is authorized by this report.", Status: "blocked", DetectedAt: time.Now().UTC(), DiagnosisVersion: diagnosisVersion}); err != nil {
+			return err
+		}
+		return environmentBlocked
 	}
 	if result.Status == "IMPLEMENTED" {
 		r.Summary = result.Summary

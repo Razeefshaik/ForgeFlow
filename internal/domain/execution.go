@@ -79,28 +79,63 @@ type ExecutionIncident struct {
 	FailedTests      []string             `json:"failed_tests,omitempty"`
 }
 type ExecutionRecord struct {
-	ContributionID   string             `json:"contribution_id"`
-	Status           string             `json:"status"`
-	Phase            string             `json:"phase"`
-	Plan             *Plan              `json:"plan,omitempty"`
-	Review           *Review            `json:"review,omitempty"`
-	Summary          string             `json:"summary"`
-	Message          string             `json:"message,omitempty"`
-	FixIterations    int                `json:"fix_iterations"`
-	ReviewCycles     int                `json:"review_cycles"`
-	PlanApproved     bool               `json:"plan_approved"`
-	Network          bool               `json:"network"`
-	Incident         *ExecutionIncident `json:"incident,omitempty"`
-	RecoveryAttempts int                `json:"recovery_attempts"`
-	Constraints      string             `json:"constraints"`
-	UpdatedAt        time.Time          `json:"updated_at"`
-	ChangedFiles     []string           `json:"changed_files"`
-	Diff             string             `json:"diff"`
-	Report           string             `json:"report"`
-	PRTitle          string             `json:"pr_title"`
-	PRRevision       string             `json:"pr_revision"`
-	PRBody           string             `json:"pr_body"`
-	PRURL            string             `json:"pr_url"`
-	HeadCommit       string             `json:"head_commit"`
-	SubmissionToken  string             `json:"submission_token"`
+	Environment      *ExecutionEnvironment `json:"environment,omitempty"`
+	EnvironmentPlan  *EnvironmentPlan      `json:"environment_plan,omitempty"`
+	ContributionID   string                `json:"contribution_id"`
+	Status           string                `json:"status"`
+	Phase            string                `json:"phase"`
+	Plan             *Plan                 `json:"plan,omitempty"`
+	Review           *Review               `json:"review,omitempty"`
+	Summary          string                `json:"summary"`
+	Message          string                `json:"message,omitempty"`
+	FixIterations    int                   `json:"fix_iterations"`
+	ReviewCycles     int                   `json:"review_cycles"`
+	PlanApproved     bool                  `json:"plan_approved"`
+	Network          bool                  `json:"network"`
+	Incident         *ExecutionIncident    `json:"incident,omitempty"`
+	RecoveryAttempts int                   `json:"recovery_attempts"`
+	Constraints      string                `json:"constraints"`
+	UpdatedAt        time.Time             `json:"updated_at"`
+	ChangedFiles     []string              `json:"changed_files"`
+	Diff             string                `json:"diff"`
+	Report           string                `json:"report"`
+	PRTitle          string                `json:"pr_title"`
+	PRRevision       string                `json:"pr_revision"`
+	PRBody           string                `json:"pr_body"`
+	PRURL            string                `json:"pr_url"`
+	HeadCommit       string                `json:"head_commit"`
+	SubmissionToken  string                `json:"submission_token"`
+}
+
+// ExecutionEnvironment is observed control-plane evidence, not an agent's claim.
+type ExecutionEnvironment struct {
+	Status       string            `json:"status"`
+	Fingerprint  string            `json:"fingerprint,omitempty"`
+	BaseImage    string            `json:"base_image,omitempty"`
+	Image        string            `json:"image,omitempty"`
+	Tools        map[string]string `json:"tools,omitempty"`
+	Network      bool              `json:"downloads_approved"`
+	Capabilities []string          `json:"capabilities"`
+	Checks       []TestRun         `json:"checks,omitempty"`
+	Actions      []string          `json:"actions,omitempty"`
+	Error        string            `json:"error,omitempty"`
+}
+
+// EnvironmentPlan is a declarative request. Commands execute only in isolated
+// image builds or the contribution's verification container, never on the host.
+type EnvironmentPlan struct {
+	Summary           string                `json:"summary"`
+	BaseImage         string                `json:"base_image"`
+	Files             []string              `json:"files"`
+	ImageCommands     []VerificationCommand `json:"image_commands"`
+	WorkspaceCommands []VerificationCommand `json:"workspace_commands"`
+	Checks            []VerificationCommand `json:"checks"`
+	Environment       []EnvironmentVariable `json:"environment"`
+	Requirements      []string              `json:"requirements"`
+	Blockers          []string              `json:"blockers"`
+}
+
+type EnvironmentVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }

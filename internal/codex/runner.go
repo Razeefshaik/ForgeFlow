@@ -37,6 +37,8 @@ type CLI struct {
 	// Explicit, optional Linux image for deterministic verification only.
 	// Model sessions continue to use the native sandbox and local authentication.
 	VerificationImage string
+	environmentMu     sync.Mutex
+	environments      map[string]domain.ExecutionEnvironment
 	modeMu            sync.RWMutex
 	sandboxMode       string
 }
@@ -79,9 +81,9 @@ func (c *CLI) Run(ctx context.Context, r Request, onEvent func(json.RawMessage) 
 		return result, errors.New("Codex CLI unavailable; install it and run codex login")
 	}
 	if c.VerificationImage != "" && (r.Role == "contributor" || r.Role == "planner" || r.Role == "reviewer") {
-		r.Prompt += "\nForgeFlow runs the plan's verification commands separately in a Linux container (Go, Node, Python and Git). Use portable repository-relative commands in the plan. Native Windows tools remain available for inspection and editing. Do not replace required tests with Windows-only commands or claim container tests ran unless supplied execution evidence proves it."
+		r.Prompt += "\nForgeFlow runs the plan's verification commands separately in a Linux container. Consult the supplied environment evidence for actual tools and versions; never assume a tool is installed. Use portable repository-relative commands. Native Windows tools are a different environment. Report ENVIRONMENT_BLOCKED when a prerequisite prevents progress; do not change required versions or tests to fit the runner."
 	}
-	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "operator" || r.Role == "assistant-reader"
+	readOnly := r.Role == "reviewer" || r.Role == "planner" || r.Role == "environment-planner" || r.Role == "operator" || r.Role == "assistant-reader"
 	args := []string{"exec", "--ignore-user-config", "--ignore-rules", "--json", "--color", "never", "-C", r.Directory, "-c", `default_permissions="forgeflow"`, "-c", "mcp_servers={}", "-c", "features.multi_agent=false", "-c", `web_search="disabled"`}
 	args = append(args, c.policy(readOnly, r.Network)...)
 	if r.Role == "assistant-reader" || r.Role == "assistant-editor" {
@@ -260,13 +262,16 @@ func (c *CLI) sandbox(ctx context.Context, dir string, command domain.Verificati
 	return rec, err
 }
 func (c *CLI) Command(ctx context.Context, dir string, command domain.VerificationCommand, network bool) (domain.TestRun, error) {
-	if err := ValidateCommand(command); err != nil {
-		return domain.TestRun{}, err
-	}
 	if c.VerificationImage != "" {
+		if err := ValidateContainerCommand(command); err != nil {
+			return domain.TestRun{}, err
+		}
 		rec, err := c.containerCommand(ctx, dir, boundedGoTest(command), network)
 		rec.Command = command
 		return rec, err
+	}
+	if err := ValidateCommand(command); err != nil {
+		return domain.TestRun{}, err
 	}
 	resolved, err := resolveCommand(boundedGoTest(command), dir)
 	if err != nil {
