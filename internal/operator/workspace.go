@@ -135,10 +135,19 @@ func (a *WorkspaceAssistant) Approve(ctx context.Context, id string, approved bo
 	if t.Status != "AWAITING_APPROVAL" {
 		return t, errors.New("this task is no longer awaiting approval")
 	}
+	if a.AI == nil || a.Store.Demo {
+		return t, errors.New("workspace tools need live mode and an authenticated local Codex CLI")
+	}
+	if err = a.Store.WorkspaceEvent(ctx, t.ConversationID, "ArnyxTaskApproved", "Human approved scoped Codex editing", map[string]any{"task_id": t.ID, "directory": t.Directory, "network": t.Network}); err != nil {
+		return t, err
+	}
 	err = a.startLocked(ctx, &t)
 	return t, err
 }
 func (a *WorkspaceAssistant) startLocked(ctx context.Context, t *storage.ArnyxTask) error {
+	if a.AI == nil || a.Store.Demo {
+		return errors.New("workspace tools are unavailable")
+	}
 	if a.ctx.Err() != nil {
 		return errors.New("ForgeFlow is shutting down")
 	}
@@ -203,6 +212,29 @@ func (a *WorkspaceAssistant) run(ctx context.Context, cancel context.CancelFunc,
 	if err == nil && t.ContributionID != "" {
 		state["focused_contribution"], _ = a.Store.ArnyxLookup(ctx, "getContribution", t.ContributionID)
 		state["diagnostic_evidence"], _ = a.Store.ArnyxEvidence(ctx, t.ContributionID)
+	}
+	if err == nil && t.ContributionID == "" {
+		// Provide concrete evidence for the three most recent blockers even from
+		// the dashboard; users need not know database identifiers to ask why.
+		recent, _ := json.Marshal(state["recent_contributions"])
+		var contributions []struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		}
+		_ = json.Unmarshal(recent, &contributions)
+		diagnostics := map[string]any{}
+		for _, c := range contributions {
+			if c.State == "BLOCKED" {
+				evidence, e := a.Store.ArnyxEvidence(ctx, c.ID)
+				if e == nil {
+					diagnostics[c.ID] = evidence
+				}
+				if len(diagnostics) == 3 {
+					break
+				}
+			}
+		}
+		state["blocked_diagnostics"] = diagnostics
 	}
 	var snapshot []byte
 	if err == nil {

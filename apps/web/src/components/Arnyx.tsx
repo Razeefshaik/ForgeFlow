@@ -67,7 +67,7 @@ export default function Arnyx() {
         >
           New chat
         </button>
-        <button onClick={() => chat.setHistoryOpen(!chat.historyOpen)} aria-expanded={chat.historyOpen} disabled={mutation.isPending}>Previous chats</button>
+        <button onClick={() => { chat.setHistoryOpen(!chat.historyOpen); if (!chat.historyOpen) void chat.history.refetch(); }} aria-expanded={chat.historyOpen} disabled={mutation.isPending}>Previous chats</button>
       </div>
       {chat.historyOpen && <div className="arnyx-history" aria-label="Previous conversations">
         {chat.history.isPending && <p role="status">Loading conversations…</p>}

@@ -158,7 +158,7 @@ func (s *Store) SaveArnyxTask(ctx context.Context, t ArnyxTask, finish bool) err
 	})
 }
 func (s *Store) RecoverArnyxTasks(ctx context.Context) error {
-	tasks, err := listJSON[ArnyxTask](ctx, s.db, "SELECT data FROM arnyx_tasks WHERE json_extract(data,'$.status')='RUNNING'")
+	tasks, err := listJSON[ArnyxTask](ctx, s.db, "SELECT data FROM arnyx_tasks WHERE json_extract(data,'$.status') IN ('RUNNING','PREPARED')")
 	if err != nil {
 		return err
 	}

@@ -69,7 +69,7 @@ test("Arnyx preserves conversation across closing and navigation without applyin
     "Active configuration:",
   );
   await page.getByRole("button", { name: "Previous chats" }).click();
-  await page.getByRole("button", { name: /What are my current languages\?/ }).click();
+  await page.locator(".arnyx-history").getByRole("button", { name: /What are my current languages\?/ }).first().click();
   await expect(page.getByRole("log")).toContainText("Active configuration:");
   await page.reload();
   await page.getByRole("button", { name: "Chat with Arnyx", exact: true }).click();
@@ -110,6 +110,48 @@ test("Arnyx sends only bounded conversation and page focus, then renders a contr
   expect(payload?.view.route).toBe("/configuration");
   expect(payload?.history).toHaveLength(2);
   expect(Object.keys(payload!)).toEqual(["message", "history", "view", "conversation_id"]);
+});
+
+test("Arnyx workspace approvals persist, then show activity and a stop control", async ({ page }) => {
+  let task = { id: "ui-scoped-task", conversation_id: "", directory: "S:/fixtures/project", mode: "edit", prompt: "Fix the parser and run its tests", network: false, status: "AWAITING_APPROVAL", activity: "Review this request", updated_at: new Date().toISOString() };
+  let approved = false;
+  let stopped = false;
+  await page.route("**/api/runtime", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...(await response.json()), mode: "live", codex_available: true, arnyx_workspace_available: true, project_root: "S:/fixtures/project" } });
+  });
+  await page.route("**/api/arnyx/conversations/*", async route => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "POST" && url.pathname.endsWith("/tasks")) {
+      const body = route.request().postDataJSON();
+      expect(body.mode).toBe("edit");expect(body.directory).toBe("S:/fixtures/project");expect(body.network).toBe(false);
+      task.conversation_id = url.pathname.split("/").at(-2)!;
+      await route.fulfill({ json: task });
+    } else if (route.request().method() === "GET" && task.conversation_id && url.pathname.endsWith(task.conversation_id)) {
+      await route.fulfill({ json: { messages: [{ sequence: 1, role: "user", text: task.prompt }], tasks: [task] } });
+    } else await route.continue();
+  });
+  await page.route("**/api/arnyx/tasks/ui-scoped-task/*", async route => {
+    if (route.request().url().endsWith("/approve")) {
+      expect(route.request().postDataJSON()).toEqual({approved: true});approved = true;
+      task = {...task, status: "RUNNING", activity: "Reading parser.ts"};
+    } else {stopped = true;task = {...task, status: "CANCELLED", activity: "Task stopped"};}
+    await route.fulfill({ json: task });
+  });
+  await page.goto("/arnyx");
+  await page.getByLabel("Arnyx access mode").selectOption("edit");
+  await page.getByLabel("Arnyx workspace folder").fill("S:/fixtures/project");
+  await page.getByLabel("Message Arnyx").fill(task.prompt);
+  await page.getByRole("button", {name:"Send message"}).click();
+  const approval = page.getByRole("button", {name:"Approve changes in this folder"});
+  await expect(approval).toBeVisible();expect(approved).toBe(false);
+  await page.reload();
+  await expect(approval).toBeVisible();expect(approved).toBe(false);
+  await approval.click();
+  await expect(page.getByText("Reading parser.ts", {exact:true})).toBeVisible();
+  await page.getByRole("button", {name:"Stop Codex task"}).click();
+  await expect(page.getByRole("button", {name:"Stop Codex task"})).toHaveCount(0);
+  expect(approved).toBe(true);expect(stopped).toBe(true);
 });
 
 for (const mobile of [false, true])
