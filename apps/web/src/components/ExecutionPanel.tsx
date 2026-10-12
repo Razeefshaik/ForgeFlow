@@ -31,6 +31,7 @@ type Execution = {
   incident?: ExecutionIncident;
   recovery_attempts?: number;
   constraints?: string;
+    plan_invalidated?: boolean;
   plan?: {
     summary: string;
     root_cause: string;
@@ -575,6 +576,7 @@ export default function ExecutionPanel({
             {tab === "Plan" &&
               (r?.plan ? (
                 <>
+                  {r.plan_invalidated && <p role="status">This saved plan needs refreshing after a scope update. Recovery will read the current issue discussion and preserve existing edits.</p>}
                   <h4>{r.plan.summary}</h4>
                   <section className="plan-section">
                     <h3>What needs to change</h3>

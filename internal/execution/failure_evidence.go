@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const diagnosisVersion = 4
+const diagnosisVersion = 5
 
 var goAssertion = regexp.MustCompile(`(?m)^\s*--- FAIL: (Test[A-Za-z0-9_]+)(?:[/ (]|$)`)
 

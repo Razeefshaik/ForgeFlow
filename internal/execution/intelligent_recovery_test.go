@@ -27,6 +27,7 @@ func TestRecoveryClassifiesSetupAndActualAssertions(t *testing.T) {
 		{"Traceback:\nFile \"/usr/lib/python3.14/subprocess.py\"\nFileNotFoundError: [Errno 2] No such file or directory: 'semgrep'", "tool_unavailable", false},
 		{"FileNotFoundError: [Errno 2] No such file or directory: 'source.txt'", "code_failure", false},
 		{"subprocess.TimeoutExpired: Command '['semgrep', 'scan']' timed out after 20 seconds", "verification_timeout", false},
+		{"Error: spawnSync go ETIMEDOUT", "verification_timeout", false},
 		{"file is being used by another process", "resource_busy", true},
 		{"fatal: detected dubious ownership in repository at '/workspace'", "environment_blocked", false},
 		{"--- FAIL: TestGit: unexpected fatal: detected dubious ownership in repository", "code_failure", false},

@@ -11,6 +11,7 @@ import (
 	"forgeflow/internal/domain"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +54,9 @@ func main(){key,_:=hex.DecodeString("` + hex.EncodeToString(pub) + `");src,e:=os
 	r, err := s.Store.Execution(ctx, c.ID)
 	if err != nil || r.Status != "NEEDS_INPUT" || r.Incident == nil || r.Incident.Kind != "completion_gate" || r.Review == nil || r.Review.Verdict != "APPROVE" {
 		t.Fatalf("missing completion pause: %+v %v", r, err)
+	}
+	if !strings.Contains(r.Report, "Completion pending") || !strings.Contains(r.Report, "Supply") && !strings.Contains(r.Report, "trusted signer") {
+		t.Fatal("pending external requirement has no useful verification report", r.Report)
 	}
 	contributors, reviews := f.contributors, f.reviews
 	if err := os.WriteFile(filepath.Join(runtime, "receipt"), []byte("wrong signature"), 0600); err != nil {

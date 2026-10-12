@@ -259,6 +259,9 @@ func TestRealCodexWorkflow(t *testing.T) {
 			agents, agentErr := s.Store.Agents(ctx)
 			events, eventErr := s.Store.Events(ctx, 0, c.ID, 1000)
 			record, recordErr := s.Store.Execution(ctx, c.ID)
+			if err := s.exportEvents(ctx, c.ID, evidence); err != nil {
+				t.Error(err)
+			}
 			repo, _, _ := s.Paths(c)
 			if err := writeJSON(filepath.Join(evidence, "workflow.json"), map[string]any{"workspace": repo, "execution": record, "tests": tests, "agents": agents, "events": events, "errors": []error{testErr, agentErr, eventErr, recordErr}}); err != nil {
 				t.Error(err)

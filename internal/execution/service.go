@@ -490,6 +490,13 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 			}
 		}
 		if r.EnvironmentPlan != nil && len(r.EnvironmentPlan.CompletionGates) > 0 {
+			r.Report = "Completion pending: coding, required tests and independent review finished. External requirements still prevent readiness.\n\n" + s.report(c, a, *r, tests)
+			for _, gate := range r.EnvironmentPlan.CompletionGates {
+				r.Report += fmt.Sprintf("\nRequired by %s: %s\nNext step: %s\n", gate.Source, gate.Requirement, gate.Action)
+			}
+			if err = os.WriteFile(filepath.Join(meta, "verification-report.md"), []byte(r.Report), 0600); err != nil {
+				return err
+			}
 			if err = os.WriteFile(filepath.Join(filepath.Dir(repo), "artifacts", "final.patch"), []byte(diff), 0600); err != nil {
 				return err
 			}

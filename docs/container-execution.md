@@ -81,3 +81,22 @@ node scripts/validate-container-execution.mjs
 ```
 
 The script reads the configured contributions root, creates a timestamped evidence directory under `.cache/windows-execution-validation`, and stops on the first failed stage. `--workflow-only` repeats only the persisted workflow. Keep earlier evidence directories when diagnosing a failure.
+
+## Pipeline 8 recovery
+
+Fresh issue comments are read before environment planning. Existing plans without a matching discussion/constraint fingerprint are archived in audit events and refreshed while keeping workspace edits. Full comments are supplied as bounded files, not repeated inline in every model prompt. Excessive discussions stop with a scope-budget error instead of being silently truncated.
+
+Recipes add `hook_commands` and `completion_gates`. Hook installation runs in the existing container with only `.git/hooks` and `.git/info/lefthook.checksum` additionally writable. These paths are bounded and reject links; configuration, refs, index and other Git metadata remain read-only. Normal checks see read-only hooks and checksum. Downloads and hook installation never run on the Windows host.
+
+Completion gates declare their instruction source, required evidence, external action, public verification commands and whether the evidence binds the edited files or a commit. Working-tree gates run after tests and independent review. Missing or invalid evidence pauses without recoding; recovery reruns verification and preserves review only for an identical patch. Commit-bound gates export `artifacts/final.patch`, `.autopilot/verification-report.md` and `.autopilot/completion-handoff.json` for a trusted external checkout. An old HEAD receipt never certifies new edits. Signed-commit import is not supported, and host-side PR preparation refuses repositories requiring hooks or external attestation.
+
+The Environment tab shows the actual recipe requirements, setup command output and completion requirements. Setup incidents expose explicit recovery, and a commit handoff does not offer a misleading retry button. Python subprocess timeouts and Docker engine outages pause as infrastructure failures; neither justifies a source-fix iteration.
+
+This installation now saves container verification and MXC editing in `configs/local.json`, preserving its contribution root. Its immutable starting image is an inventory/bootstrap choice. Repository manifests, CI and lockfiles select each contribution's toolchains and derived image. Starting the application needs no language version in the terminal:
+
+```powershell
+docker desktop start
+npm run dev
+```
+
+Paused contributions remain paused until explicitly recovered or resumed. See [the recovery plan](contribution-recovery-plan.md) for the verified path and external signing limit.
