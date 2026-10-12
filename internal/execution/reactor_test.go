@@ -125,6 +125,9 @@ func TestReactorDoesNotCountRunnerErrorAsPassed(t *testing.T) {
 }
 
 func TestDeclaredGoTimeoutAndRecoveryBudget(t *testing.T) {
+	if d := verificationDeadline(domain.VerificationCommand{Program: "make", Arguments: []string{"verify-all"}, TimeoutSeconds: 3600}); d != time.Hour {
+		t.Fatal("composite gate ignored its declared budget", d)
+	}
 	if d := verificationDeadline(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-timeout", "20m"}}); d != 22*time.Minute {
 		t.Fatal(d)
 	}

@@ -153,6 +153,10 @@ func (s Server) Handler() http.Handler {
 		v, e := s.Store.Opportunities(r.Context())
 		respond(w, v, e)
 	})
+	m.HandleFunc("GET /api/repository-exclusions", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.Store.RepositoryExclusions(r.Context())
+		respond(w, v, e)
+	})
 	m.HandleFunc("GET /api/opportunities/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Store.Opportunity(r.Context(), r.PathValue("id"))
 		respond(w, v, e)

@@ -13,6 +13,9 @@ import (
 )
 
 func verificationDeadline(command domain.VerificationCommand) time.Duration {
+	if command.TimeoutSeconds > 0 && command.TimeoutSeconds <= 7200 {
+		return time.Duration(command.TimeoutSeconds) * time.Second
+	}
 	deadline := 10 * time.Minute
 	if command.Program == "go" {
 		if len(command.Arguments) > 0 && command.Arguments[0] == "test" {

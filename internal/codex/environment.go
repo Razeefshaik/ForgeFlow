@@ -73,6 +73,9 @@ func (c *CLI) workspaceImage(dir string) string {
 }
 
 func validateProvisionCommand(command domain.VerificationCommand) error {
+	if err := validateCommandTimeout(command); err != nil {
+		return err
+	}
 	if command.Program == "" || strings.HasPrefix(command.Program, "-") || strings.ContainsAny(command.Program, "\x00\r\n") || len(command.Arguments) > 100 {
 		return errors.New("invalid environment command")
 	}

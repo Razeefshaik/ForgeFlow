@@ -362,7 +362,15 @@ func listJSON[T any](ctx context.Context, db *sql.DB, query string, args ...any)
 	return result, rows.Err()
 }
 func (s *Store) Opportunities(ctx context.Context) ([]domain.Opportunity, error) {
-	return listJSON[domain.Opportunity](ctx, s.db, "SELECT data FROM opportunities ORDER BY score DESC,id")
+	all, err := listJSON[domain.Opportunity](ctx, s.db, "SELECT data FROM opportunities ORDER BY score DESC,id")
+	if err != nil { return nil, err }
+	exclusions, err := s.RepositoryExclusions(ctx)
+	if err != nil { return nil, err }
+	eligible := make([]domain.Opportunity, 0, len(all))
+	for _, o := range all {
+		if repositoryEligibility(o.Repository, exclusions) == nil { eligible = append(eligible, o) }
+	}
+	return eligible, nil
 }
 func (s *Store) Contributions(ctx context.Context) ([]domain.Contribution, error) {
 	return listJSON[domain.Contribution](ctx, s.db, "SELECT data FROM contributions ORDER BY id")

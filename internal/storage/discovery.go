@@ -63,6 +63,9 @@ func (s *Store) FinishDiscovery(ctx context.Context, run domain.DiscoveryRun, op
 				return err
 			}
 		}
+		for _, excluded := range run.ExcludedRepositories {
+			if err := s.event(ctx, tx, "RepositoryExcluded", excluded.Repository, "discovery", "Skipped repository with unresolved environment prerequisites", excluded); err != nil { return err }
+		}
 		b, err := json.Marshal(run)
 		if err != nil {
 			return err

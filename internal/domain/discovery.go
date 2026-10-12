@@ -40,6 +40,7 @@ type Evidence struct {
 }
 
 type DiscoveryRun struct {
+	ExcludedRepositories []RepositoryExclusion `json:"excluded_repositories,omitempty"`
 	ID            string     `json:"id"`
 	Status        string     `json:"status"`
 	ConfigVersion int64      `json:"config_version"`

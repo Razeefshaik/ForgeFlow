@@ -262,6 +262,10 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		languages = languages[:6]
 	}
 	groups := [][]github.Issue{}
+	exclusions, eligibilityErr := s.Store.RepositoryExclusions(ctx)
+	if eligibilityErr != nil { warn(errors.New("repository eligibility could not be checked; discovery enrichment skipped")) }
+	excluded := map[string]domain.RepositoryExclusion{}
+	for _, v := range exclusions { excluded[strings.ToLower(v.Repository)] = v }
 	for _, lang := range languages {
 		var result github.IssueSearch
 		q := `is:issue is:open is:public archived:false language:"` + strings.ReplaceAll(lang, `"`, "") + `"` + preferredLabels(cfg.Config.Issues.PreferredLabels)
@@ -295,12 +299,21 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 	blocked := map[string]bool{}
 	counts := map[string]int{}
 	seen := map[string]bool{}
+	rejected := map[string]bool{}
 	for _, candidate := range candidates {
 		if ctx.Err() != nil {
 			break
 		}
 		name := RepositoryName(candidate.RepositoryURL)
 		if name == "" || candidate.Number <= 0 || len(candidate.PullRequest) > 0 {
+			continue
+		}
+		if eligibilityErr != nil { break }
+		if v, found := excluded[strings.ToLower(name)]; found {
+			if !rejected[strings.ToLower(name)] {
+				run.ExcludedRepositories = append(run.ExcludedRepositories, v)
+				rejected[strings.ToLower(name)] = true
+			}
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", name, candidate.Number)

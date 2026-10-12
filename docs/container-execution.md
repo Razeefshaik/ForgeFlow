@@ -92,6 +92,8 @@ Completion gates declare their instruction source, required evidence, external a
 
 The Environment tab shows the actual recipe requirements, setup command output and completion requirements. Setup incidents expose explicit recovery, and a commit handoff does not offer a misleading retry button. Python subprocess timeouts and Docker engine outages pause as infrastructure failures; neither justifies a source-fix iteration.
 
+Verification plans may set `timeout_seconds` to a repository-supported duration up to 7200. Zero retains the default. This covers composite gates across languages, whose child deadlines may exceed a generic command budget. Environment preparation keeps its separate 15-minute limit, and cancellation stays active throughout. A required CLI/helper build may be prepared in the workspace when integration tests impose a short startup deadline; the unchanged tests must still run their own build and checks.
+
 This installation now saves container verification and MXC editing in `configs/local.json`, preserving its contribution root. Its immutable starting image is an inventory/bootstrap choice. Repository manifests, CI and lockfiles select each contribution's toolchains and derived image. Starting the application needs no language version in the terminal:
 
 ```powershell

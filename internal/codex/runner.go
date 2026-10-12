@@ -377,6 +377,9 @@ func (e *CommandValidationError) Error() string {
 }
 
 func ValidateCommand(c domain.VerificationCommand) error {
+	if err := validateCommandTimeout(c); err != nil {
+		return err
+	}
 	allowed := map[string]bool{"go": true, "python": true, "python3": true, "pytest": true, "npm": true, "node": true, "mvn": true, "./mvnw": true, "gradle": true, "./gradlew": true}
 	if !allowed[c.Program] || len(c.Arguments) > 30 {
 		return &CommandValidationError{c.Program, -1, "program must be allowlisted and have at most 30 arguments"}
@@ -405,6 +408,13 @@ func ValidateCommand(c domain.VerificationCommand) error {
 		if len(a) > 300 || strings.ContainsAny(unsafe, "\r\n\x00&|<>%!`") || ((c.Program == "./mvnw" || c.Program == "./gradlew" || c.Program == "mvn" || c.Program == "gradle") && strings.ContainsAny(a, "^$")) {
 			return &CommandValidationError{c.Program, i, "argument exceeds 300 characters or contains forbidden shell/control characters"}
 		}
+	}
+	return nil
+}
+
+func validateCommandTimeout(c domain.VerificationCommand) error {
+	if c.TimeoutSeconds < 0 || c.TimeoutSeconds > 7200 {
+		return &CommandValidationError{c.Program, -1, "timeout_seconds must be zero (default) or at most 7200"}
 	}
 	return nil
 }

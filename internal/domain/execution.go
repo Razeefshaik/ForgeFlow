@@ -3,8 +3,9 @@ package domain
 import "time"
 
 type VerificationCommand struct {
-	Program   string   `json:"program"`
-	Arguments []string `json:"arguments"`
+	Program        string   `json:"program"`
+	Arguments      []string `json:"arguments"`
+	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
 }
 type Plan struct {
 	Summary   string                `json:"summary"`

@@ -38,6 +38,9 @@ func (s *Store) ApproveWorkspace(ctx context.Context, c domain.Contribution, a d
 		return errors.New("demo contributions cannot execute")
 	}
 	return s.transact(ctx, func(tx *sql.Tx) error {
+		exclusions, err := repositoryExclusions(ctx, tx)
+		if err != nil { return err }
+		if err = repositoryEligibility(c.Repository, exclusions); err != nil { return err }
 		var version int64
 		if err := tx.QueryRowContext(ctx, "SELECT MAX(version) FROM config_versions").Scan(&version); err != nil {
 			return err

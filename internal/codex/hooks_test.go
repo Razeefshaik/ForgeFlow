@@ -47,6 +47,18 @@ func TestCompletionGateRequiresPublicChecksAndSource(t *testing.T) {
 	}
 }
 
+func TestVerificationBudgetCannotBeUnbounded(t *testing.T) {
+	for _, seconds := range []int{-1, 7201} {
+		command := domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./..."}, TimeoutSeconds: seconds}
+		if ValidateCommand(command) == nil || ValidateContainerCommand(command) == nil {
+			t.Fatal("unsafe command duration admitted", seconds)
+		}
+	}
+	if err := ValidateContainerCommand(domain.VerificationCommand{Program: "make", Arguments: []string{"verify-all"}, TimeoutSeconds: 3600}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRealHookPreparationIsolationCancellation(t *testing.T) {
 	if os.Getenv("FORGEFLOW_TEST_HOOKS") != "1" {
 		t.Skip("opt in to real Docker hook preparation")

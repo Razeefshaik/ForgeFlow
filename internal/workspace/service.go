@@ -94,6 +94,9 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	if o.Demo || o.Evidence == nil || !repositoryName.MatchString(o.Repository) || o.Number < 1 {
 		return a, errors.New("a real discovered GitHub issue is required")
 	}
+	if err = s.Store.RequireRepositoryEligible(ctx, o.Repository); err != nil {
+		return a, err
+	}
 	if s.selfRepository != "" && strings.EqualFold(o.Repository, s.selfRepository) {
 		return a, errors.New("ForgeFlow itself cannot be allocated as its own contribution workspace")
 	}
