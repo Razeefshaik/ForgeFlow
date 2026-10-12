@@ -60,6 +60,7 @@ type Contribution struct {
 	BaseCommit        string    `json:"base_commit,omitempty"`
 	Message           string    `json:"message,omitempty"`
 	ExecutionApproved bool      `json:"execution_approved,omitempty"`
+	DownloadsApproved bool      `json:"downloads_approved,omitempty"`
 }
 type Event struct {
 	ID        int64     `json:"id"`

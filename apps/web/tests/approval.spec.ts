@@ -69,9 +69,11 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
   await page.route("**/api/runtime/models", (r) => r.fulfill({ json: { models: [{ slug: "model-a", display_name: "Model A" }] } }));
   await page.route("**/api/opportunities/approval-ui-fixture/preview", (r) => {
     expect(r.request().postDataJSON().codex_model).toBe("model-a");
+    const allowDownloads = r.request().postDataJSON().allow_downloads;
     return r.fulfill({
       json: {
-        token: "f".repeat(64),
+        token: (allowDownloads ? "d" : "f").repeat(64),
+        allow_downloads: allowDownloads,
         codex_model: "model-a",
         configuration: { version: 1 },
         base_commit: "a".repeat(40),
@@ -91,7 +93,9 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
     async (r) => {
       const b = r.request().postDataJSON();
       expect(b.approved).toBe(true);
-      expect(b.token).toBe("f".repeat(64));
+      expect(b.token).toBe("d".repeat(64));
+      expect(b.allow_downloads).toBe(true);
+      expect(b.execute).toBe(true);
       expect(b.codex_model).toBe("model-a");
       approvals++;
       await r.fulfill({
@@ -119,6 +123,12 @@ test("workspace approval requires fresh preview and explicit confirmation", asyn
     })
     .check();
   await expect(confirm).toBeEnabled();
+  await page.getByRole("checkbox", { name: "Allow downloading runtimes and public dependencies in isolated execution." }).check();
+  await expect(confirm).toHaveCount(0);
+  await page.getByRole("button", { name: "Proceed to Contribute" }).click();
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("Approved with execution", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "I approve cloning, Codex coding, verification and review in this external workspace." }).check();
   await confirm.scrollIntoViewIfNeeded();
   const artifacts = fileURLToPath(
     new URL("../../../artifacts/", import.meta.url),

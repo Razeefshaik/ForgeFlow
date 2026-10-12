@@ -7,17 +7,18 @@ import (
 
 // WorkspaceApproval is an immutable, human-approved execution input.
 type WorkspaceApproval struct {
-	Token         string          `json:"token"`
-	WorkspaceRoot string          `json:"workspace_root"`
-	Opportunity   Opportunity     `json:"opportunity"`
-	Config        ConfigVersion   `json:"configuration"`
-	Issue         json.RawMessage `json:"issue"`
-	Repository    json.RawMessage `json:"repository"`
-	Competition   json.RawMessage `json:"competition"`
-	BaseCommit    string          `json:"base_commit"`
-	CodexModel    string          `json:"codex_model,omitempty"`
-	Warnings      []string        `json:"warnings"`
-	CheckedAt     time.Time       `json:"checked_at"`
+	AllowDownloads bool            `json:"allow_downloads"`
+	Token          string          `json:"token"`
+	WorkspaceRoot  string          `json:"workspace_root"`
+	Opportunity    Opportunity     `json:"opportunity"`
+	Config         ConfigVersion   `json:"configuration"`
+	Issue          json.RawMessage `json:"issue"`
+	Repository     json.RawMessage `json:"repository"`
+	Competition    json.RawMessage `json:"competition"`
+	BaseCommit     string          `json:"base_commit"`
+	CodexModel     string          `json:"codex_model,omitempty"`
+	Warnings       []string        `json:"warnings"`
+	CheckedAt      time.Time       `json:"checked_at"`
 }
 type CommandRecord struct {
 	Arguments  []string  `json:"arguments"`

@@ -3,6 +3,9 @@ package workspace
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"forgeflow/internal/domain"
 	"forgeflow/internal/github"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +42,11 @@ func init() {
 	os.Exit(0)
 }
 func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
+	for _, downloads := range []bool{false, true} {
+		t.Run(fmt.Sprintf("downloads-%t", downloads), func(t *testing.T) { approvedPreparation(t, downloads) })
+	}
+}
+func approvedPreparation(t *testing.T, downloads bool) {
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
@@ -86,16 +94,18 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	client := github.New("")
 	client.BaseURL = upstream.URL
 	manager := New(ctx, s, client, root)
+	var prepared domain.Contribution
+	manager.Prepared = func(_ context.Context, c domain.Contribution) error { prepared = c; return nil }
 	// Test child remains a native executable on Windows; no shell wrapper is used.
 	t.Setenv("FORGEFLOW_GIT_FIXTURE_HELPER", "1")
 	t.Setenv("FORGEFLOW_GIT_FIXTURE_ORIGIN", origin)
 	t.Setenv("FORGEFLOW_GIT_FIXTURE_EXECUTABLE", realGit)
 	manager.Git = os.Args[0]
-	preview, err := manager.PreviewForModel(ctx, "issue", "model-a")
+	preview, err := manager.PreviewWithOptions(ctx, "issue", "model-a", downloads)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := manager.ProceedWithExecutionForModel(ctx, "issue", preview.Token, true, false, "model-a")
+	c, err := manager.ProceedWithOptions(ctx, "issue", preview.Token, true, true, "model-a", downloads)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,9 +117,16 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	if got.CodexModel != "model-a" {
 		t.Fatalf("selected model was not persisted: %+v", got)
 	}
-	if got.State != "BLOCKED" || got.PreviousState != "PLANNING" {
+	if got.State != "PLANNING" {
 		events, _ := s.Events(ctx, 0, c.ID, 100)
 		t.Fatalf("preparation: %+v events=%+v", got, events)
+	}
+	if prepared.ID != got.ID || !prepared.ExecutionApproved || prepared.DownloadsApproved != downloads || got.DownloadsApproved != downloads {
+		t.Fatalf("download approval not passed to execution: %+v %+v", prepared, got)
+	}
+	approval, err := s.Approval(ctx, got.ID)
+	if err != nil || approval.AllowDownloads != downloads {
+		t.Fatal("immutable download approval lost", err)
 	}
 	repo := filepath.Join(root, filepath.FromSlash(c.Workspace))
 	meta := filepath.Join(filepath.Dir(repo), ".autopilot")
@@ -128,9 +145,12 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(out)) != sha {
 		t.Fatal("approved SHA not checked out")
 	}
-	duplicate, err := manager.ProceedWithExecutionForModel(ctx, "issue", preview.Token, true, false, "model-a")
+	duplicate, err := manager.ProceedWithOptions(ctx, "issue", preview.Token, true, true, "model-a", downloads)
 	if err != nil || duplicate.ID != c.ID {
 		t.Fatal("repeat approval created another workspace")
+	}
+	if _, err = manager.ProceedWithOptions(ctx, "issue", preview.Token, true, true, "model-a", !downloads); !errors.Is(err, ErrChanged) {
+		t.Fatal("idempotent approval changed download permission", err)
 	}
 	entries, _ := os.ReadDir(filepath.Join(root, "contributions"))
 	if len(entries) != 1 {

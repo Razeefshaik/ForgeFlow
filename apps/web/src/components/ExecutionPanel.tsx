@@ -480,6 +480,7 @@ export default function ExecutionPanel({
         )}
       {r && (currentIncident || needsRecovery) && (
         <IssueReactor
+          key={currentIncident?.id ?? "no-incident"}
           contributionId={c.id}
           incident={currentIncident}
           running={running}

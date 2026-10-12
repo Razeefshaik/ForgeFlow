@@ -178,7 +178,7 @@ func run() error {
 	}
 	executor := execution.New(ctx, s, cli, client, root, settings.ContributionsDir)
 	workspaces.Prepared = func(startCtx context.Context, c domain.Contribution) error {
-		_, e := executor.Start(startCtx, c.ID, true, false)
+		_, e := executor.Start(startCtx, c.ID, true, c.DownloadsApproved)
 		return e
 	}
 	defer func() { cancel(); executor.Wait() }()

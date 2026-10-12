@@ -82,6 +82,19 @@ func TestFreshPreviewApprovalAndStaleInputs(t *testing.T) {
 	if calls != 6 {
 		t.Fatal("unapproved request fetched or executed work")
 	}
+	downloads, err := manager.PreviewWithOptions(ctx, "issue", "", true)
+	if err != nil || !downloads.AllowDownloads || downloads.Token == preview.Token {
+		t.Fatalf("downloads not bound to fresh approval: %+v %v", downloads, err)
+	}
+	if _, err = manager.ProceedWithOptions(ctx, "issue", preview.Token, true, true, "", true); !errors.Is(err, ErrChanged) {
+		t.Fatalf("offline token permitted download escalation: %v", err)
+	}
+	if _, err = manager.ProceedWithOptions(ctx, "issue", downloads.Token, true, false, "", true); err == nil {
+		t.Fatal("downloads allowed without execution approval")
+	}
+	if _, err = manager.ProceedWithOptions(ctx, "issue", downloads.Token, false, true, "", true); err == nil {
+		t.Fatal("unapproved downloads permitted")
+	}
 	selected, err := manager.PreviewForModel(ctx, "issue", "model-a")
 	if err != nil || selected.CodexModel != "model-a" || selected.Token == preview.Token {
 		t.Fatalf("model was not bound to approval: %+v, %v", selected, err)

@@ -163,7 +163,8 @@ func (s Server) Handler() http.Handler {
 	})
 	m.HandleFunc("POST /api/opportunities/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
-			CodexModel string `json:"codex_model"`
+			CodexModel     string `json:"codex_model"`
+			AllowDownloads bool   `json:"allow_downloads"`
 		}
 		if !decode(w, r, &b) {
 			return
@@ -172,15 +173,16 @@ func (s Server) Handler() http.Handler {
 			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
 			return
 		}
-		v, e := s.Workspaces.PreviewForModel(r.Context(), r.PathValue("id"), b.CodexModel)
+		v, e := s.Workspaces.PreviewWithOptions(r.Context(), r.PathValue("id"), b.CodexModel, b.AllowDownloads)
 		respond(w, v, e)
 	})
 	m.HandleFunc("POST /api/opportunities/{id}/proceed", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
-			Approved   bool   `json:"approved"`
-			Token      string `json:"token"`
-			Execute    bool   `json:"execute"`
-			CodexModel string `json:"codex_model"`
+			Approved       bool   `json:"approved"`
+			Token          string `json:"token"`
+			Execute        bool   `json:"execute"`
+			CodexModel     string `json:"codex_model"`
+			AllowDownloads bool   `json:"allow_downloads"`
 		}
 		if !decode(w, r, &b) {
 			return
@@ -189,7 +191,7 @@ func (s Server) Handler() http.Handler {
 			write(w, 503, map[string]string{"error": "Workspace manager unavailable"})
 			return
 		}
-		v, e := s.Workspaces.ProceedWithExecutionForModel(r.Context(), r.PathValue("id"), b.Token, b.Approved, b.Execute, b.CodexModel)
+		v, e := s.Workspaces.ProceedWithOptions(r.Context(), r.PathValue("id"), b.Token, b.Approved, b.Execute, b.CodexModel, b.AllowDownloads)
 		if e != nil {
 			fail(w, e)
 			return

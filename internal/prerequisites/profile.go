@@ -21,5 +21,5 @@ func LinuxProfile() Profile { return Profile{LinuxProvisioning: true, MemoryMiB:
 func (p Profile) Fingerprint() string {
 	b, _ := json.Marshal(p)
 	h := sha256.Sum256(b)
-	return "prerequisites-v2:" + hex.EncodeToString(h[:])
+	return "prerequisites-v3:" + hex.EncodeToString(h[:])
 }

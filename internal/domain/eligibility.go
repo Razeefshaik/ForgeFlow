@@ -25,11 +25,12 @@ type PrerequisiteFinding struct {
 
 // RepositoryAssessment is a bounded static assessment, never a test result.
 type RepositoryAssessment struct {
-	Repository string                `json:"repository"`
-	HeadSHA    string                `json:"head_sha"`
-	Status     string                `json:"status"`
-	Profile    string                `json:"profile"`
-	CheckedAt  time.Time             `json:"checked_at"`
-	Files      []string              `json:"files"`
-	Findings   []PrerequisiteFinding `json:"findings"`
+	Repository   string                `json:"repository"`
+	HeadSHA      string                `json:"head_sha"`
+	Status       string                `json:"status"`
+	Profile      string                `json:"profile"`
+	CheckedAt    time.Time             `json:"checked_at"`
+	Files        []string              `json:"files"`
+	Findings     []PrerequisiteFinding `json:"findings"`
+	Requirements []PrerequisiteFinding `json:"requirements,omitempty"`
 }

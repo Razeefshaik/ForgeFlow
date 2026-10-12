@@ -160,6 +160,7 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 		}
 	}
 	findings := analyze(texts, profile)
+	a.Requirements = dependencyRequirements(texts)
 	for _, f := range findings {
 		a.Findings = append(a.Findings, f)
 		if f.Kind == "needs_assessment" {
@@ -206,10 +207,23 @@ func selectedFile(p string) bool {
 		if b == "agents.md" {
 			return true
 		}
-		return l == ".github/contributing.md" || l == "docs/contributing.md" || l == "docs/development.md" || l == "docs/testing.md"
+		if l == ".github/contributing.md" || l == "docs/contributing.md" || l == "docs/development.md" || l == "docs/testing.md" {
+			return true
+		}
+		// Nested packages and documentation builds matter in monorepos and
+		// scaffolder templates. Generated deployment workflows are not root CI.
+		return dependencyManifest(b) || b == "makefile" || b == "mkdocs.yml" || b == "mkdocs.yaml"
 	}
 	switch b {
 	case "agents.md", "contributing.md", "contributing", "readme.md", "readme", "makefile", ".standards.yaml", ".standards.yml", "go.mod", "package.json", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts", "cargo.toml", "gemfile", "composer.json", "cmakelists.txt", "dockerfile", "compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml", "requirements.txt", "global.json":
+		return true
+	}
+	return dependencyManifest(b) || b == "mkdocs.yml" || b == "mkdocs.yaml"
+}
+
+func dependencyManifest(b string) bool {
+	switch b {
+	case "go.mod", "package.json", "pyproject.toml", "pipfile", "setup.py", "setup.cfg", "requirements.txt", "pom.xml", "build.gradle", "build.gradle.kts", "cargo.toml", "gemfile", "composer.json", "cmakelists.txt", "global.json":
 		return true
 	}
 	return strings.HasSuffix(b, ".csproj") || strings.HasSuffix(b, ".sln")

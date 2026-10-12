@@ -72,6 +72,9 @@ func (s *Service) Preview(ctx context.Context, id string) (domain.WorkspaceAppro
 	return s.PreviewForModel(ctx, id, "")
 }
 func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string) (domain.WorkspaceApproval, error) {
+	return s.PreviewWithOptions(ctx, id, requestedModel, false)
+}
+func (s *Service) PreviewWithOptions(ctx context.Context, id, requestedModel string, allowDownloads bool) (domain.WorkspaceApproval, error) {
 	var a domain.WorkspaceApproval
 	if err := codex.ValidateModelID(requestedModel); err != nil {
 		return a, err
@@ -149,10 +152,18 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	if err = session.Get(ctx, github.SearchPath("issues", fmt.Sprintf("repo:%s is:pr is:open \"%s\"", o.Repository, issue.HTMLURL), 10), &competition); err != nil {
 		return a, err
 	}
-	a = domain.WorkspaceApproval{Opportunity: o, Config: cfg, BaseCommit: commits[0].SHA, CodexModel: model, CheckedAt: time.Now().UTC(), Warnings: []string{"Preparation clones and branches the repository. Codex coding, repository tests and PR submission are not started by this approval."}}
+	a = domain.WorkspaceApproval{Opportunity: o, Config: cfg, BaseCommit: commits[0].SHA, CodexModel: model, CheckedAt: time.Now().UTC(), AllowDownloads: allowDownloads, Warnings: []string{"Preparation clones and branches the repository. Codex coding, repository tests and PR submission are not started by this approval."}}
 	a.WorkspaceRoot = s.Base
 	if s.Prepared != nil {
 		a.Warnings = []string{"Approval starts isolated cloning, Codex coding, real verification and independent review. PR submission requires a later explicit approval."}
+	}
+	if allowDownloads {
+		a.Warnings = append(a.Warnings, "Approved execution may download required runtimes and public dependencies into isolated builds and the contribution workspace. Credentials and cloud deployment are not approved.")
+	} else {
+		a.Warnings = append(a.Warnings, "Execution is offline. Dependencies must already be available in the selected image or cache; missing dependencies can pause preparation.")
+	}
+	for _, requirement := range assessment.Requirements {
+		a.Warnings = append(a.Warnings, requirement.Source+": "+requirement.Reason)
 	}
 	a.Issue, err = json.Marshal(issue)
 	if err != nil {
@@ -200,9 +211,15 @@ func (s *Service) ProceedWithExecution(ctx context.Context, id, token string, ap
 	return s.ProceedWithExecutionForModel(ctx, id, token, approved, execute, "")
 }
 func (s *Service) ProceedWithExecutionForModel(ctx context.Context, id, token string, approved, execute bool, model string) (domain.Contribution, error) {
+	return s.ProceedWithOptions(ctx, id, token, approved, execute, model, false)
+}
+func (s *Service) ProceedWithOptions(ctx context.Context, id, token string, approved, execute bool, model string, allowDownloads bool) (domain.Contribution, error) {
 	var c domain.Contribution
 	if !approved || len(token) != 64 {
 		return c, errors.New("explicit human approval and a reviewed preview token are required")
+	}
+	if allowDownloads && !execute {
+		return c, errors.New("download approval requires contribution execution approval")
 	}
 	if err := codex.ValidateModelID(model); err != nil {
 		return c, err
@@ -217,14 +234,14 @@ func (s *Service) ProceedWithExecutionForModel(ctx context.Context, id, token st
 		if selected == "" {
 			selected = s.DefaultModel
 		}
-		if previous.OpportunityID != id || previous.CodexModel != selected {
+		if previous.OpportunityID != id || previous.CodexModel != selected || previous.DownloadsApproved != allowDownloads || previous.ExecutionApproved != execute {
 			return c, ErrChanged
 		}
 		return previous, nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
 		return c, err
 	}
-	a, err := s.PreviewForModel(ctx, id, model)
+	a, err := s.PreviewWithOptions(ctx, id, model, allowDownloads)
 	if err != nil {
 		return c, err
 	}
@@ -245,6 +262,7 @@ func (s *Service) ProceedWithExecutionForModel(ctx context.Context, id, token st
 	}
 	c = domain.Contribution{ID: cid, OpportunityID: id, Repository: a.Opportunity.Repository, Title: a.Opportunity.Title, State: "SELECTED", Branch: fmt.Sprintf("autopilot/issue-%d", a.Opportunity.Number), ConfigVersion: a.Config.Version, CodexModel: a.CodexModel, UpdatedAt: time.Now().UTC(), Workspace: filepath.ToSlash(workspacePath), BaseCommit: a.BaseCommit, Message: "Human approved; preparing isolated workspace"}
 	c.ExecutionApproved = execute
+	c.DownloadsApproved = allowDownloads
 	if err = s.Store.ApproveWorkspace(ctx, c, a); err != nil {
 		return c, err
 	}

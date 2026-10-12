@@ -14,6 +14,7 @@ type Preview = {
   warnings: string[];
   workspace_root?: string;
   codex_model?: string;
+  allow_downloads: boolean;
 };
 export default function Proceed({ opportunity: o }: { opportunity: Opportunity }) {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -23,6 +24,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
   const [rateLimited, setRateLimited] = useState(false);
   const [modelChoice, setModelChoice] = useState("");
   const [customModel, setCustomModel] = useState("");
+  const [allowDownloads, setAllowDownloads] = useState(false);
   const discovery = useAPI<{authentication: string}>("/discovery");
   const runtime = useAPI<{codex_model?: string}>("/runtime");
   const catalogue = useAPI<{models: {slug: string; display_name: string}[]}>("/runtime/models");
@@ -34,7 +36,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
   }
   async function inspect() {
     setPending(true); setError(""); setRateLimited(false); setApproved(false); setPreview(null);
-    try { setPreview(await request<Preview>(`/opportunities/${encodeURIComponent(o.id)}/preview`, { codex_model: requestedModel })); }
+    try { setPreview(await request<Preview>(`/opportunities/${encodeURIComponent(o.id)}/preview`, { codex_model: requestedModel, allow_downloads: allowDownloads })); }
     catch (e) { setError((e as Error).message); setRateLimited(e instanceof APIError && e.status === 429); }
     finally { setPending(false); }
   }
@@ -42,7 +44,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
     if (!preview || !approved) return;
     setPending(true); setError(""); setRateLimited(false);
     try {
-      await request<Contribution>(`/opportunities/${encodeURIComponent(o.id)}/proceed`, { token: preview.token, approved: true, execute: true, codex_model: requestedModel });
+      await request<Contribution>(`/opportunities/${encodeURIComponent(o.id)}/proceed`, { token: preview.token, approved: true, execute: true, codex_model: preview.codex_model || requestedModel, allow_downloads: preview.allow_downloads });
       await cache.invalidateQueries(); navigate("/contributions");
     } catch (e) { setError((e as Error).message); setRateLimited(e instanceof APIError && e.status === 429); setPreview(null); setApproved(false); }
     finally { setPending(false); }
@@ -62,6 +64,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
       {catalogue.data?.models.length === 0 && <p className="muted">The local model list is unavailable. Use the default or enter a model ID.</p>}
       <p className="muted">Used for planning, coding, fixes and independent review. The choice is saved with this contribution. A listed model may still be unavailable to your Codex account.</p>
     </div>
+    <label className="approval-checkbox"><input type="checkbox" checked={allowDownloads} onChange={e => { setAllowDownloads(e.target.checked); setPreview(null); setApproved(false); setError(""); }} disabled={pending} />Allow downloading runtimes and public dependencies in isolated execution.</label>
     {error && <p className="error" role="alert">{error}</p>}
     {rateLimited && <p className="note">Wait until the displayed local time before trying again. GitHub access: {discovery.data?.authentication ?? "check Opportunities for authentication status"}.{discovery.data?.authentication === "public unauthenticated" && " Sign in from the GitHub account page to enable authenticated access."}</p>}
     {preview && <>
@@ -71,6 +74,7 @@ export default function Proceed({ opportunity: o }: { opportunity: Opportunity }
       <dl className="key-values">
         <div><dt>Configuration snapshot</dt><dd>v{preview.configuration.version}</dd></div>
         <div><dt>Codex model</dt><dd>{preview.codex_model || runtime.data?.codex_model || "Codex CLI default"}</dd></div>
+        <div><dt>Dependency downloads</dt><dd>{preview.allow_downloads ? "Approved with execution" : "Offline"}</dd></div>
         <div><dt>Approved base commit</dt><dd><code>{preview.base_commit}</code></dd></div>
         <div><dt>Fresh check</dt><dd>{new Date(preview.checked_at).toLocaleString()}</dd></div>
         <div><dt>Branch</dt><dd>autopilot/issue-{o.number}</dd></div>

@@ -109,6 +109,35 @@ func TestBlockedSavedRecipeRequestsFreshPlanOnResume(t *testing.T) {
 	}
 }
 
+func TestDownloadApprovalAllowsOneUnchangedRecipeReplay(t *testing.T) {
+	runner := &environmentRunner{failPreparation: true}
+	s, c := buildFixture(t, runner)
+	repo, meta, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := domain.ExecutionRecord{ContributionID: c.ID}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err == nil {
+		t.Fatal("offline setup should block")
+	}
+	// Public dependencies become provisionable after explicit approval even if
+	// the versioned executable recipe itself did not change.
+	r.Network = true
+	runner.failPreparation = false
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err != nil {
+		t.Fatal("changed approval ignored", err)
+	}
+	if runner.preparations != 2 || r.Environment.Network != true {
+		t.Fatal("new approval not used", runner.preparations)
+	}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, true); err == nil {
+		t.Fatal("unchanged approved recipe replayed blindly")
+	}
+	if runner.preparations != 2 {
+		t.Fatal("extra setup despite unchanged recipe and approval")
+	}
+}
+
 func (f *environmentRunner) EnvironmentBase() string { return "fixture:1" }
 func (f *environmentRunner) EnvironmentFingerprint(string, domain.EnvironmentPlan) (string, error) {
 	return "same-inputs", nil
