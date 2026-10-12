@@ -320,3 +320,7 @@ type RepoSearch struct {
 func SearchPath(kind, query string, limit int) string {
 	return "/search/" + kind + "?" + url.Values{"q": {query}, "per_page": {strconv.Itoa(limit)}, "sort": {"updated"}, "order": {"desc"}}.Encode()
 }
+
+func SearchPagePath(kind, query string, limit, page int) string {
+	return SearchPath(kind, query, limit) + "&page=" + strconv.Itoa(page)
+}

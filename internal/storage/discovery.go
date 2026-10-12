@@ -57,6 +57,7 @@ func (s *Store) FinishDiscovery(ctx context.Context, run domain.DiscoveryRun, op
 				return err
 			}
 		}
+		newCount, refreshedCount := 0, 0
 		for _, o := range opportunities {
 			if o.Demo || o.Evidence == nil || o.Evidence.RunID != run.ID || o.Evidence.ConfigVersion != run.ConfigVersion {
 				return errors.New("invalid discovery observation")
@@ -68,10 +69,28 @@ func (s *Store) FinishDiscovery(ctx context.Context, run domain.DiscoveryRun, op
 			if err != nil {
 				return err
 			}
+			var exists int
+			if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM opportunities WHERE id=?)", o.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists == 0 {
+				newCount++
+			} else {
+				refreshedCount++
+			}
 			if _, err = tx.ExecContext(ctx, "INSERT INTO opportunities VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,score=excluded.score", o.ID, string(b), o.Ranking.Score); err != nil {
 				return err
 			}
 			if err = s.event(ctx, tx, "IssueRanked", o.ID, "discovery", "Analyzed "+o.Repository+" — "+o.Title, o); err != nil {
+				return err
+			}
+		}
+		run.NewOpportunities, run.RefreshedOpportunities = &newCount, &refreshedCount
+		if run.SearchScope != "" {
+			if run.SearchScope != old.SearchScope {
+				return errors.New("discovery search scope is immutable")
+			}
+			if err := saveDiscoveryCursors(ctx, tx, run.SearchScope, run.NextSearchCursors); err != nil {
 				return err
 			}
 		}

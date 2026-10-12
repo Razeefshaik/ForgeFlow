@@ -129,6 +129,8 @@ export default function Discovery() {
                   {s.last_run.accepted} opportunities · {s.last_run.requests}{" "}
                   GitHub requests · config v{s.last_run.config_version}
                 </span>
+                {s.last_run.new_opportunities !== undefined && <span>{s.last_run.new_opportunities} new · {s.last_run.refreshed_opportunities ?? 0} refreshed</span>}
+                {s.last_run.next_search_cursors && <span>Next scan: {Object.entries(s.last_run.next_search_cursors).map(([language, cursor]) => `${language} page ${cursor.page}, result ${cursor.offset + 1}`).join(" · ")}</span>}
               </div>
             )}
             {!!runs.data?.length && (
@@ -152,6 +154,8 @@ export default function Discovery() {
                       Config v{run.config_version} · {run.candidates} candidates
                       considered · {run.requests} requests
                     </p>
+                    {run.new_opportunities !== undefined && <p className="muted">{run.new_opportunities} new opportunities · {run.refreshed_opportunities ?? 0} refreshed</p>}
+                    {run.search_cursors && <p className="muted">Search started at {Object.entries(run.search_cursors).map(([language, cursor]) => `${language} page ${cursor.page}, result ${cursor.offset + 1}`).join(" · ")}</p>}
                     {run.warnings.length ? (
                       <ul className="risk-list">
                         {run.warnings.map((w, i) => (

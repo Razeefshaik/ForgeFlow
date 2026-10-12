@@ -68,6 +68,10 @@ export interface Evidence {
   run_id: string;
 }
 export interface DiscoveryRun {
+	search_cursors?: Record<string, {page: number; offset: number}>;
+	next_search_cursors?: Record<string, {page: number; offset: number}>;
+	new_opportunities?: number;
+	refreshed_opportunities?: number;
   repository_assessments?: RepositoryAssessment[];
   excluded_repositories?: RepositoryExclusion[];
   id: string;

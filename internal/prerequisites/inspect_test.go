@@ -65,6 +65,7 @@ func TestFreshRepositoryRequirementsAcrossLanguages(t *testing.T) {
 		{"large-verification", map[string]string{"CONTRIBUTING.md": "Local tests require at least 8 GiB memory."}, "excluded", "resource_limit"},
 		{"ci-service-needs-review", map[string]string{".github/workflows/test.yml": "jobs:\n  integration:\n    services:\n      db:\n        image: postgres:17\n"}, "needs_assessment", "needs_assessment"},
 		{"optional-product-credential", map[string]string{"README.md": "# Using the API\nThe hosted product requires an access token.\n# Development\nNo signing key is required.\nRun go test ./..."}, "eligible", ""},
+		{"example-dsn-is-not-a-private-credential-requirement", map[string]string{"AGENTS.md": "Example configuration:\nVERA_POSTGRES_DSN=postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require\nRun go test ./..."}, "eligible", ""},
 		{"referenced-script", map[string]string{"CONTRIBUTING.md": "Run make verify.", "Makefile": "verify:\n\t./scripts/check.sh\n", "scripts/check.sh": "#!/bin/sh\ndocker exec service test-command\n"}, "excluded", "nested_docker"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

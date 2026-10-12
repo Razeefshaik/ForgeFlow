@@ -41,15 +41,25 @@ type Evidence struct {
 }
 
 type DiscoveryRun struct {
-	RepositoryAssessments []RepositoryAssessment `json:"repository_assessments,omitempty"`
-	ExcludedRepositories  []RepositoryExclusion  `json:"excluded_repositories,omitempty"`
-	ID                    string                 `json:"id"`
-	Status                string                 `json:"status"`
-	ConfigVersion         int64                  `json:"config_version"`
-	StartedAt             time.Time              `json:"started_at"`
-	FinishedAt            *time.Time             `json:"finished_at"`
-	Candidates            int                    `json:"candidates"`
-	Accepted              int                    `json:"accepted"`
-	Requests              int                    `json:"requests"`
-	Warnings              []string               `json:"warnings"`
+	SearchScope            string                     `json:"search_scope,omitempty"`
+	SearchCursors          map[string]DiscoveryCursor `json:"search_cursors,omitempty"`
+	NextSearchCursors      map[string]DiscoveryCursor `json:"next_search_cursors,omitempty"`
+	NewOpportunities       *int                       `json:"new_opportunities,omitempty"`
+	RefreshedOpportunities *int                       `json:"refreshed_opportunities,omitempty"`
+	RepositoryAssessments  []RepositoryAssessment     `json:"repository_assessments,omitempty"`
+	ExcludedRepositories   []RepositoryExclusion      `json:"excluded_repositories,omitempty"`
+	ID                     string                     `json:"id"`
+	Status                 string                     `json:"status"`
+	ConfigVersion          int64                      `json:"config_version"`
+	StartedAt              time.Time                  `json:"started_at"`
+	FinishedAt             *time.Time                 `json:"finished_at"`
+	Candidates             int                        `json:"candidates"`
+	Accepted               int                        `json:"accepted"`
+	Requests               int                        `json:"requests"`
+	Warnings               []string                   `json:"warnings"`
+}
+
+type DiscoveryCursor struct {
+	Page   int `json:"page"`
+	Offset int `json:"offset"`
 }

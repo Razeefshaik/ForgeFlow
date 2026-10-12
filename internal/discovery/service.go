@@ -62,7 +62,7 @@ func (s *Service) CredentialChanged(source string) {
 }
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	s.mu.Lock()
-	out := Status{Available: !s.Store.Demo, Running: s.running, Automatic: s.automatic, Authentication: s.AuthSource, IntervalSeconds: int(s.Interval.Seconds()), Message: "Public repositories only. Bounded samples; no repository code is executed."}
+	out := Status{Available: !s.Store.Demo, Running: s.running, Automatic: s.automatic, Authentication: s.AuthSource, IntervalSeconds: int(s.Interval.Seconds()), Message: "Public repositories only. Scans continue from saved search progress; no repository code is executed."}
 	if s.automatic {
 		t := s.next
 		out.NextRun = &t
@@ -107,7 +107,16 @@ func (s *Service) Start() (domain.DiscoveryRun, error) {
 	if err != nil {
 		return domain.DiscoveryRun{}, err
 	}
-	run := domain.DiscoveryRun{ID: storage.ID(), Status: "RUNNING", ConfigVersion: cfg.Version, StartedAt: time.Now().UTC(), Warnings: []string{}}
+	scope := s.searchScope(cfg.Config)
+	cursors, err := s.Store.DiscoveryCursors(s.ctx, scope)
+	if err != nil {
+		return domain.DiscoveryRun{}, err
+	}
+	nextCursors := map[string]domain.DiscoveryCursor{}
+	for lang, c := range cursors {
+		nextCursors[lang] = c
+	}
+	run := domain.DiscoveryRun{ID: storage.ID(), Status: "RUNNING", ConfigVersion: cfg.Version, StartedAt: time.Now().UTC(), Warnings: []string{}, SearchScope: scope, SearchCursors: cursors, NextSearchCursors: nextCursors}
 	if err = s.Store.StartDiscovery(s.ctx, run); err != nil {
 		return run, err
 	}
@@ -263,32 +272,57 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		run.Warnings = append(run.Warnings, "Scan bounded to the six highest-weight languages.")
 		languages = languages[:6]
 	}
-	groups := [][]github.Issue{}
+	type group struct {
+		lang                string
+		page, offset, total int
+		incomplete          bool
+		items               []github.Issue
+	}
+	groups := []group{}
 	for _, lang := range languages {
 		var result github.IssueSearch
+		cursor := run.SearchCursors[lang]
+		if cursor.Page == 0 {
+			cursor = domain.DiscoveryCursor{Page: 1}
+		}
+		run.SearchCursors[lang] = cursor
+		run.NextSearchCursors[lang] = cursor
 		q := `is:issue is:open is:public archived:false language:"` + strings.ReplaceAll(lang, `"`, "") + `"` + preferredLabels(cfg.Config.Issues.PreferredLabels)
-		if err := session.Get(ctx, github.SearchPath("issues", q, 6), &result); err != nil {
+		if err := session.Get(ctx, github.SearchPagePath("issues", q, searchPageSize, cursor.Page), &result); err != nil {
 			warn(err)
 			break
+		}
+		if len(result.Items) > searchPageSize {
+			result.Items = result.Items[:searchPageSize]
 		}
 		if result.Incomplete || result.Total > len(result.Items) {
 			run.Warnings = append(run.Warnings, "Search for "+lang+" is a bounded sample, not an exhaustive issue list.")
 		}
-		groups = append(groups, result.Items)
+		if cursor.Offset >= len(result.Items) {
+			run.NextSearchCursors[lang] = nextPosition(cursor.Page, len(result.Items)-1, result.Total, len(result.Items), result.Incomplete)
+			continue
+		}
+		groups = append(groups, group{lang: lang, page: cursor.Page, offset: cursor.Offset, total: result.Total, incomplete: result.Incomplete, items: result.Items})
 	}
-	candidates := []github.Issue{}
-	for index := 0; index < 6; index++ {
+	type positionedIssue struct {
+		issue github.Issue
+		lang  string
+		next  domain.DiscoveryCursor
+	}
+	candidates := []positionedIssue{}
+	for index := 0; index < searchPageSize; index++ {
 		for _, group := range groups {
-			if index < len(group) {
-				candidates = append(candidates, group[index])
+			position := group.offset + index
+			if position < len(group.items) {
+				candidates = append(candidates, positionedIssue{issue: group.items[position], lang: group.lang, next: nextPosition(group.page, position, group.total, len(group.items), group.incomplete)})
 			}
 		}
 	}
-	maxRepos, maxPerRepo := 5, 3
+	maxRepos, maxPerRepo, maxChecked := 5, 3, 12
 	if s.Client.Credential() == "" {
-		maxRepos, maxPerRepo = 2, 2
+		maxRepos, maxPerRepo, maxChecked = 2, 2, 6
 	}
-	run.Warnings = append(run.Warnings, fmt.Sprintf("Scan limited to %d repositories and %d accepted issues per repository; discovery does not exhaust all matching issues.", maxRepos, maxPerRepo))
+	run.Warnings = append(run.Warnings, fmt.Sprintf("Scan targets %d eligible repositories, screens at most %d repositories, and accepts at most %d issues per repository. Further candidates continue in the next scan.", maxRepos, maxChecked, maxPerRepo))
 	type snapshot struct {
 		repo github.Repository
 		e    domain.Evidence
@@ -297,12 +331,28 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 	blocked := map[string]bool{}
 	counts := map[string]int{}
 	seen := map[string]bool{}
-	for _, candidate := range candidates {
-		if ctx.Err() != nil {
+	checked := 0
+	stopped := func() bool {
+		if ctx.Err() != nil || session.Requests >= session.MaxRequests {
+			return true
+		}
+		s.mu.Lock()
+		limited := time.Now().Before(s.retry)
+		s.mu.Unlock()
+		return limited
+	}
+	for _, positioned := range candidates {
+		if stopped() {
+			if ctx.Err() == nil && session.Requests >= session.MaxRequests {
+				warn(github.ErrBudget)
+			}
 			break
 		}
+		candidate := positioned.issue
+		before := run.NextSearchCursors[positioned.lang]
+		run.NextSearchCursors[positioned.lang] = positioned.next
 		name := RepositoryName(candidate.RepositoryURL)
-		if name == "" || candidate.Number <= 0 || len(candidate.PullRequest) > 0 {
+		if name == "" || candidate.Number <= 0 || len(candidate.PullRequest) > 0 && strings.TrimSpace(string(candidate.PullRequest)) != "null" {
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", name, candidate.Number)
@@ -313,12 +363,19 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		run.Candidates++
 		snap, ok := repos[name]
 		if !ok {
-			if len(repos) >= maxRepos {
-				continue
+			if len(counts) >= maxRepos || checked >= maxChecked {
+				run.NextSearchCursors[positioned.lang] = before
+				run.Warnings = append(run.Warnings, "Repository scan limit reached; the next scan resumes at unprocessed candidates.")
+				break
 			}
+			checked++
 			var repo github.Repository
 			if err := session.Get(ctx, "/repos/"+name, &repo); err != nil {
 				warn(err)
+				if stopped() {
+					run.NextSearchCursors[positioned.lang] = before
+					break
+				}
 				blocked[name] = true
 				continue
 			}
@@ -327,6 +384,10 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 				continue
 			}
 			e := s.repositoryEvidence(ctx, session, repo, warn)
+			if stopped() {
+				run.NextSearchCursors[positioned.lang] = before
+				break
+			}
 			snap = snapshot{repo: repo, e: e}
 			repos[name] = snap
 			if e.Prerequisites != nil {
@@ -348,9 +409,13 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		var issue github.Issue
 		if err := session.Get(ctx, fmt.Sprintf("/repos/%s/issues/%d", name, candidate.Number), &issue); err != nil {
 			warn(err)
+			if stopped() {
+				run.NextSearchCursors[positioned.lang] = before
+				break
+			}
 			continue
 		}
-		if issue.State != "open" || len(issue.PullRequest) > 0 || analyzer.Excluded(issue, cfg.Config) {
+		if issue.State != "open" || len(issue.PullRequest) > 0 && strings.TrimSpace(string(issue.PullRequest)) != "null" || analyzer.Excluded(issue, cfg.Config) {
 			continue
 		}
 		if issue.Number != candidate.Number {
@@ -422,6 +487,10 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			if !e.CompetitionChecked {
 				e.Warnings = append(e.Warnings, "Competing PR search is incomplete; no-competition conclusions are unavailable.")
 			}
+		}
+		if stopped() {
+			run.NextSearchCursors[positioned.lang] = before
+			break
 		}
 		o, err := analyzer.Analyze(snap.repo, issue, e, cfg.Config, time.Now())
 		if err != nil {

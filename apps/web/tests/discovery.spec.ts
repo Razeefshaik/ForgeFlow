@@ -19,6 +19,18 @@ test("demo discovery explains live mode and offers no scan action", async ({
 });
 
 const liveURL = process.env.FORGEFLOW_LIVE_TEST_URL;
+
+test("scan history distinguishes new opportunities and saved search progress", async ({page}) => {
+  const run={id:"progress-fixture",status:"SUCCEEDED",config_version:1,started_at:"2026-10-12T17:00:00Z",accepted:5,candidates:12,requests:18,warnings:[],new_opportunities:2,refreshed_opportunities:3,search_cursors:{Go:{page:1,offset:10}},next_search_cursors:{Go:{page:2,offset:2}}};
+  await page.route("**/api/discovery",route=>route.fulfill({json:{available:true,running:false,automatic:false,authentication:"fixture",interval_seconds:900,next_run:null,retry_at:null,last_run:run,message:"Fixture search progress"}}));
+  await page.route("**/api/discovery/runs",route=>route.fulfill({json:[run]}));
+  await page.goto("/opportunities");
+  await expect(page.locator(".discovery-last")).toContainText("2 new · 3 refreshed");
+  await expect(page.locator(".discovery-last")).toContainText("Next scan: Go page 2, result 3");
+  await page.getByRole("button",{name:"View scan history"}).click();
+  await page.locator(".discovery-history summary").click();
+  await expect(page.locator(".discovery-history")).toContainText("Search started at Go page 1, result 11");
+});
 test("live dashboard displays persisted GitHub evidence", async ({ page }) => {
   test.skip(
     !liveURL,

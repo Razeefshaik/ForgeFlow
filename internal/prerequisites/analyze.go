@@ -10,6 +10,7 @@ import (
 )
 
 var mandatory = regexp.MustCompile(`(?i)\b(must|required?|requires|mandatory|need(?:s)?|minimum|at least|prerequisite)\b`)
+var environmentAssignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*=`)
 var optional = regexp.MustCompile(`(?i)\b(optional|not required|no credentials|do not need|does not require|without credentials)\b|\bno\b[^.\n]{0,60}\bis required\b`)
 var dockerCommand = regexp.MustCompile(`(?i)\bdocker(?:-compose\b|\s+(?:compose|build|run|exec)\b)|/var/run/docker\.sock|--privileged\b`)
 var signing = regexp.MustCompile(`(?i)\b(ed25519|private key|trusted signer|signed receipt|signing key|signing receipt)\b`)
@@ -55,7 +56,14 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 			if stripped == "" || strings.HasPrefix(stripped, "#") && build || optional.MatchString(line) {
 				continue
 			}
-			required := mandatory.MatchString(line)
+			prose := line
+			if !build && environmentAssignment.MatchString(strings.TrimSpace(line)) {
+				prose = ""
+				if comment := strings.Index(line, "#"); comment >= 0 {
+					prose = line[comment+1:]
+				}
+			}
+			required := mandatory.MatchString(prose)
 			if workflow {
 				if m := workflowJob.FindStringSubmatch(line); m != nil {
 					job := strings.ToLower(m[1])
