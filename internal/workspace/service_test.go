@@ -60,6 +60,9 @@ func TestFreshPreviewApprovalAndStaleInputs(t *testing.T) {
 		case "/search/issues":
 			json.NewEncoder(w).Encode(github.IssueSearch{})
 		default:
+			if servePrerequisite(t, w, r, "example/project", head, "Run go test ./... before contributing.") {
+				return
+			}
 			t.Errorf("unexpected endpoint: %s", r.URL.Path)
 			http.NotFound(w, r)
 		}
@@ -76,7 +79,7 @@ func TestFreshPreviewApprovalAndStaleInputs(t *testing.T) {
 	if _, err = manager.Proceed(ctx, "issue", preview.Token, false); err == nil {
 		t.Fatal("missing human approval accepted")
 	}
-	if calls != 4 {
+	if calls != 6 {
 		t.Fatal("unapproved request fetched or executed work")
 	}
 	selected, err := manager.PreviewForModel(ctx, "issue", "model-a")

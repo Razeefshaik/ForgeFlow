@@ -32,6 +32,7 @@ export interface Opportunity {
   };
 }
 export interface Evidence {
+  prerequisites?: RepositoryAssessment;
   issue_url: string;
   repository_url: string;
   description: string;
@@ -67,6 +68,8 @@ export interface Evidence {
   run_id: string;
 }
 export interface DiscoveryRun {
+  repository_assessments?: RepositoryAssessment[];
+  excluded_repositories?: RepositoryExclusion[];
   id: string;
   status: string;
   config_version: number;
@@ -76,6 +79,32 @@ export interface DiscoveryRun {
   accepted: number;
   requests: number;
   warnings: string[];
+}
+export interface RepositoryExclusion {
+  repository: string;
+  contribution_id?: string;
+  kind: string;
+  reason: string;
+  next_action: string;
+  detected_at: string;
+  head_sha?: string;
+  status?: string;
+  checks?: PrerequisiteFinding[];
+}
+export interface PrerequisiteFinding {
+  kind: string;
+  source: string;
+  line: number;
+  reason: string;
+}
+export interface RepositoryAssessment {
+  repository: string;
+  head_sha: string;
+  status: string;
+  profile: string;
+  checked_at: string;
+  files: string[];
+  findings: PrerequisiteFinding[];
 }
 export interface DiscoveryStatus {
   available: boolean;

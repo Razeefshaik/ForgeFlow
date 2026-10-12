@@ -14,7 +14,7 @@ import {
   Search,
 } from "../components/icons";
 import { useAPI } from "../api";
-import type { Opportunity } from "../types";
+import type { Opportunity, RepositoryExclusion } from "../types";
 import { Badge, Empty, Score } from "../components/primitives";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -100,6 +100,31 @@ function OpportunityContent({ o }: { o: Opportunity }) {
       </ul>
       <Proceed key={o.id} opportunity={o} />
     </div>
+  );
+}
+function ExcludedRepositories() {
+  const query = useAPI<RepositoryExclusion[]>("/repository-exclusions");
+  if (query.error) return <p className="error" role="alert">Could not load repository exclusions: {query.error.message}</p>;
+  if (!query.data?.length) return null;
+  const count = new Set(query.data.map((x) => x.repository.toLowerCase())).size;
+  return (
+    <details>
+      <summary>Excluded repositories ({count}) · prerequisite screening</summary>
+      <p>Discovery inspected these repositories before ranking. Their requirements are unsupported or need further assessment. No contribution was started. An eligible assessment still requires real environment preparation and tests.</p>
+      <ul className="risk-list">
+        {query.data.map((x) => (
+          <li key={x.repository}>
+            <strong>{x.repository}</strong>: {x.reason}
+            <p>{x.status === "needs_assessment" ? "Needs assessment" : "Unsupported prerequisites"}</p>
+            <p>{x.next_action}</p>
+            {x.checks?.map((f, i) => <p key={i}>
+              {f.source}: {f.reason}{" "}
+              {x.head_sha && f.source !== "runner" && f.source !== "repository tree" && <a className="text-link" href={`https://github.com/${x.repository}/blob/${x.head_sha}/${f.source.split("/").map(encodeURIComponent).join("/")}${f.line > 0 ? `#L${f.line}` : ""}`} target="_blank" rel="noreferrer">Read prerequisite evidence</a>}
+            </p>)}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 export function OpportunityDetail({
@@ -272,6 +297,7 @@ export default function Opportunities({
             <Badge tone="violet">Quality ranking · effort excluded</Badge>
           )}
         </div>
+        {!compact && <ExcludedRepositories />}
         {!compact && (
           <div className="table-toolbar">
             <label className="search">

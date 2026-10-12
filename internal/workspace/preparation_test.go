@@ -73,6 +73,9 @@ func TestApprovedPreparationEndToEndWithRealGit(t *testing.T) {
 		case "/search/issues":
 			json.NewEncoder(w).Encode(github.IssueSearch{})
 		default:
+			if servePrerequisite(t, w, r, "example/project", sha, "Run go test ./... before contributing.") {
+				return
+			}
 			http.NotFound(w, r)
 		}
 	}))

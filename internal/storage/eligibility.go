@@ -7,33 +7,21 @@ import (
 	"fmt"
 	"forgeflow/internal/domain"
 	"strings"
+	"time"
 )
 
-// RepositoryExclusions projects only the current diagnosis, never full execution
-// records or event history. Resolved records therefore restore eligibility.
+// RepositoryExclusions uses discovery-time assessments of repository contents.
+// It does not infer eligibility from abandoned or failed contributions.
 func (s *Store) RepositoryExclusions(ctx context.Context) ([]domain.RepositoryExclusion, error) {
-	return repositoryExclusions(ctx, s.db)
+	return repositoryExclusions(ctx, s.db, s.AssessmentProfile)
 }
 
 type eligibilityReader interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func repositoryExclusions(ctx context.Context, db eligibilityReader) ([]domain.RepositoryExclusion, error) {
-	rows, err := db.QueryContext(ctx, `SELECT json_object(
-		'repository',json_extract(c.data,'$.repository'),
-		'contribution_id',c.id,
-		'kind',json_extract(e.data,'$.incident.kind'),
-		'reason',json_extract(e.data,'$.incident.summary'),
-		'next_action',json_extract(e.data,'$.incident.next_action'),
-		'detected_at',json_extract(e.data,'$.incident.detected_at'))
-		FROM executions e JOIN contributions c ON c.id=e.contribution_id
-		WHERE json_extract(e.data,'$.status') IN ('NEEDS_INPUT','BLOCKED','PAUSED','ABANDONED','FAILED')
-		AND COALESCE(json_extract(e.data,'$.incident.status'),'') != 'resolved'
-		AND (json_extract(e.data,'$.incident.kind') IN ('environment_blocked','toolchain_mismatch')
-		 OR (json_extract(e.data,'$.incident.source')='environment'
-		 AND json_extract(e.data,'$.incident.kind') IN ('verification_timeout','missing_executable')))
-		ORDER BY lower(json_extract(c.data,'$.repository')),c.id`)
+func repositoryExclusions(ctx context.Context, db eligibilityReader, profile string) ([]domain.RepositoryExclusion, error) {
+	rows, err := db.QueryContext(ctx, `SELECT data FROM repository_assessments WHERE json_extract(data,'$.status')!='eligible' OR (?!='' AND json_extract(data,'$.profile')!=?) ORDER BY repository`, profile, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +29,21 @@ func repositoryExclusions(ctx context.Context, db eligibilityReader) ([]domain.R
 	all := []domain.RepositoryExclusion{}
 	for rows.Next() {
 		var raw string
-		var v domain.RepositoryExclusion
+		var a domain.RepositoryAssessment
 		if err = rows.Scan(&raw); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(raw), &v); err != nil {
+		if err = json.Unmarshal([]byte(raw), &a); err != nil {
 			return nil, err
+		}
+		if profile != "" && a.Profile != profile {
+			a.Status = "needs_assessment"
+			a.Findings = []domain.PrerequisiteFinding{{Kind: "needs_assessment", Source: "runner", Reason: "Runner capabilities changed since this assessment; run discovery again before ranking."}}
+		}
+		v := domain.RepositoryExclusion{Repository: a.Repository, HeadSHA: a.HeadSHA, Status: a.Status, DetectedAt: a.CheckedAt, Checks: a.Findings, NextAction: "Inspect the prerequisite evidence and supported runner capabilities, then run discovery again to reassess the repository."}
+		if len(a.Findings) > 0 {
+			v.Kind = a.Findings[0].Kind
+			v.Reason = a.Findings[0].Reason
 		}
 		all = append(all, v)
 	}
@@ -56,10 +53,48 @@ func repositoryExclusions(ctx context.Context, db eligibilityReader) ([]domain.R
 func repositoryEligibility(repo string, exclusions []domain.RepositoryExclusion) error {
 	for _, v := range exclusions {
 		if strings.EqualFold(v.Repository, repo) {
-			return fmt.Errorf("repository excluded until its environment prerequisites are resolved in %s: %s", v.ContributionID, v.Reason)
+			return fmt.Errorf("repository excluded by prerequisite screening (%s): %s", v.Status, v.Reason)
 		}
 	}
 	return nil
+}
+
+func (s *Store) SaveRepositoryAssessment(ctx context.Context, a domain.RepositoryAssessment) error {
+	return s.transact(ctx, func(tx *sql.Tx) error {
+		if err := saveRepositoryAssessment(ctx, tx, a); err != nil {
+			return err
+		}
+		return s.event(ctx, tx, "RepositoryAssessed", a.Repository, "prerequisites", "Repository prerequisite evidence saved", a)
+	})
+}
+
+func saveRepositoryAssessment(ctx context.Context, tx *sql.Tx, a domain.RepositoryAssessment) error {
+	if a.Repository == "" || a.Profile == "" || a.CheckedAt.IsZero() || (a.Status != "eligible" && a.Status != "excluded" && a.Status != "needs_assessment") {
+		return fmt.Errorf("invalid repository prerequisite assessment")
+	}
+	if a.Status == "eligible" && len(a.Findings) > 0 || a.Status != "eligible" && len(a.Findings) == 0 {
+		return fmt.Errorf("repository assessment status must match its findings")
+	}
+	var checked string
+	err := tx.QueryRowContext(ctx, "SELECT json_extract(data,'$.checked_at') FROM repository_assessments WHERE repository=?", a.Repository).Scan(&checked)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if err == nil {
+		old, e := time.Parse(time.RFC3339Nano, checked)
+		if e != nil {
+			return e
+		}
+		if a.CheckedAt.Before(old) {
+			return nil
+		}
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "INSERT INTO repository_assessments VALUES (?,?) ON CONFLICT(repository) DO UPDATE SET data=excluded.data", a.Repository, string(b))
+	return err
 }
 
 // RequireRepositoryEligible guards new selections; existing contributions still

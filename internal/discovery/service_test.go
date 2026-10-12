@@ -2,6 +2,8 @@ package discovery
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,8 +19,22 @@ import (
 )
 
 func fixture(t *testing.T) (*httptest.Server, *atomic.Int64) {
+	return fixtureFiles(t, map[string]string{"CONTRIBUTING.md": "Run go test ./... before contributing.\n", "AGENTS.md": "Run required verification: go test ./...\n", "go.mod": "module example/backend\n\ngo 1.27.0\n", ".github/workflows/ci.yml": "name: tests\njobs:\n  test:\n    steps:\n      - run: go test ./...\n"})
+}
+
+func fixtureFiles(t *testing.T, files map[string]string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	calls := &atomic.Int64{}
+	head := strings.Repeat("a", 40)
+	blobs := map[string]string{}
+	nodes := []map[string]any{}
+	for p, body := range files {
+		sum := sha1.Sum([]byte(fmt.Sprintf("blob %d\x00%s", len(body), body)))
+		sha := fmt.Sprintf("%x", sum)
+		blobs[sha] = body
+		nodes = append(nodes, map[string]any{"path": p, "type": "blob", "mode": "100644", "sha": sha, "size": len(body)})
+	}
+	nodes = append(nodes, map[string]any{"path": "db_test.go", "type": "blob"})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		now := time.Now().UTC().Format(time.RFC3339)
@@ -33,9 +49,9 @@ func fixture(t *testing.T) (*httptest.Server, *atomic.Int64) {
 		case "/repos/example/backend":
 			fmt.Fprintf(w, `{"full_name":"example/backend","language":"Go","description":"database backend","stargazers_count":500,"forks_count":4,"default_branch":"main","pushed_at":%q}`, now)
 		case "/repos/example/backend/commits":
-			fmt.Fprintf(w, `[{"sha":"abc123","commit":{"committer":{"date":%q}}}]`, now)
-		case "/repos/example/backend/git/trees/abc123":
-			fmt.Fprint(w, `{"tree":[{"path":"CONTRIBUTING.md","type":"blob"},{"path":"AGENTS.md","type":"blob"},{"path":"go.mod","type":"blob"},{"path":".github/workflows/ci.yml","type":"blob"},{"path":"db_test.go","type":"blob"}]}`)
+			fmt.Fprintf(w, `[{"sha":%q,"commit":{"committer":{"date":%q}}}]`, head, now)
+		case "/repos/example/backend/git/trees/" + head:
+			json.NewEncoder(w).Encode(map[string]any{"tree": nodes})
 		case "/repos/example/backend/releases":
 			fmt.Fprintf(w, `[{"published_at":%q}]`, now)
 		case "/repos/example/backend/pulls":
@@ -45,6 +61,16 @@ func fixture(t *testing.T) (*httptest.Server, *atomic.Int64) {
 		case "/repos/example/backend/issues/12/comments":
 			fmt.Fprint(w, `[{"author_association":"MEMBER"},{"author_association":"NONE"}]`)
 		default:
+			if strings.HasPrefix(r.URL.Path, "/repos/example/backend/git/blobs/") {
+				sha := strings.TrimPrefix(r.URL.Path, "/repos/example/backend/git/blobs/")
+				body, ok := blobs[sha]
+				if !ok {
+					http.NotFound(w, r)
+					return
+				}
+				json.NewEncoder(w).Encode(github.Blob{SHA: sha, Size: len(body), Encoding: "base64", Content: base64.StdEncoding.EncodeToString([]byte(body))})
+				return
+			}
 			t.Errorf("unexpected endpoint %s", r.URL.Path)
 			w.WriteHeader(404)
 		}
@@ -98,7 +124,7 @@ func TestScanPersistsEvidenceAndReusesCacheWithoutErasingHistory(t *testing.T) {
 		t.Fatal("scan history/cache accounting incorrect", runs)
 	}
 	events, _ := store.Events(ctx, 0, "", 100)
-	if len(events) != 7 {
+	if len(events) != 9 {
 		t.Fatal("audit history lost", len(events))
 	}
 	cs, _ := store.Contributions(ctx)
@@ -169,6 +195,45 @@ func TestRepositoryURLsCannotRedirectAdapter(t *testing.T) {
 	}
 	if RepositoryName("https://api.github.com/repos/a/b") != "a/b" {
 		t.Fatal("valid repo rejected")
+	}
+}
+
+func TestAbandonedContributionDoesNotDriveNewRepositoryScreening(t *testing.T) {
+	server, _ := fixture(t)
+	service, store := setup(t, server, false)
+	ctx := context.Background()
+	cfg, err := store.CurrentConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := domain.DiscoveryRun{ID: "initial", Status: "RUNNING", ConfigVersion: cfg.Version, StartedAt: time.Now().UTC()}
+	if err = store.StartDiscovery(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	end := time.Now().UTC()
+	initial.Status, initial.FinishedAt = "SUCCEEDED", &end
+	o := domain.Opportunity{ID: "old-issue", Repository: "example/backend", Evidence: &domain.Evidence{RunID: initial.ID, ConfigVersion: cfg.Version}}
+	if err = store.FinishDiscovery(ctx, initial, []domain.Opportunity{o}); err != nil {
+		t.Fatal(err)
+	}
+	c := domain.Contribution{ID: "old", OpportunityID: o.ID, Repository: o.Repository, State: "SELECTED"}
+	if err = store.ApproveWorkspace(ctx, c, domain.WorkspaceApproval{Config: cfg}); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SaveExecution(ctx, domain.ExecutionRecord{ContributionID: c.ID, Status: "ABANDONED", Incident: &domain.ExecutionIncident{Kind: "environment_blocked", Summary: "Historical failure"}}, "fixture", "old incident retained"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Start(); err != nil {
+		t.Fatal(err)
+	}
+	service.Wait()
+	runs, err := store.DiscoveryRuns(ctx)
+	if err != nil || runs[0].Accepted != 1 || len(runs[0].ExcludedRepositories) != 0 {
+		t.Fatal("old contribution determined eligibility", runs, err)
+	}
+	exclusions, err := store.RepositoryExclusions(ctx)
+	if err != nil || len(exclusions) != 0 {
+		t.Fatal(exclusions, err)
 	}
 }
 

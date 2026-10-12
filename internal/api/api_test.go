@@ -113,7 +113,7 @@ func post(t *testing.T, server *httptest.Server, path, body, origin string) *htt
 }
 func TestAPIReadsAndHumanConfigApply(t *testing.T) {
 	s := testServer(t)
-	for _, path := range []string{"/api/health", "/api/overview", "/api/opportunities", "/api/contributions", "/api/config/history", "/api/events", "/api/agents", "/api/usage"} {
+	for _, path := range []string{"/api/health", "/api/overview", "/api/opportunities", "/api/repository-exclusions", "/api/contributions", "/api/config/history", "/api/events", "/api/agents", "/api/usage"} {
 		r, e := s.Client().Get(s.URL + path)
 		if e != nil {
 			t.Fatal(e)

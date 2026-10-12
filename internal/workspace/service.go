@@ -12,6 +12,7 @@ import (
 	"forgeflow/internal/contributions"
 	"forgeflow/internal/domain"
 	"forgeflow/internal/github"
+	"forgeflow/internal/prerequisites"
 	"forgeflow/internal/storage"
 	"io"
 	"log/slog"
@@ -30,15 +31,16 @@ var commitSHA = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 var ErrChanged = errors.New("issue, repository or configuration changed; review the fresh approval preview again")
 
 type Service struct {
-	Store        *storage.Store
-	Client       *github.Client
-	Root         string
-	Base         string
-	DefaultModel string
-	ctx          context.Context
-	mu           sync.Mutex
-	running      int
-	wg           sync.WaitGroup
+	PrerequisiteProfile prerequisites.Profile
+	Store               *storage.Store
+	Client              *github.Client
+	Root                string
+	Base                string
+	DefaultModel        string
+	ctx                 context.Context
+	mu                  sync.Mutex
+	running             int
+	wg                  sync.WaitGroup
 	// Git is resolved on the server, never supplied by API callers.
 	Git            string
 	selfRepository string
@@ -47,7 +49,7 @@ type Service struct {
 
 func New(ctx context.Context, s *storage.Store, c *github.Client, root string) *Service {
 	git, _ := exec.LookPath("git")
-	manager := &Service{Store: s, Client: c, Root: root, Base: filepath.Join(root, "contributions"), ctx: ctx, Git: git}
+	manager := &Service{Store: s, Client: c, Root: root, Base: filepath.Join(root, "contributions"), ctx: ctx, Git: git, PrerequisiteProfile: prerequisites.LinuxProfile()}
 	if git != "" {
 		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
@@ -94,9 +96,6 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	if o.Demo || o.Evidence == nil || !repositoryName.MatchString(o.Repository) || o.Number < 1 {
 		return a, errors.New("a real discovered GitHub issue is required")
 	}
-	if err = s.Store.RequireRepositoryEligible(ctx, o.Repository); err != nil {
-		return a, err
-	}
 	if s.selfRepository != "" && strings.EqualFold(o.Repository, s.selfRepository) {
 		return a, errors.New("ForgeFlow itself cannot be allocated as its own contribution workspace")
 	}
@@ -104,7 +103,7 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	if err != nil {
 		return a, err
 	}
-	session := github.Session{Client: s.Client, MaxRequests: 5, Fresh: true}
+	session := github.Session{Client: s.Client, MaxRequests: 22, Fresh: true}
 	endpoint := "/repos/" + o.Repository
 	var repo github.Repository
 	var issue github.Issue
@@ -130,6 +129,21 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	if len(commits) != 1 || !commitSHA.MatchString(commits[0].SHA) {
 		return a, errors.New("repository default branch commit unavailable")
 	}
+	var tree github.Tree
+	if err = session.Get(ctx, endpoint+"/git/trees/"+commits[0].SHA+"?recursive=1", &tree); err != nil {
+		return a, err
+	}
+	assessment := prerequisites.Inspect(ctx, &session, o.Repository, commits[0].SHA, tree, s.PrerequisiteProfile)
+	if err = s.Store.SaveRepositoryAssessment(ctx, assessment); err != nil {
+		return a, err
+	}
+	if assessment.Status != "eligible" {
+		return a, fmt.Errorf("repository excluded by prerequisite screening (%s): %s", assessment.Status, assessment.Findings[0].Reason)
+	}
+	evidence := *o.Evidence
+	evidence.HeadSHA = commits[0].SHA
+	evidence.Prerequisites = &assessment
+	o.Evidence = &evidence
 	// Never present discovery's older competition observations as fresh.
 	var competition github.IssueSearch
 	if err = session.Get(ctx, github.SearchPath("issues", fmt.Sprintf("repo:%s is:pr is:open \"%s\"", o.Repository, issue.HTMLURL), 10), &competition); err != nil {
@@ -163,6 +177,13 @@ func (s *Service) PreviewForModel(ctx context.Context, id, requestedModel string
 	}
 	// Include all immutable inputs and warnings but exclude the check timestamp.
 	stable := a
+	if stable.Opportunity.Evidence != nil && stable.Opportunity.Evidence.Prerequisites != nil {
+		e := *stable.Opportunity.Evidence
+		p := *e.Prerequisites
+		p.CheckedAt = time.Time{}
+		e.Prerequisites = &p
+		stable.Opportunity.Evidence = &e
+	}
 	stable.CheckedAt = time.Time{}
 	b, err := json.Marshal(stable)
 	if err != nil {

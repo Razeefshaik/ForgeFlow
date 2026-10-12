@@ -13,6 +13,7 @@ import (
 	"forgeflow/internal/github"
 	"forgeflow/internal/githubauth"
 	"forgeflow/internal/operator"
+	"forgeflow/internal/prerequisites"
 	"forgeflow/internal/project"
 	"forgeflow/internal/seed"
 	"forgeflow/internal/storage"
@@ -183,6 +184,13 @@ func run() error {
 	defer func() { cancel(); executor.Wait() }()
 	defer func() { cancel(); workspaces.Wait() }()
 	discover := discovery.New(ctx, s, client, auth, *discoveryInterval)
+	profile := prerequisites.Profile{}
+	if cli.VerificationImage != "" {
+		profile = prerequisites.LinuxProfile()
+	}
+	s.AssessmentProfile = profile.Fingerprint()
+	discover.PrerequisiteProfile = profile
+	workspaces.PrerequisiteProfile = profile
 	if err = discover.RestoreSchedule(); err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -25,6 +26,8 @@ var ErrNotFound = errors.New("record not found")
 type Store struct {
 	db   *sql.DB
 	Demo bool
+	// Set once during startup from the configured execution boundary.
+	AssessmentProfile string
 }
 
 func ID() string { return rand.Text() }
@@ -363,12 +366,38 @@ func listJSON[T any](ctx context.Context, db *sql.DB, query string, args ...any)
 }
 func (s *Store) Opportunities(ctx context.Context) ([]domain.Opportunity, error) {
 	all, err := listJSON[domain.Opportunity](ctx, s.db, "SELECT data FROM opportunities ORDER BY score DESC,id")
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	exclusions, err := s.RepositoryExclusions(ctx)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
+	assessed := map[string]bool{}
+	if !s.Demo && s.AssessmentProfile != "" {
+		rows, e := s.db.QueryContext(ctx, "SELECT repository FROM repository_assessments WHERE json_extract(data,'$.status')='eligible' AND json_extract(data,'$.profile')=?", s.AssessmentProfile)
+		if e != nil {
+			return nil, e
+		}
+		for rows.Next() {
+			var name string
+			if e = rows.Scan(&name); e != nil {
+				rows.Close()
+				return nil, e
+			}
+			assessed[strings.ToLower(name)] = true
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return nil, e
+		}
+	}
 	eligible := make([]domain.Opportunity, 0, len(all))
 	for _, o := range all {
-		if repositoryEligibility(o.Repository, exclusions) == nil { eligible = append(eligible, o) }
+		if repositoryEligibility(o.Repository, exclusions) == nil && (s.Demo || s.AssessmentProfile == "" || assessed[strings.ToLower(o.Repository)]) {
+			eligible = append(eligible, o)
+		}
 	}
 	return eligible, nil
 }

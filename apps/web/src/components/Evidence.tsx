@@ -32,6 +32,11 @@ export default function Evidence({ e }: { e: EvidenceType }) {
           Open repository ↗
         </a>
       </div>
+      <p className="muted">
+        {e.prerequisites?.status === "eligible"
+          ? `Prerequisites screened at ${e.prerequisites.head_sha.slice(0, 8)}: no detected blockers in ${e.prerequisites.files.length} inspected files. Environment preparation and real tests are still required.`
+          : "Prerequisite assessment is unavailable or needs refreshing before contribution approval."}
+      </p>
       <dl className="key-values">
         <div>
           <dt>Issue status at observation</dt>

@@ -7,6 +7,7 @@ import (
 	"forgeflow/internal/analyzer"
 	"forgeflow/internal/domain"
 	"forgeflow/internal/github"
+	"forgeflow/internal/prerequisites"
 	"forgeflow/internal/storage"
 	"log/slog"
 	"net/url"
@@ -31,22 +32,23 @@ type Status struct {
 	Message         string               `json:"message"`
 }
 type Service struct {
-	Store      *storage.Store
-	Client     *github.Client
-	AuthSource string
-	Interval   time.Duration
-	ctx        context.Context
-	mu         sync.Mutex
-	running    bool
-	automatic  bool
-	next       time.Time
-	retry      time.Time
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	PrerequisiteProfile prerequisites.Profile
+	Store               *storage.Store
+	Client              *github.Client
+	AuthSource          string
+	Interval            time.Duration
+	ctx                 context.Context
+	mu                  sync.Mutex
+	running             bool
+	automatic           bool
+	next                time.Time
+	retry               time.Time
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
 }
 
 func New(ctx context.Context, s *storage.Store, c *github.Client, auth string, interval time.Duration) *Service {
-	return &Service{Store: s, Client: c, AuthSource: auth, Interval: interval, ctx: ctx, automatic: interval > 0, next: time.Now()}
+	return &Service{Store: s, Client: c, AuthSource: auth, Interval: interval, ctx: ctx, automatic: interval > 0, next: time.Now(), PrerequisiteProfile: prerequisites.LinuxProfile()}
 }
 func (s *Service) CredentialChanged(source string) {
 	s.mu.Lock()
@@ -231,7 +233,7 @@ func preferredLabels(labels []string) string {
 }
 func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.ConfigVersion) {
 	credential := s.Client.Credential()
-	session := &github.Session{Client: s.Client, MaxRequests: 80}
+	session := &github.Session{Client: s.Client, MaxRequests: 160}
 	opps := []domain.Opportunity{}
 	hadError := false
 	warn := func(err error) {
@@ -262,10 +264,6 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		languages = languages[:6]
 	}
 	groups := [][]github.Issue{}
-	exclusions, eligibilityErr := s.Store.RepositoryExclusions(ctx)
-	if eligibilityErr != nil { warn(errors.New("repository eligibility could not be checked; discovery enrichment skipped")) }
-	excluded := map[string]domain.RepositoryExclusion{}
-	for _, v := range exclusions { excluded[strings.ToLower(v.Repository)] = v }
 	for _, lang := range languages {
 		var result github.IssueSearch
 		q := `is:issue is:open is:public archived:false language:"` + strings.ReplaceAll(lang, `"`, "") + `"` + preferredLabels(cfg.Config.Issues.PreferredLabels)
@@ -299,21 +297,12 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 	blocked := map[string]bool{}
 	counts := map[string]int{}
 	seen := map[string]bool{}
-	rejected := map[string]bool{}
 	for _, candidate := range candidates {
 		if ctx.Err() != nil {
 			break
 		}
 		name := RepositoryName(candidate.RepositoryURL)
 		if name == "" || candidate.Number <= 0 || len(candidate.PullRequest) > 0 {
-			continue
-		}
-		if eligibilityErr != nil { break }
-		if v, found := excluded[strings.ToLower(name)]; found {
-			if !rejected[strings.ToLower(name)] {
-				run.ExcludedRepositories = append(run.ExcludedRepositories, v)
-				rejected[strings.ToLower(name)] = true
-			}
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", name, candidate.Number)
@@ -340,6 +329,21 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			e := s.repositoryEvidence(ctx, session, repo, warn)
 			snap = snapshot{repo: repo, e: e}
 			repos[name] = snap
+			if e.Prerequisites != nil {
+				run.RepositoryAssessments = append(run.RepositoryAssessments, *e.Prerequisites)
+			}
+			if e.Prerequisites == nil || e.Prerequisites.Status != "eligible" {
+				blocked[name] = true
+				if a := e.Prerequisites; a != nil {
+					v := domain.RepositoryExclusion{Repository: name, HeadSHA: a.HeadSHA, Status: a.Status, DetectedAt: a.CheckedAt, Checks: a.Findings, NextAction: "Inspect the prerequisite evidence, then run discovery again after the requirements or runner capabilities change."}
+					if len(a.Findings) > 0 {
+						v.Kind = a.Findings[0].Kind
+						v.Reason = a.Findings[0].Reason
+					}
+					run.ExcludedRepositories = append(run.ExcludedRepositories, v)
+				}
+				continue
+			}
 		}
 		var issue github.Issue
 		if err := session.Get(ctx, fmt.Sprintf("/repos/%s/issues/%d", name, candidate.Number), &issue); err != nil {
@@ -470,14 +474,20 @@ func (s *Service) repositoryEvidence(ctx context.Context, session *github.Sessio
 		t := commits[0].Commit.Committer.Date
 		e.LastCommit = &t
 	}
+	var tree github.Tree
 	if e.HeadSHA != "" {
-		var tree github.Tree
 		if err := session.Get(ctx, "/repos/"+r.FullName+"/git/trees/"+url.PathEscape(e.HeadSHA)+"?recursive=1", &tree); err != nil {
+			tree.Truncated = true
 			e.Warnings = append(e.Warnings, "Repository tree unavailable: "+err.Error())
 			warn(err)
 		} else {
 			analyzer.InspectTree(tree, &e)
 		}
+	}
+	a := prerequisites.Inspect(ctx, session, r.FullName, e.HeadSHA, tree, s.PrerequisiteProfile, warn)
+	e.Prerequisites = &a
+	if a.Status != "eligible" {
+		return e
 	}
 	var releases []github.Release
 	if err := session.Get(ctx, "/repos/"+r.FullName+"/releases?per_page=5", &releases); err != nil {

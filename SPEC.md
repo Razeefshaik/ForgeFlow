@@ -106,6 +106,8 @@ HUMAN SUBMITS PR
 
 Discovery and ranking should happen without consuming expensive Codex reasoning whenever possible.
 
+Repository eligibility addition (2026-10-12): screen newly discovered repositories from pinned contribution instructions, build manifests, CI and referenced verification requirements before ranking or creating a contribution. Compare requirements with ForgeFlow's actual provisioning and execution boundaries; reject unsupported requirements and withhold incomplete assessments from ranking. Do not derive this decision from abandoned contribution history. Preserve assessment evidence, show exclusion reasons and source links, reassess when requirements/capabilities change, and revalidate during approval. Keep eligibility separate from quality scores and Codex effort. A static precheck is not proof of successful execution; real environment preparation and tests remain required.
+
 Codex should primarily be used for:
 
 - understanding complex repositories;

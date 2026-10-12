@@ -1,5 +1,7 @@
 # Canonical quality ranking
 
+New repository requirements are screened before issue ranking. Unsupported or incomplete prerequisite assessments withhold a repository from the current list without changing quality factors or historical scores. Subsequent discovery can restore eligibility when requirements or capabilities change. Abandoned contribution history and Codex effort do not drive this assessment. See [repository eligibility](repository-eligibility.md).
+
 The ranking engine consumes only quality factors: key, label, score (0–100), positive weight and an explanation. Result = sum(score × weight) / sum(weights), rounded to one decimal.
 Duplicate keys, missing explanations and invalid numeric values are rejected. Result includes components and algorithm version quality-v1.
 The effort estimate is a separate domain field and cannot enter the ranking function signature. A regression test mutates effort category, files, iterations and confidence across all categories and verifies the same canonical score.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"forgeflow/internal/domain"
+	"strings"
 	"time"
 )
 
@@ -48,9 +49,20 @@ func (s *Store) FinishDiscovery(ctx context.Context, run domain.DiscoveryRun, op
 		if run.ID != old.ID || run.ConfigVersion != old.ConfigVersion || !run.StartedAt.Equal(old.StartedAt) || run.FinishedAt == nil || run.Status == "RUNNING" {
 			return errors.New("discovery run identity and snapshot are immutable")
 		}
+		for _, a := range run.RepositoryAssessments {
+			if err := saveRepositoryAssessment(ctx, tx, a); err != nil {
+				return err
+			}
+			if err := s.event(ctx, tx, "RepositoryAssessed", a.Repository, "discovery", "Screened repository prerequisites before ranking", a); err != nil {
+				return err
+			}
+		}
 		for _, o := range opportunities {
 			if o.Demo || o.Evidence == nil || o.Evidence.RunID != run.ID || o.Evidence.ConfigVersion != run.ConfigVersion {
 				return errors.New("invalid discovery observation")
+			}
+			if o.Evidence.Prerequisites != nil && (o.Evidence.Prerequisites.Status != "eligible" || !strings.EqualFold(o.Evidence.Prerequisites.Repository, o.Repository) || o.Evidence.Prerequisites.HeadSHA != o.Evidence.HeadSHA) {
+				return errors.New("unsuitable or mismatched prerequisite assessment cannot be ranked")
 			}
 			b, err := json.Marshal(o)
 			if err != nil {
@@ -64,7 +76,9 @@ func (s *Store) FinishDiscovery(ctx context.Context, run domain.DiscoveryRun, op
 			}
 		}
 		for _, excluded := range run.ExcludedRepositories {
-			if err := s.event(ctx, tx, "RepositoryExcluded", excluded.Repository, "discovery", "Skipped repository with unresolved environment prerequisites", excluded); err != nil { return err }
+			if err := s.event(ctx, tx, "RepositoryExcluded", excluded.Repository, "discovery", "Skipped repository after prerequisite screening", excluded); err != nil {
+				return err
+			}
 		}
 		b, err := json.Marshal(run)
 		if err != nil {

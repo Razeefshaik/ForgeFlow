@@ -38,9 +38,22 @@ func (s *Store) ApproveWorkspace(ctx context.Context, c domain.Contribution, a d
 		return errors.New("demo contributions cannot execute")
 	}
 	return s.transact(ctx, func(tx *sql.Tx) error {
-		exclusions, err := repositoryExclusions(ctx, tx)
-		if err != nil { return err }
-		if err = repositoryEligibility(c.Repository, exclusions); err != nil { return err }
+		exclusions, err := repositoryExclusions(ctx, tx, s.AssessmentProfile)
+		if err != nil {
+			return err
+		}
+		if err = repositoryEligibility(c.Repository, exclusions); err != nil {
+			return err
+		}
+		if s.AssessmentProfile != "" {
+			var head string
+			if err = tx.QueryRowContext(ctx, "SELECT json_extract(data,'$.head_sha') FROM repository_assessments WHERE repository=? AND json_extract(data,'$.status')='eligible' AND json_extract(data,'$.profile')=?", c.Repository, s.AssessmentProfile).Scan(&head); err != nil {
+				return errors.New("repository prerequisites must be freshly screened before contribution approval")
+			}
+			if head != a.BaseCommit {
+				return errors.New("repository prerequisite assessment changed; refresh the approval preview")
+			}
+		}
 		var version int64
 		if err := tx.QueryRowContext(ctx, "SELECT MAX(version) FROM config_versions").Scan(&version); err != nil {
 			return err

@@ -281,7 +281,17 @@ type Tree struct {
 	Tree      []struct {
 		Path string `json:"path"`
 		Type string `json:"type"`
+		SHA  string `json:"sha"`
+		Size int    `json:"size"`
+		Mode string `json:"mode"`
 	} `json:"tree"`
+}
+
+type Blob struct {
+	SHA      string `json:"sha"`
+	Size     int    `json:"size"`
+	Encoding string `json:"encoding"`
+	Content  string `json:"content"`
 }
 type Commit struct {
 	SHA    string `json:"sha"`
