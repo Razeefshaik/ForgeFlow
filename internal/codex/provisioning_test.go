@@ -21,6 +21,7 @@ func TestEnvironmentInputsAndRecipeBoundaries(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("example==1\n"), 0600)
 	c := &CLI{}
 	plan := environmentFixturePlan()
+	plan.CompletionGates = []domain.CompletionGate{{Binding: "working_tree", Requirement: "External verification", Action: "Supply evidence", Source: "requirements.txt", Checks: []domain.VerificationCommand{{Program: "verify"}}}}
 	one, err := c.EnvironmentFingerprint(dir, plan)
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +29,8 @@ func TestEnvironmentInputsAndRecipeBoundaries(t *testing.T) {
 	wording := plan
 	wording.Summary = "The same repair with different prose"
 	wording.Requirements = []string{"rewritten explanation"}
+	wording.CompletionGates = append([]domain.CompletionGate(nil), plan.CompletionGates...)
+	wording.CompletionGates[0].Requirement, wording.CompletionGates[0].Action = "Clearer description", "Clearer instructions"
 	unchanged, err := c.EnvironmentFingerprint(dir, wording)
 	if err != nil || unchanged != one {
 		t.Fatal("wording alone changed environment identity", err)

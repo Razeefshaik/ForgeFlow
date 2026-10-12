@@ -41,6 +41,9 @@ func (s *Service) preparePR(ctx context.Context, id string, internal bool) (doma
 	if c.State != "READY" || r.Review == nil || r.Review.Verdict != "APPROVE" {
 		return r, errors.New("completed tests and an independent approval are required before PR preparation")
 	}
+	if r.EnvironmentPlan != nil && (len(r.EnvironmentPlan.HookCommands) > 0 || len(r.EnvironmentPlan.CompletionGates) > 0) {
+		return r, errors.New("this repository requires hooks or external attestation; use its trusted commit/submission workflow with the reviewed patch. Host-side PR preparation cannot bypass those requirements")
+	}
 	repo, _, err := s.Paths(c)
 	if err != nil {
 		return r, err

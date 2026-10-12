@@ -251,12 +251,16 @@ func TestRealCodexWorkflow(t *testing.T) {
 	s, c := buildFixture(t, cli)
 	ctx := context.Background()
 	if evidence := os.Getenv("FORGEFLOW_TEST_EVIDENCE"); evidence != "" {
+		if err := os.MkdirAll(evidence, 0700); err != nil {
+			t.Fatal(err)
+		}
 		defer func() {
 			tests, testErr := s.Store.Tests(ctx, c.ID)
 			agents, agentErr := s.Store.Agents(ctx)
 			events, eventErr := s.Store.Events(ctx, 0, c.ID, 1000)
 			record, recordErr := s.Store.Execution(ctx, c.ID)
-			if err := writeJSON(filepath.Join(evidence, "workflow.json"), map[string]any{"execution": record, "tests": tests, "agents": agents, "events": events, "errors": []error{testErr, agentErr, eventErr, recordErr}}); err != nil {
+			repo, _, _ := s.Paths(c)
+			if err := writeJSON(filepath.Join(evidence, "workflow.json"), map[string]any{"workspace": repo, "execution": record, "tests": tests, "agents": agents, "events": events, "errors": []error{testErr, agentErr, eventErr, recordErr}}); err != nil {
 				t.Error(err)
 			}
 		}()

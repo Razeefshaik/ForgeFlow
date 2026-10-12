@@ -15,7 +15,7 @@ import (
 
 func inputRequired(kind string) bool {
 	switch kind {
-	case "environment_blocked", "toolchain_mismatch", "usage_limit":
+	case "completion_gate", "environment_blocked", "toolchain_mismatch", "usage_limit":
 		return true
 	case "authentication", "runtime_unavailable", "workspace_permissions", "tool_unavailable", "disk_capacity", "dependency_unavailable", "verification_timeout", "test_failure_timeout", "dependency_network", "network_transport", "rate_limit", "dependencies_missing", "resource_busy", "workspace_runtime", "plan_invalid", "agent_output", "input_too_large", "sandbox_process", "generated_path_access", "no_changes":
 		return true
@@ -83,6 +83,11 @@ func (s *Service) recoveringAgent(ctx context.Context, c domain.Contribution, r 
 		return "", err
 	}
 	prompt += environment
+	discussion, err := issueDiscussionPrompt(repo, r)
+	if err != nil {
+		return "", err
+	}
+	prompt += discussion
 	var output string
 	err = s.recoverOperation(ctx, r, "Codex "+role, func() error {
 		if role == "contributor" {
@@ -128,7 +133,7 @@ func (s *Service) planning(ctx context.Context, c domain.Contribution, r *domain
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return domain.Plan{}, err
 	}
-	if err == nil && previous.Status == "SUCCEEDED" && previous.Error == "" && r.Constraints == "" {
+	if err == nil && previous.Status == "SUCCEEDED" && previous.Error == "" && r.Constraints == "" && !r.PlanInvalidated {
 		plan, err := validatePlanWith(previous.Output, s.validateCommand)
 		if err == nil {
 			_, err = verificationCommands(repo, &plan, s.validateCommand)

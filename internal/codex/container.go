@@ -71,6 +71,10 @@ func (c *CLI) containerCommand(ctx context.Context, dir string, command domain.V
 }
 
 func (c *CLI) containerCommandImage(ctx context.Context, image, dir string, command domain.VerificationCommand, network bool) (rec domain.TestRun, err error) {
+	return c.containerCommandMode(ctx, image, dir, command, network, false)
+}
+
+func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, command domain.VerificationCommand, network, prepareHooks bool) (rec domain.TestRun, err error) {
 	rec = domain.TestRun{Command: command, ExecutedCommand: &command, Directory: dir, StartedAt: time.Now().UTC(), ExitCode: -1}
 	defer func() { rec.FinishedAt = time.Now().UTC() }()
 	if err = ctx.Err(); err != nil {
@@ -84,6 +88,12 @@ func (c *CLI) containerCommandImage(ctx context.Context, image, dir string, comm
 	args, err := containerArguments(image, name, dir, command, network)
 	if err != nil {
 		return rec, err
+	}
+	if prepareHooks {
+		args, err = hookPreparationArguments(args, dir)
+		if err != nil {
+			return rec, err
+		}
 	}
 	// Observe create completion before honoring cancellation; killing the Docker
 	// client during creation can orphan a daemon-owned container. Every subsequent

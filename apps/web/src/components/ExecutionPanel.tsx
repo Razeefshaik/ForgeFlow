@@ -19,6 +19,8 @@ import {
 } from "./icons";
 
 type Execution = {
+	 environment?: { status: string; image?: string; error?: string; actions?: string[]; checks?: TestRun[] };
+	 environment_plan?: { requirements?: string[]; blockers?: string[]; completion_gates?: { requirement: string; source: string; action: string; binding: string }[] };
   status: string;
   phase?: string;
   message?: string;
@@ -508,7 +510,7 @@ export default function ExecutionPanel({
         role="tablist"
         aria-label="Contribution evidence"
       >
-        {["Plan", "Tests", "Review", "Diff", "Report", "PR"].map((name) => (
+        {["Plan", "Environment", "Tests", "Review", "Diff", "Report", "PR"].map((name) => (
           <button
             key={name}
             id={`evidence-tab-${name}`}
@@ -521,7 +523,7 @@ export default function ExecutionPanel({
               setTab(name);
             }}
             onKeyDown={(event) => {
-              const names = ["Plan", "Tests", "Review", "Diff", "Report", "PR"];
+              const names = ["Plan", "Environment", "Tests", "Review", "Diff", "Report", "PR"];
               const index = names.indexOf(name);
               const next =
                 event.key === "ArrowRight"
@@ -557,6 +559,19 @@ export default function ExecutionPanel({
             aria-labelledby={`evidence-tab-${tab}`}
             key={tab}
           >
+            {tab === "Environment" && <section aria-label="Repository environment">
+              <p>Preparation: {r?.environment?.status ?? "Not recorded"}</p>
+              {r?.environment?.image && <p>Image: <code>{r.environment.image}</code></p>}
+              {r?.environment?.error && <p role="alert">{r.environment.error}</p>}
+              {r?.environment_plan?.requirements?.map((text, i) => <p key={i}>{text}</p>)}
+              {r?.environment_plan?.blockers?.map((text, i) => <p key={i}>Needs input: {text}</p>)}
+              {r?.environment_plan?.completion_gates?.map((gate, i) => <div key={i} className="command-result">
+                <strong>{gate.requirement}</strong><p>Required by {gate.source}. Evidence covers {gate.binding === "commit" ? "a committed tree" : "the edited files"}.</p><p>{gate.action}</p>
+              </div>)}
+              {r?.environment?.actions?.map((text, i) => <details key={i} className="command-result"><summary>Preparation log {i + 1}</summary><pre className="issue-body">{text}</pre></details>)}
+              {r?.environment?.checks?.map((check, i) => <details key={i} className="command-result"><summary>{check.command.program} {check.command.arguments.join(" ")} — exit {check.exit_code}</summary><pre className="issue-body">{check.output}</pre></details>)}
+              <p className="muted">Preparation checks establish the environment. The Tests and Review tabs show contribution verification.</p>
+            </section>}
             {tab === "Plan" &&
               (r?.plan ? (
                 <>

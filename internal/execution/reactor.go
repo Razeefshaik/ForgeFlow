@@ -53,6 +53,9 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case !hasAny(text, "--- fail:", "assertionerror", "assertion failed") && toolchainMismatch(text):
 		d.Kind, d.Summary = "toolchain_mismatch", "The repository requires a different runtime or compiler version; verification did not complete."
 		d.Evidence, d.NextAction = text, "Provision a matching environment and retry the unchanged verification. Do not downgrade repository requirements or start a source-fix iteration."
+	case !hasAny(text, "--- fail:", "assertionerror", "assertion failed") && hasAny(text, "failed to connect to the docker api", "cannot connect to the docker daemon", "docker daemon is not running", "linux daemon is unavailable", "dockerdesktoplinuxengine", "pipe/docker_engine", "pipe\\docker_engine", "wsl access is denied", "wsl_e", "wsl/service", "wsl access denied"):
+		d.Kind, d.Summary = "runtime_unavailable", "Required Docker or WSL verification is unavailable."
+		d.Evidence, d.NextAction = "The command reported that the required runtime could not be reached.", "Restore the required runtime or use an approved environment that can run the same checks, then recover verification."
 	case hasAny(text, "environment image build failed", "environment image pull failed", "environment prerequisite failed", "environment requirements need operator input"):
 		d.Kind, d.Summary = "environment_blocked", "Repository environment prerequisites are not ready."
 		d.Evidence, d.NextAction = text, "Inspect provisioning evidence and repair the environment before coding or testing."
@@ -80,7 +83,7 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "no issue-related changes were produced"):
 		d.Kind, d.Summary = "no_changes", "Verification finished without an issue-related patch to review."
 		d.Evidence, d.NextAction = "The workspace diff was empty after verification.", "Inspect whether the approved base already solves the issue. Close the contribution if no change is needed, or provide a concrete remaining requirement. No PR can be prepared from an empty patch."
-	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text, "panic: test timed out after"):
+	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text, "panic: test timed out after") || strings.Contains(text, "subprocess.timeoutexpired: command"):
 		d.Kind, d.Summary = "verification_timeout", "The verification command exceeded its allowed duration."
 		d.Evidence, d.NextAction = "The runner deadline expired; any partial test output is retained.", "Inspect the last command output and required services. Restore prerequisites before rerunning the complete check."
 		d.FailedTests = failedGoTests(command, output)
@@ -102,9 +105,6 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 			at := api.RetryAt
 			d.RetryAt = &at
 		}
-	case hasAny(text, "cannot connect to the docker daemon", "docker daemon is not running", "linux daemon is unavailable", "dockerdesktoplinuxengine", "pipe/docker_engine", "pipe\\docker_engine", "wsl access is denied", "wsl_e", "wsl/service", "wsl access denied"):
-		d.Kind, d.Summary = "runtime_unavailable", "Required Docker or WSL verification is unavailable."
-		d.Evidence, d.NextAction = "The command reported that the required runtime could not be reached.", "Restore the required runtime or use an approved environment that can run the same checks, then recover verification."
 	case (isAPI && (api.Status == 401 || api.Status == 403)) || (!strings.Contains(text, "codex cli unavailable") && hasAny(text, "401 unauthorized", "403 forbidden", "authentication required", "authentication rejected", "authentication failed", "could not read username", "invalid credentials", "codex login", "not logged in")):
 		d.Kind, d.Summary = "authentication", "A required service rejected authentication."
 		d.Evidence, d.NextAction = "The service rejected access; retries cannot supply credentials.", "Configure the required service authentication outside the agent, then recover verification."
@@ -117,10 +117,13 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case hasAny(text, "sharing violation", "being used by another process", "resource temporarily unavailable", "text file busy"):
 		d.Kind, d.Summary, d.CanRecover, d.Retryable = "resource_busy", "A required local resource is temporarily busy.", true, true
 		d.Evidence, d.NextAction = "The process reported a transient resource or file sharing error.", "Retry after bounded backoff without removing files or changing permissions."
+	case strings.Contains(text, "fatal: detected dubious ownership in repository"):
+		d.Kind, d.Summary = "environment_blocked", "Git rejected the verification workspace's container ownership."
+		d.Evidence, d.NextAction = text, "Provision a container-scoped Git launcher that trusts only /workspace, or use a workspace owned by the container user. Repository probes may discard inherited Git configuration. Do not change source code, disable hooks, trust every directory or retry an unchanged environment."
 	case hasAny(text, "access is denied", "permission denied", "read-only file system", "eacces", "cache is not writable"):
 		d.Kind, d.Summary = "workspace_permissions", "Verification setup failed because a required path is not writable."
 		d.Evidence, d.NextAction = "The process reported a filesystem permission error.", "Inspect the command output and workspace cache permissions, then recover verification."
-	case errors.Is(err, exec.ErrNotFound) || hasAny(text, "executable file not found", "executable file not found in $path", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2", "codex cli unavailable"):
+	case errors.Is(err, exec.ErrNotFound) || (strings.Contains(text, "subprocess.py") && strings.Contains(text, "filenotfounderror: [errno 2] no such file or directory")) || hasAny(text, "command not found", "executable file not found", "executable file not found in $path", "could not be resolved", "node is unavailable", "createprocessasuserw failed: 2", "codex cli unavailable"):
 		d.Kind, d.Summary = "tool_unavailable", "A required verification tool is unavailable."
 		d.Evidence, d.NextAction = "The runner could not launch the required executable.", "Install or configure the required tool, then recover verification."
 	// Match library errors before network tokens: ModuleNotFoundError contains "enotfound".
@@ -128,6 +131,9 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		d.Kind, d.Summary = "dependencies_missing", "A required library or runtime dependency is unavailable."
 		d.Evidence, d.NextAction = "The process reported a missing runtime dependency.", "Inspect repository dependency declarations and provision the matching environment. Retry the original required check after successful preparation; do not weaken tests."
 		d.CanRecover = network
+	case strings.Contains(text, "filenotfounderror:"):
+		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository command could not find an input file.", "fixing", true
+		d.Evidence, d.NextAction = output, "Inspect the missing repository input. This Python exception is not a DNS ENOTFOUND failure; do not schedule network retries."
 	case hasAny(text, "proxyconnect tcp", "127.0.0.1:9:", "localhost:9:", "[::1]:9:"):
 		d.Kind, d.Summary = "network_transport", "Dependency setup could not reach its configured proxy."
 		d.Evidence = "The command failed before verification while connecting through a proxy."
@@ -333,6 +339,16 @@ func (s *Service) Recover(ctx context.Context, id string, approved, allowDownloa
 	r, err := s.Store.Execution(ctx, id)
 	if err != nil {
 		return r, err
+	}
+	if d.Kind == "completion_gate" {
+		if r.EnvironmentPlan != nil {
+			for _, gate := range r.EnvironmentPlan.CompletionGates {
+				if gate.Binding == "commit" {
+					return r, errors.New("a trusted commit/signing handoff is required; another recovery cannot certify the uncommitted patch. See completion-handoff.json and artifacts/final.patch")
+				}
+			}
+		}
+		return s.Start(ctx, id, true, r.Network || allowDownloads)
 	}
 	if r.Phase == "PLANNING" || (d.Command == nil && d.TestRunID == "" && (r.Phase == "CODING" || r.Phase == "FIXING")) {
 		return s.Start(ctx, id, true, r.Network || allowDownloads)

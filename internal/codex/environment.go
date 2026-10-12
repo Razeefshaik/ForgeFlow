@@ -32,6 +32,7 @@ type EnvironmentPreparer interface {
 var imageReference = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,250}$`)
 var immutableImage = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var environmentKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+var imageMissing = errors.New("Docker image is not cached")
 
 func (c *CLI) EnvironmentBase() string { return c.VerificationImage }
 
@@ -104,16 +105,38 @@ func ValidateEnvironmentPlan(plan domain.EnvironmentPlan) error {
 	if strings.TrimSpace(plan.Summary) == "" || !imageReference.MatchString(plan.BaseImage) || strings.HasSuffix(plan.BaseImage, ":latest") || (!strings.Contains(plan.BaseImage, "@") && strings.LastIndex(plan.BaseImage, ":") <= strings.LastIndex(plan.BaseImage, "/")) {
 		return errors.New("environment plan needs a summary and explicit image reference")
 	}
-	if len(plan.Files) > 64 || len(plan.ImageCommands) > 24 || len(plan.WorkspaceCommands) > 24 || (len(plan.Checks) == 0 && len(plan.Blockers) == 0) || len(plan.Checks) > 24 || len(plan.Environment) > 32 {
+	if len(plan.Files) > 64 || len(plan.ImageCommands) > 24 || len(plan.WorkspaceCommands) > 24 || len(plan.HookCommands) > 8 || len(plan.CompletionGates) > 8 || (len(plan.Checks) == 0 && len(plan.Blockers) == 0) || len(plan.Checks) > 24 || len(plan.Environment) > 32 {
 		return errors.New("environment plan exceeds bounds or has no prerequisite checks")
 	}
 	encoded, _ := json.Marshal(plan)
 	if len(encoded) > 256<<10 {
 		return errors.New("environment recipe exceeds 256 KiB")
 	}
-	for _, commands := range [][]domain.VerificationCommand{plan.ImageCommands, plan.WorkspaceCommands, plan.Checks} {
+	for _, commands := range [][]domain.VerificationCommand{plan.ImageCommands, plan.WorkspaceCommands, plan.HookCommands, plan.Checks} {
 		for _, command := range commands {
 			if err := validateProvisionCommand(command); err != nil {
+				return err
+			}
+		}
+	}
+	for _, gate := range plan.CompletionGates {
+		if gate.Binding != "working_tree" && gate.Binding != "commit" {
+			return errors.New("completion gate must declare working_tree or commit evidence binding")
+		}
+		if strings.TrimSpace(gate.Requirement) == "" || strings.TrimSpace(gate.Source) == "" || strings.TrimSpace(gate.Action) == "" || len(gate.Checks) == 0 || len(gate.Checks) > 8 {
+			return errors.New("completion gate requires a repository source, action and public verification commands")
+		}
+		found := false
+		for _, file := range plan.Files {
+			if file == gate.Source {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("completion gate source must be a fingerprinted repository input")
+		}
+		for _, command := range gate.Checks {
+			if err := ValidateContainerCommand(command); err != nil {
 				return err
 			}
 		}
@@ -189,6 +212,10 @@ func (c *CLI) EnvironmentFingerprint(dir string, plan domain.EnvironmentPlan) (s
 	plan.Summary = ""
 	plan.Requirements = nil
 	plan.Blockers = nil
+	plan.CompletionGates = append([]domain.CompletionGate(nil), plan.CompletionGates...)
+	for i := range plan.CompletionGates {
+		plan.CompletionGates[i].Requirement, plan.CompletionGates[i].Action = "", ""
+	}
 	plan.Files = append([]string(nil), plan.Files...)
 	sort.Strings(plan.Files)
 	plan.Environment = append([]domain.EnvironmentVariable(nil), plan.Environment...)
@@ -209,6 +236,9 @@ func localImage(ctx context.Context, ref string) (string, error) {
 	out, err := dockerControl(ctx, "image", "inspect", "--format", "{{.Id}}", ref)
 	id := strings.TrimSpace(out)
 	if err != nil || !immutableImage.MatchString(id) {
+		if err != nil && strings.Contains(strings.ToLower(out), "no such image") {
+			return "", fmt.Errorf("%w: %s", imageMissing, ref)
+		}
 		return "", fmt.Errorf("local image %s unavailable: %v; %s", ref, err, out)
 	}
 	return id, nil
@@ -248,6 +278,8 @@ func buildEnvironmentImage(ctx context.Context, base, fingerprint, dir string, n
 	if id, err := localImage(ctx, tag); err == nil {
 		report.Actions = append(report.Actions, "Reused matching immutable image "+id)
 		return id, nil
+	} else if !errors.Is(err, imageMissing) {
+		return "", err
 	}
 	recipe, err := environmentDockerfile(base, plan)
 	if err != nil {
@@ -355,6 +387,9 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	}
 	report.BaseImage, err = localImage(ctx, plan.BaseImage)
 	if err != nil {
+		if !errors.Is(err, imageMissing) {
+			return report, err
+		}
 		if !network {
 			return report, errors.New("environment base image is not cached; dependency download approval is required")
 		}
@@ -382,8 +417,8 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	if err = probe.checkContainer(ctx, dir); err != nil {
 		return report, err
 	}
-	run := func(command domain.VerificationCommand, online bool) error {
-		rec, e := c.containerCommandImage(ctx, report.Image, dir, command, online)
+	run := func(command domain.VerificationCommand, online, hooks bool) error {
+		rec, e := c.containerCommandMode(ctx, report.Image, dir, command, online, hooks)
 		report.Checks = append(report.Checks, rec)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -396,12 +431,23 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	// Even a cached image must pass current workspace checks. Mutable dependency
 	// directories are not proof of readiness, so repeat explicit install commands.
 	for _, command := range plan.WorkspaceCommands {
-		if err = run(command, network); err != nil {
+		if err = run(command, network, false); err != nil {
+			return report, err
+		}
+	}
+	for _, command := range plan.HookCommands {
+		if err = run(command, network, true); err != nil {
+			return report, err
+		}
+		if err = validateHookDirectory(filepath.Join(dir, ".git", "hooks")); err != nil {
+			return report, err
+		}
+		if _, err = prepareHookChecksum(dir); err != nil {
 			return report, err
 		}
 	}
 	for _, command := range plan.Checks {
-		if err = run(command, network); err != nil {
+		if err = run(command, network, false); err != nil {
 			return report, err
 		}
 	}

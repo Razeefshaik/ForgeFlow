@@ -244,6 +244,9 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 			err = s.recoverOperation(ctx, &r, "Fresh GitHub issue check", func() error { return s.freshIssue(ctx, a) })
 		}
 		if err == nil {
+			err = s.recoverOperation(ctx, &r, "Fresh GitHub discussion", func() error { return s.refreshIssueContext(ctx, a, &r) })
+		}
+		if err == nil {
 			err = s.prepareEnvironment(ctx, c, &r, repo, meta, false)
 		}
 		if err == nil {
@@ -353,6 +356,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		}
 		r.Plan = &plan
 		r.PlanApproved = false
+		r.PlanInvalidated = false
 		if err = writeJSON(filepath.Join(meta, "plan.json"), plan); err != nil {
 			return err
 		}
@@ -384,7 +388,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if r.Phase == "REVIEWING" {
+		if r.Phase == "REVIEWING" && r.Review != nil && r.Review.Verdict == "REQUEST_CHANGES" {
 			if err := s.phase(ctx, r, "FIXING"); err != nil {
 				return err
 			}
@@ -429,13 +433,6 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err = s.phase(ctx, r, "REVIEWING"); err != nil {
 			return err
 		}
-		if r.ReviewCycles >= a.Config.Config.Codex.MaxReviewCycles {
-			return errors.New("maximum independent review cycles reached")
-		}
-		r.ReviewCycles++
-		if err := s.Store.SaveExecution(ctx, *r, "execution", "Independent review cycle started"); err != nil {
-			return err
-		}
 		diff, files, err := s.diff(ctx, repo, c.BaseCommit)
 		if err != nil {
 			return err
@@ -450,36 +447,64 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err != nil {
 			return err
 		}
-		release, err := s.reviewSlot(ctx, a.Config.Config.Agents.MaxReviewers)
-		if err != nil {
-			return err
-		}
-		output, err := func() (string, error) {
-			defer release()
-			return s.recoveringAgent(ctx, c, r, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema)
-		}()
-		if err != nil {
-			return err
-		}
-		var review domain.Review
-		if err = json.Unmarshal([]byte(output), &review); err != nil || (review.Verdict != "APPROVE" && review.Verdict != "REQUEST_CHANGES") {
-			return errors.New("reviewer returned an invalid verdict")
-		}
-		if review.Verdict == "APPROVE" && len(review.Findings) > 0 {
-			return errors.New("reviewer verdict conflicts with unresolved findings")
-		}
-		r.Review = &review
-		if err = writeJSON(filepath.Join(meta, "review.json"), review); err != nil {
-			return err
-		}
-		if err = s.Store.SaveExecution(ctx, *r, "reviewer", "Independent review: "+review.Verdict); err != nil {
-			return err
-		}
-		if review.Verdict == "REQUEST_CHANGES" {
-			if err = s.phase(ctx, r, "FIXING"); err != nil {
+		patchHash := contextHash(diff)
+		if r.Review == nil || r.Review.Verdict != "APPROVE" || r.ReviewPatchHash != patchHash {
+			if r.ReviewCycles >= a.Config.Config.Codex.MaxReviewCycles {
+				return errors.New("maximum independent review cycles reached")
+			}
+			r.ReviewCycles++
+			if err := s.Store.SaveExecution(ctx, *r, "execution", "Independent review cycle started"); err != nil {
 				return err
 			}
-			continue
+			release, err := s.reviewSlot(ctx, a.Config.Config.Agents.MaxReviewers)
+			if err != nil {
+				return err
+			}
+			output, err := func() (string, error) {
+				defer release()
+				return s.recoveringAgent(ctx, c, r, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema)
+			}()
+			if err != nil {
+				return err
+			}
+			var review domain.Review
+			if err = json.Unmarshal([]byte(output), &review); err != nil || (review.Verdict != "APPROVE" && review.Verdict != "REQUEST_CHANGES") {
+				return errors.New("reviewer returned an invalid verdict")
+			}
+			if review.Verdict == "APPROVE" && len(review.Findings) > 0 {
+				return errors.New("reviewer verdict conflicts with unresolved findings")
+			}
+			r.Review = &review
+			r.ReviewPatchHash = patchHash
+			if err = writeJSON(filepath.Join(meta, "review.json"), review); err != nil {
+				return err
+			}
+			if err = s.Store.SaveExecution(ctx, *r, "reviewer", "Independent review: "+review.Verdict); err != nil {
+				return err
+			}
+			if review.Verdict == "REQUEST_CHANGES" {
+				if err = s.phase(ctx, r, "FIXING"); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+		if r.EnvironmentPlan != nil && len(r.EnvironmentPlan.CompletionGates) > 0 {
+			if err = os.WriteFile(filepath.Join(filepath.Dir(repo), "artifacts", "final.patch"), []byte(diff), 0600); err != nil {
+				return err
+			}
+			if err = writeJSON(filepath.Join(meta, "completion-handoff.json"), map[string]any{"base_commit": c.BaseCommit, "patch_context_hash": patchHash, "requirements": r.EnvironmentPlan.CompletionGates, "review": r.Review, "status": "pending_external_verification"}); err != nil {
+				return err
+			}
+		}
+		if err = s.verifyCompletionGates(ctx, c.ID, repo, r); err != nil {
+			return err
+		}
+		if current, _, e := s.diff(ctx, repo, c.BaseCommit); e != nil || contextHash(current) != patchHash {
+			return errors.New("completion verification changed the reviewed patch; rerun testing and review")
+		}
+		if err = s.verifyApprovedGit(ctx, repo, c.BaseCommit, c.Branch); err != nil {
+			return err
 		}
 		r.Status = "READY"
 		r.Report = s.report(c, a, *r, tests)

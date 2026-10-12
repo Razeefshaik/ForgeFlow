@@ -79,6 +79,10 @@ type ExecutionIncident struct {
 	FailedTests      []string             `json:"failed_tests,omitempty"`
 }
 type ExecutionRecord struct {
+	IssueDiscussion  []IssueComment        `json:"issue_discussion,omitempty"`
+	PlanContextHash  string                `json:"plan_context_hash,omitempty"`
+	PlanInvalidated  bool                  `json:"plan_invalidated,omitempty"`
+	ReviewPatchHash  string                `json:"review_patch_hash,omitempty"`
 	Environment      *ExecutionEnvironment `json:"environment,omitempty"`
 	EnvironmentPlan  *EnvironmentPlan      `json:"environment_plan,omitempty"`
 	ContributionID   string                `json:"contribution_id"`
@@ -129,10 +133,29 @@ type EnvironmentPlan struct {
 	Files             []string              `json:"files"`
 	ImageCommands     []VerificationCommand `json:"image_commands"`
 	WorkspaceCommands []VerificationCommand `json:"workspace_commands"`
+	HookCommands      []VerificationCommand `json:"hook_commands,omitempty"`
+	CompletionGates   []CompletionGate      `json:"completion_gates,omitempty"`
 	Checks            []VerificationCommand `json:"checks"`
 	Environment       []EnvironmentVariable `json:"environment"`
 	Requirements      []string              `json:"requirements"`
 	Blockers          []string              `json:"blockers"`
+}
+
+// CompletionGate is a public verification of an externally satisfied requirement.
+// Its private credentials must never be supplied to contribution processes.
+type CompletionGate struct {
+	Requirement string                `json:"requirement"`
+	Source      string                `json:"source"`
+	Action      string                `json:"action"`
+	Binding     string                `json:"binding"`
+	Checks      []VerificationCommand `json:"checks"`
+}
+
+type IssueComment struct {
+	ID        int64     `json:"id"`
+	Body      string    `json:"body"`
+	URL       string    `json:"html_url"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type EnvironmentVariable struct {

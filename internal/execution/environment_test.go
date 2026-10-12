@@ -6,6 +6,8 @@ import (
 	"errors"
 	"forgeflow/internal/codex"
 	"forgeflow/internal/domain"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,93 @@ type environmentRunner struct {
 	planners        int
 	preparations    int
 	lastPrompt      string
+}
+
+type inventoryApprovalRunner struct {
+	environmentRunner
+	sawApproval bool
+}
+
+type unavailableDockerRunner struct{ environmentRunner }
+
+func (f *unavailableDockerRunner) PrepareEnvironment(context.Context, string, bool, domain.EnvironmentPlan) (domain.ExecutionEnvironment, error) {
+	f.preparations++
+	err := errors.New("local image unavailable: failed to connect to the Docker API at npipe:////./pipe/dockerDesktopLinuxEngine")
+	return domain.ExecutionEnvironment{Status: "blocked", Error: err.Error(), Fingerprint: "same-inputs"}, err
+}
+
+func TestDockerOutageDoesNotSpendAnotherEnvironmentPlan(t *testing.T) {
+	f := &unavailableDockerRunner{}
+	s, c := buildFixture(t, f)
+	if _, err := s.Start(context.Background(), c.ID, true, true); err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	r, err := s.Store.Execution(context.Background(), c.ID)
+	if err != nil || r.Incident == nil || r.Incident.Kind != "runtime_unavailable" || r.Status != "NEEDS_INPUT" || f.planners != 1 || f.preparations != 1 || f.contributors != 0 || r.FixIterations != 0 {
+		t.Fatalf("outage wasted model work: %+v; counts=%d/%d/%d; error=%v", r, f.planners, f.preparations, f.contributors, err)
+	}
+}
+
+func (*inventoryApprovalRunner) InspectEnvironment(context.Context, string) (domain.ExecutionEnvironment, error) {
+	return domain.ExecutionEnvironment{Status: "inspected", Image: "fixture-image", Network: false}, nil
+}
+
+func (f *inventoryApprovalRunner) Run(ctx context.Context, r codex.Request, event func(json.RawMessage) error) (codex.Result, error) {
+	if r.Role == "environment-planner" {
+		paths, err := filepath.Glob(filepath.Join(r.Directory, ".forgeflow-runtime", "evidence", "environment-*.json"))
+		if err != nil || len(paths) == 0 {
+			return codex.Result{}, errors.New("missing inventory snapshot")
+		}
+		b, err := os.ReadFile(paths[len(paths)-1])
+		if err != nil {
+			return codex.Result{}, err
+		}
+		var evidence struct {
+			Approved    bool                        `json:"current_downloads_approved"`
+			Environment domain.ExecutionEnvironment `json:"environment"`
+		}
+		if err = json.Unmarshal(b, &evidence); err != nil {
+			return codex.Result{}, err
+		}
+		f.sawApproval = evidence.Approved && evidence.Environment.Network && strings.Contains(r.Prompt, "Correct Add")
+	}
+	return f.environmentRunner.Run(ctx, r, event)
+}
+
+func TestOfflineInventoryDoesNotRevokeDownloadApproval(t *testing.T) {
+	runner := &inventoryApprovalRunner{}
+	s, c := buildFixture(t, runner)
+	repo, meta, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := domain.ExecutionRecord{ContributionID: c.ID, Network: true}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.sawApproval {
+		t.Fatal("planner saw stale approval or no approved issue")
+	}
+}
+
+func TestBlockedSavedRecipeRequestsFreshPlanOnResume(t *testing.T) {
+	runner := &environmentRunner{failPreparation: true}
+	s, c := buildFixture(t, runner)
+	repo, meta, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := domain.ExecutionRecord{ContributionID: c.ID}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err == nil {
+		t.Fatal("fixture should block")
+	}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err == nil {
+		t.Fatal("unchanged repair should stop")
+	}
+	if runner.planners != 2 || runner.preparations != 1 {
+		t.Fatal("replayed blocked setup", runner.planners, runner.preparations)
+	}
 }
 
 func (f *environmentRunner) EnvironmentBase() string { return "fixture:1" }

@@ -119,3 +119,13 @@ The CLI now declares its preflight budget: 45 seconds for native verification pl
 - `go vet ./internal/codex ./internal/execution` and `go build -o bin/forgeflow-preflight.exe ./apps/server` passed. `git diff --check` passed.
 
 The running backend was not restarted and the contribution remains paused. Restart ForgeFlow to load the correction before explicitly recovering the contribution through its existing approval gate. This successful disposable preflight does not establish that the contribution's environment setup, code or full tests will pass.
+
+## Environment planner context correction — 2026-10-12
+
+The next Bitbucket resume passed preflight and stopped at environment planning. Its recipe selected `golang:1.27.1-bookworm` but also listed replacing Go 1.26.1 as an operator blocker. It treated the offline inventory's network flag as conflicting with the current approved download policy. No image build or repository verification occurred.
+
+Inventory evidence now carries the execution's download authorization, while probes remain offline. Agent evidence explicitly includes current authorization, and the environment planner receives the approved issue and human constraints. Instructions distinguish installable dependencies from operator blockers and require evidence for mandatory contribution checks rather than indiscriminately treating release-only jobs as prerequisites. A saved blocked recipe requests a fresh plan on explicit resume; an unchanged executable recipe still stops without repeating preparation.
+
+The repository's `AGENTS.md` and `CONTRIBUTING.md` independently confirm live Bitbucket testing is a contribution gate. That remains unsupported by the current single-container runner and cannot be replaced with a unit-only pass. These context corrections do not supply Docker-backed services or native platform runners and do not prove the contribution is ready.
+
+Regression fixtures verify offline inventory does not revoke authorization, the approved issue reaches the planner, and resuming an unchanged blocked recipe replans without repeating setup. Existing environment and verification-repair regressions passed. No contribution was automatically resumed, and its patch and audit history remain preserved.
