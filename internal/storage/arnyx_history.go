@@ -21,22 +21,25 @@ type ArnyxMessage struct {
 	CreatedAt string `json:"created_at"`
 }
 type ArnyxTask struct {
-	ID             string           `json:"id"`
-	ConversationID string           `json:"conversation_id"`
-	Directory      string           `json:"directory"`
-	Mode           string           `json:"mode"`
-	Prompt         string           `json:"prompt"`
-	Network        bool             `json:"network"`
-	Status         string           `json:"status"`
-	Activity       string           `json:"activity"`
-	Output         string           `json:"output,omitempty"`
-	Error          string           `json:"error,omitempty"`
-	SessionID      string           `json:"session_id,omitempty"`
-	Usage          map[string]int64 `json:"usage,omitempty"`
-	CreatedAt      string           `json:"created_at"`
-	UpdatedAt      string           `json:"updated_at"`
-	ViewRoute      string           `json:"view_route,omitempty"`
-	ContributionID string           `json:"contribution_id,omitempty"`
+	ID              string           `json:"id"`
+	ConversationID  string           `json:"conversation_id"`
+	Directory       string           `json:"directory"`
+	Mode            string           `json:"mode"`
+	Prompt          string           `json:"prompt"`
+	Network         bool             `json:"network"`
+	Status          string           `json:"status"`
+	Activity        string           `json:"activity"`
+	Output          string           `json:"output,omitempty"`
+	Error           string           `json:"error,omitempty"`
+	SessionID       string           `json:"session_id,omitempty"`
+	Usage           map[string]int64 `json:"usage,omitempty"`
+	CreatedAt       string           `json:"created_at"`
+	UpdatedAt       string           `json:"updated_at"`
+	StartedAt       string           `json:"started_at,omitempty"`
+	FinishedAt      string           `json:"finished_at,omitempty"`
+	DurationSeconds float64          `json:"duration_seconds,omitempty"`
+	ViewRoute       string           `json:"view_route,omitempty"`
+	ContributionID  string           `json:"contribution_id,omitempty"`
 }
 
 func (s *Store) NewArnyxConversation(ctx context.Context) (ArnyxConversation, error) {

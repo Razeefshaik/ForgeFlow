@@ -113,11 +113,14 @@ func (s Service) aiChat(ctx context.Context, message string) (Reply, error) {
 	}
 	usage := map[string]int64{}
 	sessions := []string{}
+	var modelDuration float64
 	var result codex.Result
 	var decoded modelAction
 	lookups := 0
 	for {
+		callStart := time.Now()
 		result, err = s.AI.Run(callCtx, codex.Request{Directory: dir, Role: "operator", Prompt: prompt, Schema: schema}, nil)
+		modelDuration += time.Since(callStart).Seconds()
 		if err != nil {
 			return Reply{}, fmt.Errorf("Arnyx could not reach the local LLM: %w", err)
 		}
@@ -210,7 +213,7 @@ final:
 	default:
 		return Reply{}, fmt.Errorf("unsupported Arnyx action")
 	}
-	if err = s.Store.WorkspaceEvent(ctx, "arnyx", "ArnyxReplied", "Arnyx returned a controlled response", map[string]any{"action": reply.Action, "session_ids": sessions, "usage": usage, "context_bytes": contextBytes, "lookups": lookups}); err != nil {
+	if err = s.Store.WorkspaceEvent(ctx, "arnyx", "ArnyxReplied", "Arnyx returned a controlled response", map[string]any{"action": reply.Action, "session_ids": sessions, "usage": usage, "duration_seconds": modelDuration, "context_bytes": contextBytes, "lookups": lookups}); err != nil {
 		return Reply{}, err
 	}
 	return reply, nil

@@ -344,3 +344,29 @@ func TestVerificationRepairRerunsExactCommandWithoutCodeFix(t *testing.T) {
 		})
 	}
 }
+
+func TestSavedReadinessRunsFreshEnvironmentPreparationChecks(t *testing.T) {
+	runner := &environmentRunner{}
+	s, c := buildFixture(t, runner)
+	repo, meta, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := domain.ExecutionRecord{ContributionID: c.ID}
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err != nil {
+		t.Fatal(err)
+	}
+	if runner.planners != 1 || runner.preparations != 1 || r.Environment == nil || r.Environment.Status != "ready" {
+		t.Fatalf("unexpected initial preparation: planners=%d preparations=%d env=%+v", runner.planners, runner.preparations, r.Environment)
+	}
+	// Subsequent prepareEnvironment with saved readiness must skip redundant LLM replanning
+	// when the recipe fingerprint matches, but MUST still run PrepareEnvironment checks
+	// so stale dependencies or broken workspace state are detected.
+	runner.failPreparation = true
+	if err = s.prepareEnvironment(context.Background(), c, &r, repo, meta, false); err == nil {
+		t.Fatal("saved readiness skipped fresh dependency and environment checks")
+	}
+	if runner.preparations < 2 {
+		t.Fatalf("expected fresh PrepareEnvironment call on saved readiness, got %d", runner.preparations)
+	}
+}

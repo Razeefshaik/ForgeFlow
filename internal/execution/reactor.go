@@ -25,12 +25,29 @@ func hasAny(text string, values ...string) bool {
 	return false
 }
 
+// A quoted diagnostic belongs to its assertion line, not the whole test batch.
+// Preserve original output for audit evidence while matching independent setup
+// failures in other lines before falling back to source fixing.
+func unquotedDiagnosticLines(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if hasAny(line, "expected ", "unexpected ", "wanted ", "got nil") {
+			lines[i] = ""
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // Classify known infrastructure failures before allowing the code fixer to act.
 // Unknown repository failures still go through Codex's existing bounded fix loop.
 func diagnoseCommand(command domain.VerificationCommand, output string, err error, network bool) *domain.ExecutionIncident {
 	text := strings.ToLower(output)
 	if err != nil {
 		text += "\n" + strings.ToLower(err.Error())
+	}
+	assertionFailure := hasAny(text, "--- fail:", "assertionerror", "assertion failed")
+	if assertionFailure {
+		text = unquotedDiagnosticLines(text)
 	}
 	d := &domain.ExecutionIncident{Status: "blocked", Source: "verification", Command: &command, DetectedAt: time.Now().UTC()}
 	d.DiagnosisVersion = diagnosisVersion
@@ -50,10 +67,10 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 	case command.Program == "" && hasAny(text, "codex session failed", "codex") && hasAny(text, "hit your usage limit", "usage_limit_reached", "insufficient_quota"):
 		d.Kind, d.Summary = "usage_limit", "Codex account usage is exhausted; execution is paused."
 		d.Evidence, d.NextAction = "The provider rejected the agent session before it could continue.", "Wait for the provider's reported reset or restore account capacity, then resume explicitly. No source changes or automatic retries can repair this limit."
-	case !hasAny(text, "--- fail:", "assertionerror", "assertion failed") && toolchainMismatch(text):
+	case toolchainMismatch(text):
 		d.Kind, d.Summary = "toolchain_mismatch", "The repository requires a different runtime or compiler version; verification did not complete."
 		d.Evidence, d.NextAction = text, "Provision a matching environment and retry the unchanged verification. Do not downgrade repository requirements or start a source-fix iteration."
-	case !hasAny(text, "--- fail:", "assertionerror", "assertion failed") && hasAny(text, "failed to connect to the docker api", "cannot connect to the docker daemon", "docker daemon is not running", "linux daemon is unavailable", "dockerdesktoplinuxengine", "pipe/docker_engine", "pipe\\docker_engine", "wsl access is denied", "wsl_e", "wsl/service", "wsl access denied"):
+	case hasAny(text, "failed to connect to the docker api", "cannot connect to the docker daemon", "docker daemon is not running", "linux daemon is unavailable", "dockerdesktoplinuxengine", "pipe/docker_engine", "pipe\\docker_engine", "wsl access is denied", "wsl_e", "wsl/service", "wsl access denied"):
 		d.Kind, d.Summary = "runtime_unavailable", "Required Docker or WSL verification is unavailable."
 		d.Evidence, d.NextAction = "The command reported that the required runtime could not be reached.", "Restore the required runtime or use an approved environment that can run the same checks, then recover verification."
 	case hasAny(text, "environment image build failed", "environment image pull failed", "environment prerequisite failed", "environment requirements need operator input"):
@@ -95,9 +112,6 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 			d.Kind, d.Summary, d.CanRecover, d.Retryable = "dependency_network", "Dependency downloads did not finish before the runner deadline.", network, network
 			d.NextAction = "Retry the same required check with approved downloads and bounded backoff."
 		}
-	case hasAny(text, "--- fail:", "assertionerror", "assertion failed"):
-		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository assertion failed.", "fixing", true
-		d.Evidence, d.NextAction = "An actual test reported a failure; quoted environment errors inside an assertion are not setup failures.", "Codex will investigate the failed assertion and rerun all required checks."
 	case (isAPI && (!api.RetryAt.IsZero() || api.Status == 429)) || hasAny(text, "429 too many requests", "http 429", "rate limit reached", "rate limit exceeded"):
 		d.Kind, d.Summary, d.CanRecover, d.Retryable = "rate_limit", "A required service is rate limiting requests.", network, network
 		d.Evidence, d.NextAction = "The service requested a delay before another request.", "Wait for the recorded retry time, then retry the original operation without changing code."
@@ -160,6 +174,9 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		d.Evidence = "The JavaScript command could not find a required dependency."
 		d.CanRecover = network
 		d.NextAction = "With download approval and an existing package lock, install workspace dependencies and rerun the original check."
+	case assertionFailure:
+		d.Kind, d.Summary, d.Status, d.CanRecover = "code_failure", "A repository assertion failed.", "fixing", true
+		d.Evidence, d.NextAction = "An actual test reported a failure; quoted environment errors inside an assertion are not setup failures.", "Codex will investigate the failed assertion and rerun all required checks."
 	default:
 		d.Kind, d.Summary = "code_failure", "A repository check failed."
 		d.Status, d.CanRecover = "fixing", true

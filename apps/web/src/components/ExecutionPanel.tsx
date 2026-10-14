@@ -107,19 +107,17 @@ export default function ExecutionPanel({
   const r = execution.data;
   const running = r?.status === "RUNNING";
   const needsRecovery = r?.status === "BLOCKED" || r?.status === "NEEDS_INPUT";
-  const legacyIncident = r?.incident?.kind === "execution_blocked" || (!!r?.incident?.test_run_id && (r.incident.diagnosis_version ?? 0) < 3);
  useEffect(()=>{setSubmitApproved(false)},[r?.submission_token]);
  useEffect(()=>{setEditingPR(false);setSubmitApproved(false)},[c.id]);
   const diagnosis = useQuery({
     queryKey: [prefix + "/diagnosis"],
     queryFn: () => request<ExecutionIncident | null>(prefix + "/diagnosis"),
-    enabled: needsRecovery && (!r?.incident || legacyIncident),
+    enabled: needsRecovery,
     refetchInterval: needsRecovery ? 5000 : false,
   });
-  const currentIncident =
-    needsRecovery && legacyIncident
-      ? diagnosis.data ?? r?.incident
-      : r?.incident ?? (needsRecovery ? diagnosis.data : null);
+  const currentIncident = needsRecovery
+    ? diagnosis.data ?? r?.incident
+    : r?.incident;
   useEffect(() => {
     if (tab !== "Tests" || !evidenceTest) return;
     const details = document.getElementById(

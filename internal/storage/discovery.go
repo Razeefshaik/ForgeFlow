@@ -143,7 +143,9 @@ func (s *Store) RequestDiscoveryCancellation(ctx context.Context) error {
 	})
 }
 func (s *Store) DiscoveryRuns(ctx context.Context) ([]domain.DiscoveryRun, error) {
-	return s.discoveryRuns(ctx, "SELECT data FROM discovery_runs ORDER BY started_at DESC LIMIT 50")
+	// Fast scans can share a clock tick. Insertion order breaks ties without
+	// rewriting timestamps or immutable scan history.
+	return s.discoveryRuns(ctx, "SELECT data FROM discovery_runs ORDER BY started_at DESC, rowid DESC LIMIT 50")
 }
 func (s *Store) discoveryRuns(ctx context.Context, query string) ([]domain.DiscoveryRun, error) {
 	rows, err := s.db.QueryContext(ctx, query)

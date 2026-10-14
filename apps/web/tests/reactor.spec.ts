@@ -14,6 +14,22 @@ test("old authentication label is refreshed from saved Windows failure evidence"
   await expect(panel.getByRole("button", { name: "Retry after setup is restored" })).toBeVisible();
 });
 
+test("version-five incidents use current read-only diagnosis before explicit recovery", async ({ page }) => {
+  const id = "reactor-v5";
+  await page.route(`**/api/contributions/${id}`, r => r.fulfill({ json: { id, repository: "fixture/reactor", title: "Restore dependencies", state: "PAUSED", config_version: 1 } }));
+  await page.route(`**/api/contributions/${id}/execution`, r => r.fulfill({ json: { status: "NEEDS_INPUT", phase: "TESTING", network: false, fix_iterations: 0, review_cycles: 0, incident: { id: "old-v5", kind: "code_failure", diagnosis_version: 5, test_run_id: "old-test", summary: "A repository assertion failed.", status: "fixing", can_recover: true } } }));
+  await page.route(`**/api/contributions/${id}/diagnosis`, r => r.fulfill({ json: { id: "old-v5", kind: "dependencies_missing", diagnosis_version: 6, test_run_id: "old-test", summary: "A required library is missing.", evidence: "ModuleNotFoundError: No module named pytest", next_action: "Approve public dependency downloads, then recover.", status: "needs_input", can_recover: false } }));
+  await page.route(`**/api/contributions/${id}/tests`, r => r.fulfill({ json: [] }));
+  let recoveries = 0;
+  await page.route(`**/api/contributions/${id}/recover`, r => { recoveries++; return r.fulfill({ status: 202, json: {} }); });
+  await page.goto(`/contributions/${id}`);
+  const panel = page.getByRole("region", { name: "Issue reactor" });
+  await expect(panel.getByText("A required library is missing.")).toBeVisible();
+  await expect(panel.getByText("A repository assertion failed.")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Allow downloads and recover" })).toBeVisible();
+  expect(recoveries).toBe(0);
+});
+
 test("generated path recovery is offered explicitly with the denied path evidence", async ({ page }) => {
   await page.route("**/api/contributions/reactor-ui", r => r.fulfill({ json: { id: "reactor-ui", repository: "fixture/reactor", title: "Package discovery", state: "PAUSED", config_version: 1 } }));
   await page.route("**/api/contributions/reactor-ui/execution", r => r.fulfill({ json: { status: "NEEDS_INPUT", phase: "TESTING", network: true, fix_iterations: 0, review_cycles: 0, incident: { id: "path", kind: "generated_path_access", diagnosis_version: 2, summary: "Go package discovery could not read a workspace directory.", evidence: "pattern ./...: open bin/generated-empty: Access is denied.", next_action: "Inspect the path and quarantine only empty ignored generated directories.", status: "needs_input", can_recover: true } } }));

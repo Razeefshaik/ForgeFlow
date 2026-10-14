@@ -4,8 +4,10 @@ import (
 	"context"
 	"forgeflow/internal/config"
 	"forgeflow/internal/domain"
+	"math"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestConfigApprovalConflictRollbackAndDurability(t *testing.T) {
@@ -157,5 +159,81 @@ func TestModeIsolationAndAtomicSeed(t *testing.T) {
 	defer live.Close()
 	if e = live.SeedOnce(ctx, opps, nil); e == nil {
 		t.Fatal("live seed accepted")
+	}
+}
+
+func TestUsageAggregatesAgentRunsAndArnyxSessions(t *testing.T) {
+	ctx := context.Background()
+	s, e := Open(ctx, ":memory:", true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	opps := []domain.Opportunity{{ID: "demo", Repository: "example/repo", Demo: true, Ranking: domain.Ranking{Score: 90}}}
+	cs := []domain.Contribution{{ID: "c", OpportunityID: "demo", State: "CODING", Demo: true}}
+	if e = s.SeedOnce(ctx, opps, cs); e != nil {
+		t.Fatal(e)
+	}
+	created := time.Now().UTC().Add(-10 * time.Minute)
+	started := time.Now().UTC().Add(-2 * time.Second)
+	finished := started.Add(2 * time.Second)
+	if e = s.SaveAgent(ctx, domain.AgentRun{
+		ID:             "run-1",
+		ContributionID: "c",
+		Role:           "planner",
+		Model:          "gpt-5.4",
+		Status:         "SUCCEEDED",
+		SessionID:      "sess-1",
+		StartedAt:      started,
+		FinishedAt:     &finished,
+		Usage:          map[string]int64{"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 30},
+	}); e != nil {
+		t.Fatal(e)
+	}
+	conv, e := s.NewArnyxConversation(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	task := ArnyxTask{
+		ID:             "task-1",
+		ConversationID: conv.ID,
+		Directory:      "/tmp",
+		Mode:           "edit",
+		Prompt:         "Inspect workspace",
+		Status:         "AWAITING_APPROVAL",
+		Activity:       "Prepared",
+		CreatedAt:      created.Format(time.RFC3339Nano),
+		UpdatedAt:      created.Format(time.RFC3339Nano),
+	}
+	if e = s.CreateArnyxTask(ctx, task); e != nil {
+		t.Fatal(e)
+	}
+	task.Status = "SUCCEEDED"
+	task.SessionID = "sess-2"
+	task.Output = "Done"
+	task.StartedAt = started.Format(time.RFC3339Nano)
+	task.FinishedAt = finished.Format(time.RFC3339Nano)
+	task.DurationSeconds = 2.0
+	task.UpdatedAt = finished.Format(time.RFC3339Nano)
+	task.Usage = map[string]int64{"input_tokens": 50, "cached_input_tokens": 10, "output_tokens": 15}
+	if e = s.SaveArnyxTask(ctx, task, true); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.WorkspaceEvent(ctx, "arnyx", "ArnyxReplied", "Arnyx returned a controlled response", map[string]any{
+		"session_ids":      []string{"sess-3"},
+		"duration_seconds": 1.5,
+		"usage":            map[string]int64{"input_tokens": 40, "cached_input_tokens": 5, "output_tokens": 10},
+	}); e != nil {
+		t.Fatal(e)
+	}
+	u, e := s.Usage(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if u.Sessions != 3 || u.ObservedUsage["input_tokens"] != 190 || u.ObservedUsage["cached_input_tokens"] != 35 || u.ObservedUsage["output_tokens"] != 55 {
+		t.Fatalf("unexpected usage aggregation: %+v", u)
+	}
+	if math.Abs(u.DurationSeconds-5.5) > 0.2 {
+		t.Fatalf("expected measured duration ~5.5s (excluding 10m approval wait), got %v", u.DurationSeconds)
 	}
 }

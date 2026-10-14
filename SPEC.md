@@ -110,6 +110,8 @@ Repository eligibility addition (2026-10-12): screen newly discovered repositori
 
 Dependency approval addition (2026-10-12): inspect nested runtime/dependency manifests and documentation build configuration during bounded eligibility screening. Record provisionable dependencies separately from unsupported requirements; do not reject a repository merely because a compatible public dependency is absent from the bootstrap image or unpinned. Initial execution approval offers explicit, default-off public dependency/runtime download permission, bound to the reviewed token and saved approval. Recovery may explicitly upgrade offline permission for a blocked environment, without repeated unchanged attempts. Resolve compatible versions under approved provisioning, preserve repository constraints and manifests, and record installed versions. Generated application deployment workflows do not automatically impose live cloud requirements on documentation contributions.
 
+Execution hardening (2026-10-15): retain complete required verification and current environment checks. Bound repeated workspace mutations during tests, and persist failed-batch progress across recovery. Ignore quoted diagnostic assertion lines without hiding independent infrastructure evidence elsewhere in the output. Reclassifying saved failures preserves audit history and never starts execution without approval. Container HOME/caches stay inside the isolated workspace. Arnyx duration measures model execution, excluding approval wait. Changed constraints invalidate plan approval and require a fresh plan.
+
 Codex should primarily be used for:
 
 - understanding complex repositories;

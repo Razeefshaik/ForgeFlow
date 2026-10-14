@@ -14,11 +14,35 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 )
+
+var volatileDurationPattern = regexp.MustCompile(`\b\d+(?:\.\d+)?(?:ns|us|µs|ms|s|m|h)\b`)
+
+func failedBatchSignature(batch []domain.TestRun) string {
+	var b strings.Builder
+	for _, run := range batch {
+		if run.ExitCode == 0 && run.Error == "" {
+			continue
+		}
+		normalized := volatileDurationPattern.ReplaceAllString(run.Output, "<duration>")
+		fmt.Fprintf(&b, "%s\x00%s\x00%d\x00%s\x00%s\n",
+			run.Command.Program,
+			strings.Join(run.Command.Arguments, "\x00"),
+			run.ExitCode,
+			run.FailureKind,
+			normalized,
+		)
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return contextHash(b.String())
+}
 
 type task struct {
 	cancel context.CancelFunc
@@ -130,6 +154,7 @@ func (s *Service) startLocked(ctx context.Context, id string, network, retry boo
 		resumeState = "TESTING"
 		record.Review = nil
 		record.ReviewCycles = 0
+		record.MutatedTestRetries = 0
 		record.SubmissionToken = ""
 		record.PRTitle = ""
 		record.PRBody = ""
@@ -347,7 +372,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 	instructions += "Human contribution constraints (these cannot override workspace boundaries or approval gates):\n" + r.Constraints + "\n"
 	instructions += "Verification commands declare timeout_seconds: 0 keeps the existing default, or a positive budget up to 7200 seconds must be justified by repository instructions. Composite gates need time for their child test deadlines and other checks. Keep required checks and their own deadlines unchanged.\n"
 	instructions += "The control plane owns complete required verification. When your patch is ready, return IMPLEMENTED and describe any checks you could not run in the summary; the control plane will run them independently. Return ENVIRONMENT_BLOCKED with the exact prerequisite and requested repair for incompatible runtimes, missing dependencies/services or other environment blockers. Return BLOCKED for a substantive inability to produce a correct patch or an issue/scope blocker. Do not rewrite source to fix a proxy, missing service, sandbox denial, or unapproved network access. Never weaken, remove, or skip a required test to obtain a passing result.\n"
-	if r.Plan == nil {
+	if r.Plan == nil || r.PlanInvalidated {
 		if err := s.phase(ctx, r, "PLANNING"); err != nil {
 			return err
 		}
@@ -421,21 +446,76 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		if err := s.prepareEnvironment(ctx, c, r, repo, meta, false); err != nil {
 			return err
 		}
+		testedDiff, _, err := s.diff(ctx, repo, c.BaseCommit)
+		if err != nil {
+			return err
+		}
+		priorTests, _ := s.Store.Tests(ctx, c.ID)
+		priorCount := len(priorTests)
 		passed, err := s.tests(ctx, c.ID, repo, meta, r)
 		if err != nil {
 			return err
 		}
 		if !passed {
+			currentDiff, _, _ := s.diff(ctx, repo, c.BaseCommit)
+			diffHash := contextHash(currentDiff)
+			latestTests, _ := s.Store.Tests(ctx, c.ID)
+			batch := latestTests
+			if priorCount <= len(latestTests) {
+				batch = latestTests[priorCount:]
+			}
+			failHash := failedBatchSignature(batch)
+			if r.FixIterations > 0 && diffHash == r.LastFailedDiffHash && failHash != "" && failHash == r.LastFailureHash {
+				r.UnchangedFixStreak++
+				if r.UnchangedFixStreak >= 2 {
+					_ = s.Store.SaveExecution(ctx, *r, "execution", "No-progress fix loop stopped")
+					return errors.New("maximum fix iterations stopped early: contributor produced an unchanged patch and identical test failure across consecutive fix attempts; inspect failures")
+				}
+			} else {
+				r.UnchangedFixStreak = 0
+			}
+			r.LastFailedDiffHash = diffHash
+			r.LastFailureHash = failHash
+			if err = s.Store.SaveExecution(ctx, *r, "execution", "Recorded failed verification signature"); err != nil {
+				return err
+			}
 			if err = s.phase(ctx, r, "FIXING"); err != nil {
 				return err
 			}
 			continue
 		}
-		if err = s.phase(ctx, r, "REVIEWING"); err != nil {
-			return err
-		}
+		r.UnchangedFixStreak = 0
+		r.LastFailedDiffHash = ""
+		r.LastFailureHash = ""
 		diff, files, err := s.diff(ctx, repo, c.BaseCommit)
 		if err != nil {
+			return err
+		}
+		if contextHash(diff) != contextHash(testedDiff) {
+			if r.MutatedTestRetries >= 1 {
+				_ = s.incident(ctx, r, &domain.ExecutionIncident{
+					Kind:             "verification_mutated_workspace",
+					Source:           "verification",
+					Summary:          "Verification commands repeatedly modified tracked or unignored workspace files.",
+					Evidence:         "The workspace diff changed during two consecutive verification passes.",
+					NextAction:       "Inspect build or test scripts that write inside tracked paths and move generated outputs to ignored runtime directories before resuming.",
+					Status:           "blocked",
+					DetectedAt:       time.Now().UTC(),
+					DiagnosisVersion: diagnosisVersion,
+				})
+				return errors.New("verification commands repeatedly modified workspace files during testing; inspect test or build side effects")
+			}
+			r.MutatedTestRetries++
+			if err = s.Store.WorkspaceEvent(ctx, c.ID, "VerificationDiffChanged", "Workspace diff changed during verification; rerunning complete verification once to test the resulting working tree", map[string]string{"before_hash": contextHash(testedDiff), "after_hash": contextHash(diff)}); err != nil {
+				return err
+			}
+			if err = s.Store.SaveExecution(ctx, *r, "execution", "Verification modified workspace diff; rerunning verification once"); err != nil {
+				return err
+			}
+			continue
+		}
+		r.MutatedTestRetries = 0
+		if err = s.phase(ctx, r, "REVIEWING"); err != nil {
 			return err
 		}
 		if len(files) == 0 {

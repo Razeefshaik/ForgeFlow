@@ -257,6 +257,8 @@ func (a *WorkspaceAssistant) run(ctx context.Context, cancel context.CancelFunc,
 	}
 	prompt := workspaceInstructions + "\nMode: " + mode + "\nSelected folder: " + t.Directory + "\nForgeFlow root: " + a.Root + "\nCurrent persisted state: " + clip(string(snapshot), 20000) + "\nRecent conversation: " + string(recent) + "\nUser request: " + t.Prompt
 	last := time.Time{}
+	runStart := time.Now().UTC()
+	t.StartedAt = runStart.Format(time.RFC3339Nano)
 	result, runErr := a.AI.Run(ctx, codex.Request{Directory: t.Directory, Role: role, Prompt: prompt, Network: t.Network}, func(raw json.RawMessage) error {
 		var e struct {
 			Type     string `json:"type"`
@@ -287,10 +289,13 @@ func (a *WorkspaceAssistant) run(ctx context.Context, cancel context.CancelFunc,
 		t.UpdatedAt = last.UTC().Format(time.RFC3339Nano)
 		return a.Store.SaveArnyxTask(ctx, t, false)
 	})
+	runFinished := time.Now().UTC()
+	t.FinishedAt = runFinished.Format(time.RFC3339Nano)
+	t.DurationSeconds = runFinished.Sub(runStart).Seconds()
 	t.SessionID = result.SessionID
 	t.Usage = result.Usage
 	t.Output = clip(result.Output, 32000)
-	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	t.UpdatedAt = runFinished.Format(time.RFC3339Nano)
 	t.Status = "SUCCEEDED"
 	t.Activity = "Codex finished; review its report"
 	if runErr != nil {

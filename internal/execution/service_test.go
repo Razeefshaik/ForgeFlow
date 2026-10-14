@@ -377,3 +377,230 @@ func TestPausePreservesWorkspaceAndRequiresConfirmedResume(t *testing.T) {
 		t.Fatal("approved plan cannot resume", record, err)
 	}
 }
+
+type untestableModifiedRunner struct {
+	fixtureRunner
+}
+
+func (u *untestableModifiedRunner) Run(ctx context.Context, r codex.Request, event func(json.RawMessage) error) (codex.Result, error) {
+	u.roles = append(u.roles, r.Role)
+	if r.Role == "reviewer" {
+		u.reviews++
+		b, _ := json.Marshal(domain.Review{Verdict: "APPROVE", Summary: "Approved"})
+		return codex.Result{SessionID: storage.ID(), Output: string(b), Usage: map[string]int64{"input_tokens": 5, "output_tokens": 5}}, nil
+	}
+	return u.fixtureRunner.Run(ctx, r, event)
+}
+
+func TestCodeChangedAfterPassingTestsMustRetestBeforeReady(t *testing.T) {
+	runner := &untestableModifiedRunner{}
+	s, c := buildFixture(t, runner)
+	ctx := context.Background()
+	repo, _, err := s.Paths(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(repo, "sum.go"), []byte("package fixture\nfunc Add(a,b int) int {return a+b}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Store.SaveTest(ctx, domain.TestRun{
+		ID:             storage.ID(),
+		ContributionID: c.ID,
+		Command:        domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./..."}},
+		Directory:      repo,
+		ExitCode:       0,
+		Output:         "PASS",
+		StartedAt:      time.Now().UTC(),
+		FinishedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Store.SaveExecution(ctx, domain.ExecutionRecord{
+		ContributionID: c.ID,
+		Status:         "PAUSED",
+		Phase:          "REVIEWING",
+		PlanApproved:   true,
+		Plan: &domain.Plan{
+			Summary: "Fix Add",
+			Tests:   []domain.VerificationCommand{{Program: "go", Arguments: []string{"test", "./..."}}},
+		},
+	}, "test", "paused before review finish"); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{"PLANNING", "CODING", "TESTING", "REVIEWING", "PAUSED"} {
+		if err = s.Store.Transition(ctx, c.ID, state); err != nil {
+			t.Fatal(state, err)
+		}
+	}
+	// Introduce broken code after the prior test pass.
+	if err = os.WriteFile(filepath.Join(repo, "sum.go"), []byte("package fixture\nfunc Add(a,b int) int {return a-b}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner.alwaysFail = true
+	if _, err = s.Start(ctx, c.ID, true, false); err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	r, err := s.Store.Execution(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status == "READY" {
+		t.Fatalf("modified broken code reached READY without passing tests: %+v", r)
+	}
+}
+
+func TestPlannedSingleCheckPreservesDetectedTestLintAndBuild(t *testing.T) {
+	repo := t.TempDir()
+	pkg := `{"name":"fixture","scripts":{"test":"vitest run","lint":"eslint .","build":"tsc -b","typecheck":"tsc --noEmit"}}`
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(pkg), 0600); err != nil {
+		t.Fatal(err)
+	}
+	plan := &domain.Plan{
+		Summary: "Typecheck and fix",
+		Tests:   []domain.VerificationCommand{{Program: "npm", Arguments: []string{"run", "typecheck"}}},
+	}
+	cmds, err := verificationCommands(repo, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmds) != 4 {
+		t.Fatalf("expected all 4 verification commands to be preserved, got %d: %+v", len(cmds), cmds)
+	}
+	want := map[string]bool{
+		"npm run typecheck": true,
+		"npm run test":      true,
+		"npm run lint":      true,
+		"npm run build":     true,
+	}
+	for _, cmd := range cmds {
+		key := strings.TrimSpace(cmd.Program + " " + strings.Join(cmd.Arguments, " "))
+		delete(want, key)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing verification commands: %v (got %+v)", want, cmds)
+	}
+}
+
+func TestConstraintUpdateInvalidatesPlanApproval(t *testing.T) {
+	s, c := buildFixtureWithApproval(t, &fixtureRunner{}, "", true)
+	ctx := context.Background()
+	if err := s.Store.SaveExecution(ctx, domain.ExecutionRecord{
+		ContributionID: c.ID,
+		Status:         "PAUSED",
+		Phase:          "CODING",
+		Constraints:    "Initial constraint",
+		PlanApproved:   true,
+		Plan:           &domain.Plan{Summary: "Initial plan"},
+	}, "test", "approved initial plan"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetConstraints(ctx, c.ID, "Updated constraint requiring new plan", true); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Store.Execution(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.PlanInvalidated || r.PlanApproved {
+		t.Fatalf("expected PlanInvalidated=true and PlanApproved=false after constraint update, got %+v", r)
+	}
+}
+
+type mutatingTestRunner struct {
+	fixtureRunner
+	runs int
+}
+
+func (m *mutatingTestRunner) Command(ctx context.Context, dir string, c domain.VerificationCommand, network bool) (domain.TestRun, error) {
+	m.runs++
+	_ = os.WriteFile(filepath.Join(dir, "sum.go"), []byte("package fixture\n// mutated during test\nfunc Add(a,b int) int {return a+b+"+strings.Repeat("0+", m.runs)+"0}\n"), 0600)
+	return domain.TestRun{
+		Command:    c,
+		Directory:  dir,
+		StartedAt:  time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+		ExitCode:   0,
+		Output:     "PASS",
+	}, nil
+}
+
+func TestRepeatedTestMutationsStopInsteadOfLoopingForever(t *testing.T) {
+	runner := &mutatingTestRunner{}
+	s, c := buildFixture(t, runner)
+	ctx := context.Background()
+	if _, err := s.Start(ctx, c.ID, true, false); err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	r, err := s.Store.Execution(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "BLOCKED" || r.Incident == nil || r.Incident.Kind != "verification_mutated_workspace" || r.MutatedTestRetries != 1 {
+		t.Fatalf("expected bounded stop on repeated test mutations, got %+v", r)
+	}
+}
+
+func TestFailedBatchSignatureIncludesAllFailedCommandsAndNormalizesDurations(t *testing.T) {
+	batch1 := []domain.TestRun{
+		{
+			Command:     domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./pkg/a"}},
+			ExitCode:    1,
+			FailureKind: "code_failure",
+			Output:      "--- FAIL: TestA (0.58s)\nFAIL\tpkg/a\t5.213s\n",
+		},
+		{
+			Command:  domain.VerificationCommand{Program: "go", Arguments: []string{"vet", "./..."}},
+			ExitCode: 0,
+			Output:   "ok",
+		},
+	}
+	batch2 := []domain.TestRun{
+		{
+			Command:     domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./pkg/a"}},
+			ExitCode:    1,
+			FailureKind: "code_failure",
+			Output:      "--- FAIL: TestA (1.42s)\nFAIL\tpkg/a\t8.004s\n",
+		},
+		{
+			Command:  domain.VerificationCommand{Program: "go", Arguments: []string{"vet", "./..."}},
+			ExitCode: 0,
+			Output:   "ok",
+		},
+	}
+	batch3 := []domain.TestRun{
+		{
+			Command:     domain.VerificationCommand{Program: "go", Arguments: []string{"test", "./pkg/b"}},
+			ExitCode:    1,
+			FailureKind: "code_failure",
+			Output:      "--- FAIL: TestA (0.58s)\nFAIL\tpkg/b\t5.213s\n",
+		},
+		{
+			Command:  domain.VerificationCommand{Program: "go", Arguments: []string{"vet", "./..."}},
+			ExitCode: 0,
+			Output:   "ok",
+		},
+	}
+	sig1 := failedBatchSignature(batch1)
+	sig2 := failedBatchSignature(batch2)
+	sig3 := failedBatchSignature(batch3)
+	if sig1 == "" || sig1 != sig2 {
+		t.Fatalf("expected normalized durations to produce identical batch signature: %q vs %q", sig1, sig2)
+	}
+	if sig1 == sig3 {
+		t.Fatalf("expected different failed command arguments/output to produce distinct batch signatures: %q vs %q", sig1, sig3)
+	}
+}
+
+func TestUnquotedDependencyFailureInFailingTestClassifiesAsDependenciesMissing(t *testing.T) {
+	cmd := domain.VerificationCommand{Program: "python3", Arguments: []string{"-m", "unittest"}}
+	d := diagnoseCommand(cmd, "--- FAIL: TestImport (0.01s)\nModuleNotFoundError: No module named 'pytest'", errors.New("exit status 1"), true)
+	if d.Kind != "dependencies_missing" {
+		t.Fatalf("expected dependencies_missing for unquoted ModuleNotFoundError inside test, got %+v", d)
+	}
+	quoted := diagnoseCommand(cmd, "--- FAIL: TestGit: unexpected fatal: detected dubious ownership in repository", errors.New("exit status 1"), true)
+	if quoted.Kind != "code_failure" {
+		t.Fatalf("expected code_failure for quoted assertion error, got %+v", quoted)
+	}
+}

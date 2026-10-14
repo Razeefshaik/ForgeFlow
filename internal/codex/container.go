@@ -44,12 +44,36 @@ func containerArguments(image, name, dir string, command domain.VerificationComm
 		netMode = "bridge"
 	}
 	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "2g", "--cpus", "2", "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly"}
-	for _, env := range []string{"HOME=/tmp", "TMPDIR=/tmp", "GOTMPDIR=/tmp", "GOTOOLCHAIN=local", "GOCACHE=/workspace/.forgeflow-runtime/linux/go-cache", "GOMODCACHE=/workspace/.forgeflow-runtime/linux/go-mod", "GOPATH=/workspace/.forgeflow-runtime/linux/go", "npm_config_cache=/workspace/.forgeflow-runtime/linux/npm", "PIP_CACHE_DIR=/workspace/.forgeflow-runtime/linux/python", "GRADLE_USER_HOME=/workspace/.forgeflow-runtime/linux/gradle", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/workspace"} {
+	for _, env := range []string{"HOME=/workspace/.forgeflow-runtime/linux/home", "XDG_CACHE_HOME=/workspace/.forgeflow-runtime/linux/xdg", "TMPDIR=/tmp", "GOTMPDIR=/tmp", "GOTOOLCHAIN=local", "GOCACHE=/workspace/.forgeflow-runtime/linux/go-cache", "GOMODCACHE=/workspace/.forgeflow-runtime/linux/go-mod", "GOPATH=/workspace/.forgeflow-runtime/linux/go", "npm_config_cache=/workspace/.forgeflow-runtime/linux/npm", "PIP_CACHE_DIR=/workspace/.forgeflow-runtime/linux/python", "GRADLE_USER_HOME=/workspace/.forgeflow-runtime/linux/gradle", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/workspace", "GIT_CONFIG_KEY_1=core.checkStat", "GIT_CONFIG_VALUE_1=minimal"} {
 		args = append(args, "--env", env)
 	}
 	// Override any image entrypoint so the recorded command is the actual process.
 	args = append(args, "--entrypoint", command.Program, image)
 	return append(args, command.Arguments...), nil
+}
+
+func prepareLinuxContainerCaches(dir string) error {
+	paths := []string{
+		filepath.Join(dir, ".forgeflow-runtime"),
+		filepath.Join(dir, ".forgeflow-runtime", "linux"),
+	}
+	for _, sub := range []string{"home", "xdg", "go-cache", "go-mod", "go", "npm", "python", "gradle"} {
+		paths = append(paths, filepath.Join(dir, ".forgeflow-runtime", "linux", sub))
+	}
+	for _, path := range paths {
+		if err := os.Mkdir(path, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return errors.New("container runtime cache is not writable")
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("container runtime cache must be an independent directory")
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil || !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(path)) {
+			return errors.New("container runtime cache crosses a link boundary")
+		}
+	}
+	return nil
 }
 
 func dockerControl(ctx context.Context, args ...string) (string, error) {
@@ -87,6 +111,9 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 	name := "forgeflow-verify-" + hex.EncodeToString(nonce[:])
 	args, err := containerArguments(image, name, dir, command, network)
 	if err != nil {
+		return rec, err
+	}
+	if err = prepareLinuxContainerCaches(dir); err != nil {
 		return rec, err
 	}
 	if prepareHooks {

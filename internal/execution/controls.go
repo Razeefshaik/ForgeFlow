@@ -36,6 +36,7 @@ func (s *Service) SetConstraints(ctx context.Context, id, text string, approved 
 	text = strings.TrimSpace(text)
 	if r.Constraints != text {
 		r.PlanInvalidated = true
+		r.PlanApproved = false
 	}
 	r.Constraints = text
 	return s.Store.SaveExecution(ctx, r, "user", "Human updated contribution constraints")

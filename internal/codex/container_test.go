@@ -60,6 +60,73 @@ func TestContainerPreflightBudgetIncludesCreationAndNativeProbe(t *testing.T) {
 	}
 }
 
+func TestContainerHomeSurvivesCachePreparation(t *testing.T) {
+	repo := t.TempDir()
+	if err := prepareLinuxContainerCaches(repo); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(repo, ".forgeflow-runtime", "linux", "home", "installed-tool")
+	if err := os.WriteFile(marker, []byte("preserve dependency"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareLinuxContainerCaches(repo); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "preserve dependency" {
+		t.Fatal("workspace dependency was lost", err)
+	}
+	other := t.TempDir()
+	if err := prepareLinuxContainerCaches(other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(other, ".forgeflow-runtime", "linux", "home", "installed-tool")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("dependency leaked into another workspace", err)
+	}
+}
+
+func TestContainerCacheRefusesExistingFile(t *testing.T) {
+	repo := t.TempDir()
+	if err := prepareLinuxContainerCaches(repo); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(repo, ".forgeflow-runtime", "linux", "home")
+	if err := os.Remove(home); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(home, []byte("repository data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareLinuxContainerCaches(repo); err == nil {
+		t.Fatal("accepted a repository file as container home")
+	}
+	if data, err := os.ReadFile(home); err != nil || string(data) != "repository data" {
+		t.Fatal("repository file was changed", err)
+	}
+}
+
+func TestRealContainerHomePersistence(t *testing.T) {
+	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
+		t.Skip("opt in to real Docker workspace persistence; no model session")
+	}
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLI{VerificationImage: os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	for _, script := range []string{
+		`set -eu; printf 'persisted' > "$HOME/fixture-tool"; printf 'cache' > "$XDG_CACHE_HOME/fixture-cache"`,
+		`set -eu; test "$(cat "$HOME/fixture-tool")" = persisted; test "$(cat "$XDG_CACHE_HOME/fixture-cache")" = cache; test "$(git config --get core.checkStat)" = minimal; test "$(git config --get safe.directory)" = /workspace; echo 'fresh container preserved workspace HOME and caches: PASS'`,
+	} {
+		run, err := c.containerCommand(ctx, repo, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", script}}, false)
+		t.Log(run.Output)
+		if err != nil || run.ExitCode != 0 {
+			t.Fatal("container workspace persistence failed", err, run.Output)
+		}
+	}
+}
+
 func TestRealContainerPreflight(t *testing.T) {
 	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
 		t.Skip("opt in to real Docker preflight")
