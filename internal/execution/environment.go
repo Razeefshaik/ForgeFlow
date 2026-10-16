@@ -14,18 +14,75 @@ import (
 
 var environmentBlocked = errors.New("agent requested environment repair")
 
-func (s *Service) prepareEnvironment(ctx context.Context, c domain.Contribution, r *domain.ExecutionRecord, repo, meta string, force bool) error {
+// savedRecipeRetryable reports whether a blocked environment failed for a
+// reason outside its recipe: an unavailable runtime, a transient network or
+// resource failure, or a download permission that has since been granted.
+// Rerunning the unchanged recipe is then the correct repair; asking the model
+// for a new recipe would only spend tokens and invite unrelated changes.
+func savedRecipeRetryable(r *domain.ExecutionRecord) bool {
+	if r.EnvironmentPlan == nil || len(r.EnvironmentPlan.Blockers) > 0 || r.Environment == nil || r.Environment.Status != "blocked" {
+		return false
+	}
+	failure := r.Environment.Error
+	if strings.Contains(failure, "dependency download approval is required") {
+		return r.Network
+	}
+	if strings.Contains(failure, "timed out") || strings.Contains(failure, context.DeadlineExceeded.Error()) {
+		// A slow step needs the planner to see the evidence and choose a faster
+		// layout; replaying it would spend another full preparation budget.
+		return false
+	}
+	switch diagnoseCommand(domain.VerificationCommand{}, failure, nil, r.Network).Kind {
+	case "runtime_unavailable", "dependency_network", "network_transport", "rate_limit", "resource_busy", "disk_capacity":
+		return true
+	}
+	return false
+}
+
+// environmentFailureEvidence summarizes the last preparation attempt from the
+// saved record, so even older records whose incident kept only a bare error
+// give the planner the failing command and its output.
+func environmentFailureEvidence(env *domain.ExecutionEnvironment) string {
+	if env == nil || env.Status != "blocked" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Previous preparation error:\n" + promptExcerpt(env.Error, 6144) + "\n")
+	start := len(env.Checks) - 2
+	if start < 0 {
+		start = 0
+	}
+	for _, run := range env.Checks[start:] {
+		fmt.Fprintf(&b, "Command: %s\nExit: %d; started %s; finished %s\nOutput excerpt:\n%s\n", promptExcerpt(run.Command.Program+" "+strings.Join(run.Command.Arguments, " "), 1024), run.ExitCode, run.StartedAt.Format(time.RFC3339), run.FinishedAt.Format(time.RFC3339), promptExcerpt(run.Output, 3072))
+	}
+	return b.String()
+}
+
+// prepareEnvironment provisions the saved recipe, replanning when its inputs
+// changed or it is known to be broken. repair marks a call that is itself the
+// bounded correction for an earlier failure: it may replan, but a failure ends
+// automatic recovery. A replan caused only by stale or blocked saved state is
+// not a repair, so its failure still receives one evidence-driven correction.
+func (s *Service) prepareEnvironment(ctx context.Context, c domain.Contribution, r *domain.ExecutionRecord, repo, meta string, repair bool) error {
 	p, ok := s.Runner.(codex.EnvironmentPreparer)
 	if !ok || p.EnvironmentBase() == "" {
 		return nil
 	}
-	if r.EnvironmentPlan != nil && !force {
+	replan := repair
+	if r.EnvironmentPlan != nil && !repair {
 		fingerprint, err := p.EnvironmentFingerprint(repo, *r.EnvironmentPlan)
-		if err != nil || r.Environment == nil || fingerprint != r.Environment.Fingerprint || r.Environment.Status == "blocked" {
-			force = true
+		switch {
+		case err != nil || r.Environment == nil || fingerprint != r.Environment.Fingerprint:
+			replan = true
+		case r.Environment.Status == "blocked" && savedRecipeRetryable(r):
+			if e := s.Store.WorkspaceEvent(ctx, c.ID, "EnvironmentRecipeRetried", "The saved environment recipe failed for an infrastructure or permission reason; rerunning it unchanged without another planning session", map[string]string{"previous_error": promptExcerpt(r.Environment.Error, 2048)}); e != nil {
+				return e
+			}
+		case r.Environment.Status == "blocked":
+			replan = true
 		}
 	}
-	if r.EnvironmentPlan == nil || force {
+	if r.EnvironmentPlan == nil || replan {
 		if inspector, ok := s.Runner.(interface {
 			InspectEnvironment(context.Context, string) (domain.ExecutionEnvironment, error)
 		}); ok && (r.Environment == nil || r.Environment.Image == "") {
@@ -45,7 +102,8 @@ func (s *Service) prepareEnvironment(ctx context.Context, c domain.Contribution,
 Return an environment recipe for ALL required languages, libraries, native packages and build tools, not just the primary language. Use repository-required versions, not latest or whatever is installed. Prefer a suitable official Linux development base image with an explicit version; never weaken repository requirements to fit an image. Include all files consulted for environment requirements in files (repository-relative, regular files; no credentials, .git or runtime data). These files fingerprint the recipe and only these files enter the image build context.
 If the repository does not constrain a public dependency version, that absence is not an ambiguous or conflicting constraint and does not require the operator to choose versions. With downloads approved, you may read public package-registry HTTPS metadata during planning; this is read-only research, not permission to install or execute repository code. Select compatible explicit versions from that authoritative metadata, install them through the recipe in an isolated image or workspace environment, and record the resolved dependency set (including transitive versions) in preparation output. Respect all declared constraints; do not modify repository manifests merely to add runner pins. Without download approval, use only available compatible images/artifacts and identify exactly what cannot be supplied offline.
 image_commands run as root ONLY inside an isolated Docker build at /opt/forgeflow-inputs, where selected files retain their relative paths. Use structured program/arguments; shell scripts, if necessary, are arguments to sh -c, never host commands. Install language runtimes and system packages there. Base/image must supply sh, id, touch, rm, grep and Git for isolation/verification. Image ends as UID/GID 1000. No host mounts, Docker socket, privileged flags or credentials are available.
-workspace_commands run as UID 1000 in /workspace (active clone), with writable workspace and /tmp, read-only image root and .git. Install locked project dependencies here, using .forgeflow-runtime paths for caches/virtual environments. Preserve manifests and lockfiles. Environment variables are literal image defaults (PATH may reference the inherited ${PATH}); HOME=/tmp, GOTOOLCHAIN=local, Git safety and workspace cache paths are enforced. Set tool paths such as JAVA_HOME or a venv PATH when needed. Avoid global installs during workspace commands.
+workspace_commands run as UID 1000 in /workspace (active clone), with writable workspace and /tmp, read-only image root and .git. Install locked project dependencies here. Preserve manifests and lockfiles. ` + codex.ContainerRuntimeDir + ` is a fast, persistent, per-contribution container volume; every other /workspace path is a much slower host file share. Create virtual environments, tool installs and dependency or build caches under ` + codex.ContainerRuntimeDir + ` (for example ` + codex.ContainerRuntimeDir + `/venv), never elsewhere in .forgeflow-runtime. ForgeFlow enforces HOME=` + codex.ContainerRuntimeDir + `/home, XDG_CACHE_HOME, GOCACHE, GOMODCACHE, GOPATH, npm_config_cache, PIP_CACHE_DIR and GRADLE_USER_HOME under that volume, TMPDIR=/tmp (a 2 GiB tmpfs), GOTOOLCHAIN=local and Git safety; recipe values for those variables are overridden at run time. Other environment variables are literal image defaults (PATH may reference the inherited ${PATH}). Set tool paths such as JAVA_HOME or a venv PATH when needed. Avoid global installs during workspace commands.
+Prefer the repository's own dependency commands (for example ./gradlew dependencies or a --dry-run build, mvn dependency:go-offline, pip install -r requirements.txt, npm ci, go mod download) over custom generated scripts. A generated script is a common source of failure: if one is unavoidable, keep it minimal and use APIs valid for the pinned tool version (for example, inside a Gradle init-script task closure, reference rootProject.allprojects explicitly).
 Repository integration tests may build their own CLI or helper under a short startup deadline. When repository evidence establishes this requirement, workspace_commands may prewarm that required build into .forgeflow-runtime after dependency installation. Build from the current workspace. Do not treat the prepared binary as verification evidence: rerun the unchanged required tests, which must rebuild or validate their own tools.
 hook_commands install repository-required Git hooks (for example make hooks) after workspace dependencies, in the same isolated container with ONLY .git/hooks and the bounded .git/info/lefthook.checksum file additionally writable. All other Git metadata stays read-only. Include the hook manager and pinned version in image_commands. Put hook verification (for example make hooks-check) in checks, which run with all Git metadata read-only. Do not disable hooks, override core.hooksPath, or request host execution. Include hook configuration and installers in files. If the installer requires writing Git config or other metadata, report the precise unsupported requirement.
 Windows bind mounts can appear owned by root while commands run as UID 1000. ForgeFlow trusts only /workspace through inherited Git configuration. If repository Git probes deliberately discard that configuration, image_commands may install an image-local Git launcher that invokes the resolved real Git executable with -c safe.directory=/workspace and forwards all arguments unchanged. Verify the real Git path and avoid recursive launchers. Never trust wildcard paths, override hooks, or change repository code to accommodate ownership.
@@ -64,9 +122,15 @@ Configured starting image (may be unsuitable; select a matching base when necess
 		if r.EnvironmentPlan != nil {
 			previous, _ := json.Marshal(r.EnvironmentPlan)
 			prompt += "\nPrevious recipe:\n" + string(previous)
+			if r.Incident != nil || (r.Environment != nil && r.Environment.Status == "blocked") {
+				prompt += "\nCorrect the specific failure below. Keep the parts of the previous recipe that worked; change only what the evidence shows is wrong or too slow."
+			}
 		}
 		if r.Incident != nil {
-			prompt += "\nCurrent failure/request:\n" + r.Incident.Evidence
+			prompt += "\nCurrent failure/request:\n" + promptExcerpt(r.Incident.Evidence, 12288)
+		}
+		if evidence := environmentFailureEvidence(r.Environment); evidence != "" {
+			prompt += "\n" + evidence
 		}
 		var plan domain.EnvironmentPlan
 		var err error
@@ -98,7 +162,7 @@ Configured starting image (may be unsuitable; select a matching base when necess
 			return s.blockEnvironment(ctx, r, err.Error())
 		}
 		permissionUpgrade := r.Environment != nil && r.Environment.Status == "blocked" && !r.Environment.Network && r.Network
-		if force && r.Environment != nil && fingerprint == r.Environment.Fingerprint && !permissionUpgrade {
+		if replan && r.Environment != nil && fingerprint == r.Environment.Fingerprint && !permissionUpgrade {
 			return s.blockEnvironment(ctx, r, "The proposed repair repeats the unchanged environment recipe. Inspect the saved failure before trying again.")
 		}
 		r.EnvironmentPlan = &plan
@@ -131,8 +195,10 @@ Configured starting image (may be unsuitable; select a matching base when necess
 		// One evidence-driven recipe correction, not a blind replay. Approval,
 		// credentials and explicit blockers cannot be repaired by another model call.
 		diagnosis := diagnoseCommand(domain.VerificationCommand{}, report.Error, err, r.Network)
-		if !force && r.Network && diagnosis.Kind != "runtime_unavailable" && diagnosis.Kind != "verification_timeout" && len(r.EnvironmentPlan.Blockers) == 0 && !strings.Contains(err.Error(), "changed recipe inputs") && r.RecoveryAttempts < maxRecoveryActions {
-			r.RecoveryAttempts++
+		if !repair && r.Network && diagnosis.Kind != "runtime_unavailable" && diagnosis.Kind != "verification_timeout" && len(r.EnvironmentPlan.Blockers) == 0 && !strings.Contains(err.Error(), "changed recipe inputs") && r.RecoveryAttempts < maxRecoveryActions && r.Incident != nil {
+			if e := s.recoveryAction(ctx, r, r.Incident, "Requesting one environment recipe correction from the actual preparation failure"); e != nil {
+				return e
+			}
 			if repairErr := s.prepareEnvironment(ctx, c, r, repo, meta, true); repairErr != nil {
 				return repairErr
 			}
