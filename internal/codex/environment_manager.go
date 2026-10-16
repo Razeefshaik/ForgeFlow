@@ -307,6 +307,14 @@ func (m *EnvironmentManager) probeEnvironment(ctx context.Context, c *CLI) ([]En
 	if err = os.Mkdir(repo, 0700); err != nil {
 		return nil, err
 	}
+	if c.VerificationImage != "" {
+		// The probe workspace is disposable, so its runtime volume is too.
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
+			defer cancel()
+			_ = c.RemoveRuntimeVolume(cleanupCtx, repo)
+		}()
+	}
 	init := exec.CommandContext(ctx, "git", "-c", "core.hooksPath="+filepath.Join(dir, "no-hooks"), "init", "--quiet", repo)
 	init.Env = environment()
 	configureProcess(init)

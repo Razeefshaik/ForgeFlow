@@ -39,6 +39,7 @@ type CLI struct {
 	VerificationImage string
 	environmentMu     sync.Mutex
 	environments      map[string]domain.ExecutionEnvironment
+	volumes           map[string]bool
 	modeMu            sync.RWMutex
 	sandboxMode       string
 }

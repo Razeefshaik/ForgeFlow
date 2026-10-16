@@ -112,18 +112,46 @@ func TestRealContainerHomePersistence(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	other := t.TempDir()
+	if err := os.Mkdir(filepath.Join(other, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	c := &CLI{VerificationImage: os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		for _, dir := range []string{repo, other} {
+			if err := c.RemoveRuntimeVolume(ctx, dir); err != nil {
+				t.Error(err)
+			}
+		}
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	for _, script := range []string{
-		`set -eu; printf 'persisted' > "$HOME/fixture-tool"; printf 'cache' > "$XDG_CACHE_HOME/fixture-cache"`,
-		`set -eu; test "$(cat "$HOME/fixture-tool")" = persisted; test "$(cat "$XDG_CACHE_HOME/fixture-cache")" = cache; test "$(git config --get core.checkStat)" = minimal; test "$(git config --get safe.directory)" = /workspace; echo 'fresh container preserved workspace HOME and caches: PASS'`,
-	} {
-		run, err := c.containerCommand(ctx, repo, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", script}}, false)
-		t.Log(run.Output)
-		if err != nil || run.ExitCode != 0 {
-			t.Fatal("container workspace persistence failed", err, run.Output)
+	run := func(dir, script string) domain.TestRun {
+		t.Helper()
+		rec, err := c.containerCommand(ctx, dir, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", script}}, false)
+		t.Log(rec.Output)
+		if err != nil || rec.ExitCode != 0 {
+			t.Fatal("container workspace persistence failed", err, rec.Output)
 		}
+		return rec
+	}
+	run(repo, `set -eu; printf 'persisted' > "$HOME/fixture-tool"; printf 'cache' > "$XDG_CACHE_HOME/fixture-cache"`)
+	run(repo, `set -eu; test "$(cat "$HOME/fixture-tool")" = persisted; test "$(cat "$XDG_CACHE_HOME/fixture-cache")" = cache; test "$(git config --get core.checkStat)" = minimal; test "$(git config --get safe.directory)" = /workspace; echo 'fresh container preserved workspace HOME and caches: PASS'`)
+	// A different workspace has its own volume and never sees these files.
+	run(other, `set -eu; test ! -e "$HOME/fixture-tool"; test -w "$HOME"; echo 'separate workspace has an isolated runtime volume: PASS'`)
+	// Dependency installs write thousands of small files; the runtime volume
+	// must not route them through the slow host share.
+	started := time.Now()
+	run(repo, `set -eu; mkdir -p "$HOME/many"; i=0; while [ $i -lt 3000 ]; do echo x > "$HOME/many/$i"; i=$((i+1)); done; test "$(ls "$HOME/many" | wc -l)" -eq 3000`)
+	if elapsed := time.Since(started); elapsed > 20*time.Second {
+		t.Fatalf("3000 small writes in the runtime volume took %s", elapsed)
+	} else {
+		t.Logf("3000 small writes in the runtime volume, including container startup: %s", elapsed)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".forgeflow-runtime", "linux", "many")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("runtime volume files leaked onto the host share", err)
 	}
 }
 
@@ -136,6 +164,13 @@ func TestRealContainerPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &CLI{VerificationImage: os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := c.RemoveRuntimeVolume(ctx, dir); err != nil {
+			t.Error(err)
+		}
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), c.CheckTimeout())
 	defer cancel()
 	if err := c.checkContainer(ctx, dir); err != nil {

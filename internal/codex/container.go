@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,8 +19,26 @@ const containerCreateTimeout = 2 * time.Minute
 const containerProbeTimeout = 30 * time.Second
 const containerCleanupTimeout = 30 * time.Second
 
-// Include daemon startup/create time before the short isolation command runs.
-const containerCheckTimeout = containerCreateTimeout + containerProbeTimeout + containerCleanupTimeout
+// Include daemon startup/create time and one-time runtime volume
+// initialization before the short isolation command runs.
+const containerCheckTimeout = 2*containerCreateTimeout + containerProbeTimeout + containerCleanupTimeout
+
+// ContainerRuntimeDir holds container HOME, tool caches and dependency
+// environments. It is a per-workspace Docker volume rather than part of the
+// host bind mount: on Docker Desktop for Windows, small-file writes through the
+// bind mount measured roughly 100x slower (3,000 files: 26s versus 0.24s),
+// which made ordinary dependency installation exceed provisioning deadlines.
+const ContainerRuntimeDir = "/workspace/.forgeflow-runtime/linux"
+
+var runtimeSubdirectories = []string{"home", "xdg", "go-cache", "go-mod", "go", "npm", "python", "gradle"}
+
+// RuntimeVolumeName derives the one volume owned by a workspace. Different
+// workspaces never share a volume, so installed tools cannot leak between
+// contributions, and the name is stable so caches survive fresh containers.
+func RuntimeVolumeName(dir string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(dir))))
+	return "forgeflow-runtime-" + hex.EncodeToString(sum[:12])
+}
 
 // containerArguments exposes exactly one independent clone to an unprivileged
 // Linux process. The host environment, home, Docker socket and parent metadata
@@ -43,7 +62,9 @@ func containerArguments(image, name, dir string, command domain.VerificationComm
 	if network {
 		netMode = "bridge"
 	}
-	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "2g", "--cpus", "2", "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly"}
+	// JVM and Node builds count every thread against the pids limit; 256 tasks
+	// was exhausted by ordinary Gradle test workers. 4096 still bounds fork bombs.
+	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096", "--memory", "4g", "--cpus", "4", "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly", "--mount", "type=volume,source=" + RuntimeVolumeName(dir) + ",target=" + ContainerRuntimeDir}
 	for _, env := range []string{"HOME=/workspace/.forgeflow-runtime/linux/home", "XDG_CACHE_HOME=/workspace/.forgeflow-runtime/linux/xdg", "TMPDIR=/tmp", "GOTMPDIR=/tmp", "GOTOOLCHAIN=local", "GOCACHE=/workspace/.forgeflow-runtime/linux/go-cache", "GOMODCACHE=/workspace/.forgeflow-runtime/linux/go-mod", "GOPATH=/workspace/.forgeflow-runtime/linux/go", "npm_config_cache=/workspace/.forgeflow-runtime/linux/npm", "PIP_CACHE_DIR=/workspace/.forgeflow-runtime/linux/python", "GRADLE_USER_HOME=/workspace/.forgeflow-runtime/linux/gradle", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/workspace", "GIT_CONFIG_KEY_1=core.checkStat", "GIT_CONFIG_VALUE_1=minimal"} {
 		args = append(args, "--env", env)
 	}
@@ -72,6 +93,83 @@ func prepareLinuxContainerCaches(dir string) error {
 		if err != nil || !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(path)) {
 			return errors.New("container runtime cache crosses a link boundary")
 		}
+	}
+	return nil
+}
+
+// ensureRuntimeVolume creates the workspace's runtime volume and gives UID 1000
+// its top-level directories. A fresh volume is root-owned, so this one short
+// container runs as root with only CAP_CHOWN, offline, with a read-only root
+// and no workspace mount. Initialization is idempotent and non-recursive, so
+// existing caches are never rewritten.
+func (c *CLI) ensureRuntimeVolume(ctx context.Context, image, dir string) error {
+	volume := RuntimeVolumeName(dir)
+	c.environmentMu.Lock()
+	ready := c.volumes[volume+"\x00"+image]
+	c.environmentMu.Unlock()
+	if ready {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	createCtx, stop := context.WithTimeout(context.Background(), containerCreateTimeout)
+	out, err := dockerControl(createCtx, "volume", "create", "--label", "forgeflow.runtime=true", volume)
+	stop()
+	if err != nil {
+		return fmt.Errorf("container creation failed: runtime volume %s: %w; %s", volume, err, out)
+	}
+	var nonce [16]byte
+	if _, err = rand.Read(nonce[:]); err != nil {
+		return err
+	}
+	name := "forgeflow-volume-init-" + hex.EncodeToString(nonce[:])
+	script := "set -eu\n"
+	owned := []string{"/runtime"}
+	for _, sub := range runtimeSubdirectories {
+		script += "mkdir -p /runtime/" + sub + "\n"
+		owned = append(owned, "/runtime/"+sub)
+	}
+	script += "chown 1000:1000 " + strings.Join(owned, " ") + "\n"
+	args := []string{"run", "--rm", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--user", "0:0", "--read-only", "--cap-drop=ALL", "--cap-add=CHOWN", "--security-opt", "no-new-privileges", "--network", "none", "--pids-limit", "64", "--mount", "type=volume,source=" + volume + ",target=/runtime", "--entrypoint", "sh", image, "-c", script}
+	// As with verification containers, wait for the Docker client rather than
+	// abandoning a daemon-owned container mid-creation; then remove that exact name.
+	runCtx, cancel := context.WithTimeout(context.Background(), containerCreateTimeout)
+	out, err = dockerControl(runCtx, args...)
+	cancel()
+	if err != nil {
+		cleanupCtx, done := context.WithTimeout(context.Background(), containerCleanupTimeout)
+		cleanup, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", name)
+		done()
+		err = fmt.Errorf("container creation failed: runtime volume %s could not be initialized: %w; %s", volume, err, out)
+		if cleanupErr != nil && !strings.Contains(cleanup, "No such container") {
+			err = errors.Join(err, fmt.Errorf("container cleanup failed for %s: %s", name, cleanup))
+		}
+		return err
+	}
+	c.environmentMu.Lock()
+	if c.volumes == nil {
+		c.volumes = map[string]bool{}
+	}
+	c.volumes[volume+"\x00"+image] = true
+	c.environmentMu.Unlock()
+	return nil
+}
+
+// RemoveRuntimeVolume deletes exactly the volume owned by dir. It is used for
+// disposable probe workspaces and abandoned contributions; it never prunes.
+func (c *CLI) RemoveRuntimeVolume(ctx context.Context, dir string) error {
+	volume := RuntimeVolumeName(dir)
+	out, err := dockerControl(ctx, "volume", "rm", "--force", volume)
+	c.environmentMu.Lock()
+	for key := range c.volumes {
+		if strings.HasPrefix(key, volume+"\x00") {
+			delete(c.volumes, key)
+		}
+	}
+	c.environmentMu.Unlock()
+	if err != nil && !strings.Contains(strings.ToLower(out), "no such volume") {
+		return fmt.Errorf("remove runtime volume %s: %w; %s", volume, err, out)
 	}
 	return nil
 }
@@ -114,6 +212,10 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 		return rec, err
 	}
 	if err = prepareLinuxContainerCaches(dir); err != nil {
+		return rec, err
+	}
+	if err = c.ensureRuntimeVolume(ctx, image, dir); err != nil {
+		rec.Output = err.Error()
 		return rec, err
 	}
 	if prepareHooks {
