@@ -155,6 +155,56 @@ func TestRealContainerHomePersistence(t *testing.T) {
 	}
 }
 
+func TestMissingImageNamesTheRebuild(t *testing.T) {
+	for _, output := range []string{"Error response from daemon: No such image: sha256:b7fad75", "Unable to find image 'gone:1' locally", "Docker image is not cached: gone:1"} {
+		if hint := missingImageHint("gone:1", output); !strings.Contains(hint, "docker build --tag "+BootstrapImage+" scripts/execution-image") {
+			t.Fatal(output, hint)
+		}
+	}
+	if missingImageHint("x:1", "permission denied while trying to connect") != "" {
+		t.Fatal("unrelated Docker failure described as a missing image")
+	}
+	args, err := containerArguments("img:1", "n", func() string {
+		dir := t.TempDir()
+		os.Mkdir(filepath.Join(dir, ".git"), 0700)
+		return dir
+	}(), domain.VerificationCommand{Program: "sh"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, "\n")
+	for _, want := range []string{"type=volume,source=forgeflow-runtime-", "target=" + ContainerRuntimeDir, "--pids-limit\n4096", "--memory\n4g"} {
+		if !strings.Contains(joined, want) {
+			t.Fatal("missing", want, joined)
+		}
+	}
+}
+
+func TestRealMissingVerificationImageExplainsRepair(t *testing.T) {
+	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
+		t.Skip("opt in to real Docker preflight")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLI{VerificationImage: "forgeflow-missing-image-fixture:0"}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		_ = c.RemoveRuntimeVolume(ctx, dir)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), c.CheckTimeout())
+	defer cancel()
+	err := c.checkContainer(ctx, dir)
+	if err == nil || !strings.Contains(err.Error(), "container isolation check failed") || !strings.Contains(err.Error(), "docker build --tag "+BootstrapImage) {
+		t.Fatal("missing image did not explain the repair:", err)
+	}
+	if _, err = c.InspectEnvironment(ctx, dir); err == nil || !strings.Contains(err.Error(), "container creation failed") || !strings.Contains(err.Error(), "scripts/execution-image") {
+		t.Fatal("inventory did not explain the repair:", err)
+	}
+}
+
 func TestRealContainerPreflight(t *testing.T) {
 	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
 		t.Skip("opt in to real Docker preflight")

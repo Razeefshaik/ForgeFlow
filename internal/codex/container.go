@@ -97,6 +97,20 @@ func prepareLinuxContainerCaches(dir string) error {
 	return nil
 }
 
+// BootstrapImage is the verification image built from scripts/execution-image.
+const BootstrapImage = "forgeflow-verification:go1.26-node22"
+
+// missingImageHint turns Docker's "no such image" into the exact repair. A
+// Docker Desktop reset deletes local images, and the configured image is never
+// pulled implicitly.
+func missingImageHint(image, output string) string {
+	text := strings.ToLower(output)
+	if !strings.Contains(text, "no such image") && !strings.Contains(text, "unable to find image") && !strings.Contains(text, "not cached") {
+		return ""
+	}
+	return fmt.Sprintf("The verification image %s is not available in Docker (a Docker Desktop reset or image cleanup removes local images). Rebuild the bootstrap image from the ForgeFlow root with `docker build --tag %s scripts/execution-image`, set \"verification_image\": %q in configs/local.json, restart ForgeFlow and recover the contribution.", image, BootstrapImage, BootstrapImage)
+}
+
 // ensureRuntimeVolume creates the workspace's runtime volume and gives UID 1000
 // its top-level directories. A fresh volume is root-owned, so this one short
 // container runs as root with only CAP_CHOWN, offline, with a read-only root
@@ -142,6 +156,9 @@ func (c *CLI) ensureRuntimeVolume(ctx context.Context, image, dir string) error 
 		cleanup, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", name)
 		done()
 		err = fmt.Errorf("container creation failed: runtime volume %s could not be initialized: %w; %s", volume, err, out)
+		if hint := missingImageHint(image, out); hint != "" {
+			err = fmt.Errorf("%w\n%s", err, hint)
+		}
 		if cleanupErr != nil && !strings.Contains(cleanup, "No such container") {
 			err = errors.Join(err, fmt.Errorf("container cleanup failed for %s: %s", name, cleanup))
 		}
@@ -233,6 +250,10 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 	if createErr != nil {
 		rec.Output = out
 		err = fmt.Errorf("container creation failed: %w; %s", createErr, out)
+		if hint := missingImageHint(image, out); hint != "" {
+			err = fmt.Errorf("%w\n%s", err, hint)
+			rec.Output += "\n" + hint
+		}
 		// A timed-out create may have reached the daemon; use the reserved name.
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
 		defer cancel()
