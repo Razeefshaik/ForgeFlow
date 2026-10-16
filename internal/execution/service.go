@@ -172,7 +172,9 @@ func (s *Service) startLocked(ctx context.Context, id string, network, retry boo
 	if err = s.Store.SaveExecutionCheckpoints(ctx, record, states, "user", "Human approved coding, verification and independent review"); err != nil {
 		return record, err
 	}
-	runCtx, cancel := context.WithTimeout(s.ctx, 2*time.Hour)
+	// Agents, provisioning and every command keep their own deadlines; this is
+	// only a backstop. Large builds plus baseline verification exceed two hours.
+	runCtx, cancel := context.WithTimeout(s.ctx, 6*time.Hour)
 	job := &task{cancel: cancel, done: make(chan struct{})}
 	s.tasks[id] = job
 	s.wg.Add(1)
