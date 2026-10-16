@@ -29,6 +29,31 @@ type EnvironmentPreparer interface {
 	EnvironmentBase() string
 }
 
+// Provisioning installs complete toolchains and dependency graphs. The budget
+// covers large Gradle/Maven resolutions while still bounding a stalled step.
+const environmentPreparationTimeout = 30 * time.Minute
+
+const slowWorkspaceHint = "Writes under /workspace outside " + ContainerRuntimeDir + " go through the host file share, which is much slower than the container volume. Keep virtual environments, tool installs, dependency caches and build caches under " + ContainerRuntimeDir + "."
+
+// commandExcerpt keeps the start of a command's output and a larger tail,
+// where build tools print the actual failure.
+func commandExcerpt(output string, limit int) string {
+	output = strings.TrimSpace(output)
+	if len(output) <= limit {
+		return output
+	}
+	head := limit / 4
+	return output[:head] + "\n...[output omitted; the complete record is saved with the environment evidence]...\n" + output[len(output)-(limit-head):]
+}
+
+func describeCommand(command domain.VerificationCommand) string {
+	text := command.Program + " " + strings.Join(command.Arguments, " ")
+	if len(text) > 600 {
+		text = text[:600] + " ...[command truncated]"
+	}
+	return text
+}
+
 var imageReference = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,250}$`)
 var immutableImage = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var environmentKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
@@ -329,8 +354,12 @@ func buildEnvironmentImage(ctx context.Context, base, fingerprint, dir string, n
 	out := &bounded{limit: 32 << 10}
 	cmd.Stdout, cmd.Stderr = out, out
 	report.Actions = append(report.Actions, "Managed Dockerfile:\n"+recipe)
+	started := time.Now()
 	err = cmd.Run()
 	report.Actions = append(report.Actions, out.String())
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "", fmt.Errorf("environment image build failed: timed out after %s: %w; %s", time.Since(started).Round(time.Second), ctx.Err(), commandExcerpt(out.String(), 6144))
+	}
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -344,7 +373,8 @@ func buildEnvironmentImage(ctx context.Context, base, fingerprint, dir string, n
 }
 
 func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, plan domain.EnvironmentPlan) (report domain.ExecutionEnvironment, err error) {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	parent := ctx
+	ctx, cancel := context.WithTimeout(ctx, environmentPreparationTimeout)
 	defer cancel()
 	report = domain.ExecutionEnvironment{Status: "checking", Network: network, Capabilities: []string{
 		"Inspect repository and persisted environment/verification evidence",
@@ -423,11 +453,15 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	run := func(command domain.VerificationCommand, online, hooks bool) error {
 		rec, e := c.containerCommandMode(ctx, report.Image, dir, command, online, hooks)
 		report.Checks = append(report.Checks, rec)
-		if ctx.Err() != nil {
-			return ctx.Err()
+		// A pause or stop is not a recipe failure; only our own budget is.
+		if parent.Err() != nil {
+			return parent.Err()
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("environment prerequisite failed: timed out after %s (the preparation budget is %s) while running: %s\n%s\nOutput before the deadline:\n%s: %w", rec.FinishedAt.Sub(rec.StartedAt).Round(time.Second), environmentPreparationTimeout, describeCommand(command), slowWorkspaceHint, commandExcerpt(rec.Output, 6144), ctx.Err())
 		}
 		if e != nil || rec.ExitCode != 0 {
-			return fmt.Errorf("environment prerequisite failed: %s %s: %v; %s", command.Program, strings.Join(command.Arguments, " "), e, rec.Output)
+			return fmt.Errorf("environment prerequisite failed: %s: exit %d, %v\nOutput:\n%s", describeCommand(command), rec.ExitCode, e, commandExcerpt(rec.Output, 8192))
 		}
 		return nil
 	}
