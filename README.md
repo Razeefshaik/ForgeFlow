@@ -94,19 +94,22 @@ $env:FORGEFLOW_LIVE_TEST_URL='http://127.0.0.1:8081'
 npm --prefix apps/web test
 ```
 The live Run check performs read-only GitHub requests and appends scan/audit history.
-Opt into actual authenticated Codex workflow QA on a disposable local Go repository:
+Opt into actual authenticated Codex workflow QA on a disposable local repository (Go by default; `python` and `gradle` fixtures exercise dependency provisioning and baseline verification with container verification and approved downloads):
 ```powershell
 $env:FORGEFLOW_REAL_CODEX_TEST='1'
-go test ./internal/execution -run '^TestRealCodexWorkflow$' -v -timeout 12m
-Remove-Item Env:FORGEFLOW_REAL_CODEX_TEST
+$env:FORGEFLOW_TEST_CONTAINER_IMAGE='forgeflow-verification:go1.26-node22'
+$env:FORGEFLOW_TEST_SANDBOX='mxc'
+$env:FORGEFLOW_TEST_FIXTURE='python'   # go | python | gradle
+go test ./internal/execution -run '^TestRealCodexWorkflow$' -v -timeout 60m
 ```
+Set `FORGEFLOW_TEST_CONTRIBUTIONS_ROOT` to a short absolute folder to keep Windows paths short, and `FORGEFLOW_TEST_EVIDENCE` to keep the run's records.
 These tests do not execute the existing detent contribution or submit a remote PR.
 
 ## Approval rules
 
-Windows installations with working MXC editing but incompatible Git/MSYS tests can explicitly use [container verification](docs/container-execution.md). This keeps Codex and the application native; only approved verification commands run in Docker. The default remains native execution, and selecting an image does not resume any contribution.
+Windows installations with working MXC editing but incompatible Git/MSYS tests can explicitly use [container verification](docs/container-execution.md). Build its bootstrap image once with `docker build --tag forgeflow-verification:go1.26-node22 scripts/execution-image` and set `"verification_image": "forgeflow-verification:go1.26-node22"` in `configs/local.json`; use the tag rather than an image ID, which a Docker Desktop reset deletes. `npm run dev` warns when Docker or the image is missing. This keeps Codex and the application native; only approved verification commands run in Docker. The default remains native execution, and selecting an image does not resume any contribution.
 
-Container execution prepares a repository-specific environment before coding: Codex inspects requirements across languages, ForgeFlow provisions a matching image and dependencies, and real prerequisite checks gate execution. Agents receive environment evidence and can request bounded repairs. Toolchain mismatches and account usage limits stop wasteful source-fix retries. See the linked guide for supported boundaries, validation and operator-required services/credentials.
+Container execution prepares a repository-specific environment before coding, then runs the required checks once on the untouched base so environment problems stop before coding and failures that already exist upstream are disclosed instead of chased ([repair report](docs/contribution-repair-2026-10-17.md)): Codex inspects requirements across languages, ForgeFlow provisions a matching image and dependencies, and real prerequisite checks gate execution. Agents receive environment evidence and can request bounded repairs. Toolchain mismatches and account usage limits stop wasteful source-fix retries. See the linked guide for supported boundaries, validation and operator-required services/credentials.
 
 Human approval precedes contribution execution and PR submission. No automatic PR submission/merge. Config changes wait for Apply. Codex effort never influences canonical ranking.
 
