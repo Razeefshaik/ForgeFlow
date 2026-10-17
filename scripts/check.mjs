@@ -8,7 +8,9 @@ function run(command, args, cwd = root) {
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
-run('go', ['test', './...'])
+// The execution package runs real Git and Go fixtures for several minutes;
+// the default ten-minute limit fails it on a loaded machine.
+run('go', ['test', '-timeout', '30m', './...'])
 run('go', ['vet', './...'])
 fs.mkdirSync(path.join(root, 'bin'), { recursive: true })
 run('go', ['build', '-o', path.join('bin', process.platform === 'win32' ? 'forgeflow.exe' : 'forgeflow'), './apps/server'])

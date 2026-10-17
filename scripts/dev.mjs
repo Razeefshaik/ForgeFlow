@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -10,6 +10,27 @@ const gitRead = args => spawnSync('git', args, { cwd: root, encoding: 'utf8', wi
 console.log(`ForgeFlow checkout: ${root} · ${gitRead(['branch', '--show-current']) || 'detached'} @ ${gitRead(['rev-parse', '--short', 'HEAD']) || 'unknown'}`)
 const behind = gitRead(['rev-list', '--count', 'HEAD..master'])
 if (Number(behind) > 0) console.warn(`This checkout is missing ${behind} commit(s) from local master. Merging another worktree does not update this checkout.`)
+// Read-only preflight: container verification fails every contribution when
+// Docker is stopped or its image was removed (for example by a Docker Desktop
+// reset). Report the exact repair now instead of mid-contribution.
+function verificationImage() {
+  if (process.env.FORGEFLOW_VERIFICATION_IMAGE) return process.env.FORGEFLOW_VERIFICATION_IMAGE
+  try { return JSON.parse(readFileSync(path.join(root, 'configs', 'local.json'), 'utf8')).verification_image || '' } catch { return '' }
+}
+const image = demo ? '' : verificationImage()
+if (image) {
+  const docker = spawnSync('docker', ['image', 'inspect', '--format', '{{.Id}}', image], { encoding: 'utf8', windowsHide: true, timeout: 20_000 })
+  const output = `${docker.stdout ?? ''}${docker.stderr ?? ''}`
+  if (docker.error || docker.status !== 0) {
+    if (/no such image/i.test(output)) {
+      console.warn(`Container verification image ${image} is missing from Docker. Contributions will stop at their first check.\n  Rebuild it: docker build --tag forgeflow-verification:go1.26-node22 scripts/execution-image\n  and set "verification_image": "forgeflow-verification:go1.26-node22" in configs/local.json.`)
+    } else {
+      console.warn(`Docker is not reachable (${(docker.error?.message || output).trim().split('\n')[0]}). Start Docker Desktop before resuming contributions that use container verification.`)
+    }
+  } else {
+    console.log(`Container verification image: ${image} (${output.trim().slice(0, 19)}…)`)
+  }
+}
 console.log('ForgeFlow: starting Go backend; waiting for http://127.0.0.1:8080/api/health…')
 // Keep build and command scratch files on the project drive. This is especially
 // useful when a Windows system drive is full; no system environment is changed.
