@@ -132,3 +132,31 @@ func TestTimedOutPreparationReplansWithSavedCommandEvidence(t *testing.T) {
 		t.Fatalf("planner did not see the slow step or the fast runtime location: planners=%d", runner.planners)
 	}
 }
+
+// Records saved by older pipelines advised supplying prerequisites even for
+// recipe defects and slow steps. Diagnosis must describe the recovery that
+// will actually run, read-only, without rewriting the saved incident.
+func TestLegacyEnvironmentIncidentDescribesActualRecovery(t *testing.T) {
+	for _, tc := range []struct{ failure, want string }{
+		{"context deadline exceeded", "environment planner for a corrected recipe"},
+		{"environment prerequisite failed: Could not get unknown property 'allprojects'", "environment planner for a corrected recipe"},
+		{"local image unavailable: failed to connect to the Docker API at npipe:////./pipe/dockerDesktopLinuxEngine", "reruns it unchanged"},
+	} {
+		s, c := buildFixture(t, &recipeRunner{})
+		ctx := context.Background()
+		plan := domain.EnvironmentPlan{Summary: "saved", BaseImage: "fixture:9", Checks: []domain.VerificationCommand{{Program: "gradle", Arguments: []string{"--version"}}}}
+		saved := &domain.ExecutionIncident{ID: "legacy", Kind: "environment_blocked", Summary: "Repository environment setup is incomplete; coding and tests are paused.", Evidence: tc.failure, NextAction: "Supply the listed prerequisites, then recover explicitly.", Status: "needs_input", DiagnosisVersion: 5}
+		r := domain.ExecutionRecord{ContributionID: c.ID, Status: "NEEDS_INPUT", Phase: "PLANNING", Network: true, EnvironmentPlan: &plan, Environment: &domain.ExecutionEnvironment{Status: "blocked", Error: tc.failure}, Incident: saved}
+		if err := s.Store.SaveExecution(ctx, r, "test", "legacy record"); err != nil {
+			t.Fatal(err)
+		}
+		d, err := s.Diagnose(ctx, c.ID)
+		if err != nil || d == nil || !d.CanRecover || !strings.Contains(d.NextAction, tc.want) || d.DiagnosisVersion != diagnosisVersion {
+			t.Fatalf("%s: diagnosis %+v %v", tc.failure, d, err)
+		}
+		stored, _ := s.Store.Execution(ctx, c.ID)
+		if stored.Incident.NextAction != saved.NextAction || stored.Incident.DiagnosisVersion != 5 {
+			t.Fatal("diagnosis rewrote the saved incident")
+		}
+	}
+}

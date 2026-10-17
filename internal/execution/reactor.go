@@ -291,6 +291,20 @@ func (s *Service) Diagnose(ctx context.Context, id string) (*domain.ExecutionInc
 			return d, nil
 		}
 	}
+	// Environment incidents saved by older pipelines told the operator to supply
+	// prerequisites even for recipe defects and slow steps that recovery now
+	// corrects. Describe what recovery will actually do, without rewriting the
+	// saved record or its history.
+	if r.Incident != nil && stopped && r.Incident.Kind == "environment_blocked" && r.Incident.DiagnosisVersion < diagnosisVersion && r.Environment != nil && r.Environment.Status == "blocked" && r.EnvironmentPlan != nil && len(r.EnvironmentPlan.Blockers) == 0 {
+		d := *r.Incident
+		d.DiagnosisVersion, d.Status, d.CanRecover = diagnosisVersion, "needs_input", true
+		if savedRecipeRetryable(&r) {
+			d.NextAction = "The saved recipe failed for an infrastructure or permission reason. Recovering reruns it unchanged, without another planning session."
+		} else {
+			d.NextAction = "Recovering sends the saved failure and command output to the environment planner for a corrected recipe; dependency environments now use the fast runtime volume. No repository code is changed to fit the runner."
+		}
+		return &d, nil
+	}
 	if r.Incident != nil && r.Incident.Kind != "execution_blocked" {
 		return r.Incident, nil
 	}
