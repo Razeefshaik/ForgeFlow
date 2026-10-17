@@ -116,6 +116,12 @@ test("running state has unknown completion while command history has measured re
     await page.locator(".evidence-content").evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");
   await page.getByRole("tab", { name: "Plan", exact: true }).focus();
+  // Tab order is Plan, Environment, Tests: the Environment tab was added later.
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Environment", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Tests (2)" })).toHaveAttribute(
     "aria-selected",
