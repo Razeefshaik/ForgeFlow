@@ -162,6 +162,16 @@ func (s *Service) startLocked(ctx context.Context, id string, network, retry boo
 	if resumeState != "PLANNING" && resumeState != "CODING" && resumeState != "TESTING" && resumeState != "FIXING" && resumeState != "REVIEWING" {
 		return record, errors.New("workspace preparation must finish before execution")
 	}
+	// A stop at the fix or review limit is surfaced to the human. Their explicit
+	// resume grants one fresh bounded budget; without it the workflow would hit
+	// the same limit immediately and the contribution could never continue.
+	if strings.Contains(record.Summary, "maximum fix iterations") || strings.Contains(record.Summary, "maximum independent review cycles") {
+		if err = s.Store.WorkspaceEvent(ctx, id, "ExecutionBudgetRenewed", "Human resumed after the fix/review limit; granting a fresh bounded budget", map[string]int{"previous_fix_iterations": record.FixIterations, "previous_review_cycles": record.ReviewCycles}); err != nil {
+			return record, err
+		}
+		record.FixIterations, record.ReviewCycles, record.UnchangedFixStreak = 0, 0, 0
+		record.LastFailedDiffHash, record.LastFailureHash = "", ""
+	}
 	c.State = resumeState
 	record.Status = "RUNNING"
 	record.Phase = c.State
@@ -370,7 +380,7 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 				}
 				if strings.Contains(err.Error(), "maximum ") {
 					r.Incident.CanRecover = false
-					r.Incident.NextAction = "The configured fix or review limit was reached. Inspect the patch and latest findings before resuming."
+					r.Incident.NextAction = "The configured fix or review limit was reached. Inspect the patch and latest findings, add contribution instructions if they would help, then resume to grant one fresh bounded budget."
 				}
 			}
 		}
