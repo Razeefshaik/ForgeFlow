@@ -275,8 +275,13 @@ func (s *Service) ProceedWithOptions(ctx context.Context, id, token string, appr
 	}()
 	return c, nil
 }
+// A full clone's duration scales with repository history and the network.
+// Five minutes aborted ordinary repositories on slower connections and left a
+// contribution that could not be resumed; this bound still stops a stall.
+const preparationTimeout = 30 * time.Minute
+
 func (s *Service) prepare(c domain.Contribution, a domain.WorkspaceApproval, repoPath string) {
-	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(s.ctx, preparationTimeout)
 	defer cancel()
 	err := func() (err error) {
 		defer func() {
