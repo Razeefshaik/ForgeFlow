@@ -236,13 +236,57 @@ func (s *Service) Control(ctx context.Context, id, action string, approved bool)
 		if c.State == to {
 			return nil
 		}
-		return s.Store.Transition(ctx, id, to)
+		if err = s.Store.Transition(ctx, id, to); err == nil && to == "ABANDONED" {
+			s.releaseRuntimeAsync(c)
+		}
+		return err
 	}
 	if err != nil {
 		return err
 	}
 	record.Status = to
-	return s.Store.SaveExecutionCheckpoint(ctx, record, to, "user", "Execution "+strings.ToLower(to))
+	if err = s.Store.SaveExecutionCheckpoint(ctx, record, to, "user", "Execution "+strings.ToLower(to)); err == nil && to == "ABANDONED" {
+		s.releaseRuntimeAsync(c)
+	}
+	return err
+}
+
+type runtimeVolumeRemover interface {
+	RemoveRuntimeVolume(context.Context, string) error
+}
+
+// releaseRuntime removes an abandoned contribution's container runtime volume.
+// It holds only caches and installed tools; the workspace, saved command
+// output and audit history are untouched.
+func (s *Service) releaseRuntime(c domain.Contribution) {
+	remover, ok := s.Runner.(runtimeVolumeRemover)
+	if !ok {
+		return
+	}
+	if p, ok := s.Runner.(codex.EnvironmentPreparer); !ok || p.EnvironmentBase() == "" {
+		return
+	}
+	repo, _, err := s.Paths(c)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	message, data := "Removed the abandoned contribution's container runtime volume; workspace and evidence are preserved", map[string]string{"volume": codex.RuntimeVolumeName(repo)}
+	if err = remover.RemoveRuntimeVolume(ctx, repo); err != nil {
+		message, data["error"] = "Could not remove the abandoned contribution's container runtime volume", err.Error()
+	}
+	if e := s.Store.WorkspaceEvent(ctx, c.ID, "RuntimeVolumeReleased", message, data); e != nil {
+		slog.Error("Failed to record runtime volume release", "contribution", c.ID, "error", e)
+	}
+}
+
+func (s *Service) releaseRuntimeAsync(c domain.Contribution) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.releaseRuntime(c)
+	}()
 }
 func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.WorkspaceApproval, r domain.ExecutionRecord, job *task) {
 	repo, meta, err := s.Paths(c)
@@ -327,6 +371,8 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 		r.Message = r.Summary
 		if saveErr := s.Store.SaveExecutionCheckpoint(endCtx, r, state, "execution", r.Summary); saveErr != nil {
 			slog.Error("Failed to persist execution stop", "contribution", c.ID, "error", saveErr)
+		} else if state == "ABANDONED" {
+			s.releaseRuntime(c)
 		}
 	}
 	if meta != "" {
