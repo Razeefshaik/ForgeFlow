@@ -242,7 +242,8 @@
   transform: rotate(90deg);
 }
 .execution-approval,
-.execution-options {
+.execution-options,
+.issue-update {
   padding: 22px 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -723,6 +724,16 @@
 .review-finding b {
   color: var(--rose);
   font-size: 12px;
+}
+.issue-update {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--border));
+}
+.issue-update h3 {
+  margin-bottom: 6px;
+}
+.issue-update .issue-body {
+  max-height: 320px;
+  overflow: auto;
 }
 .baseline-summary {
   border: 1px solid var(--border-soft);

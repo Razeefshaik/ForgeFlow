@@ -65,6 +65,8 @@ type Execution = {
     commands: { command: { program: string; arguments: string[] }; test_run_id: string; exit_code: number; passed: boolean; failed_tests?: string[]; no_tests?: boolean }[];
   };
   preexisting_failures?: { command: { program: string; arguments: string[] }; test_run_id: string; exit_code: number; failed_tests?: string[]; reason: string }[];
+  pending_issue?: { title: string; body: string; fetched_at: string };
+  approved_issue?: { title: string; body: string; fetched_at: string; approved_at?: string };
 };
 type TestRun = {
   id: string;
@@ -110,6 +112,7 @@ export default function ExecutionPanel({
   const [submitApproved, setSubmitApproved] = useState(false);
  const [editingPR,setEditingPR]=useState(false);
   const [network, setNetwork] = useState(false);
+  const [issueApproved, setIssueApproved] = useState(false);
   const [constraints, setConstraints] = useState<string | null>(null);
   const cache = useQueryClient();
   const r = execution.data;
@@ -276,7 +279,12 @@ export default function ExecutionPanel({
                 disabled={busy}
                 aria-expanded={approvalOpen}
                 aria-controls="execution-approval"
-                onClick={() => setApprovalOpen(!approvalOpen)}
+                onClick={() => {
+                  // Start from the saved download approval so a resume never
+                  // silently revokes it; the box stays visible and changeable.
+                  if (!approvalOpen) setNetwork(!!r?.network);
+                  setApprovalOpen(!approvalOpen);
+                }}
               >
                 {r?.status === "NOT_STARTED"
                   ? "Start coding"
@@ -512,6 +520,33 @@ export default function ExecutionPanel({
             setTab("Tests");
           }}
         />
+      )}
+      {r?.pending_issue && !running && (
+        <section className="issue-update" aria-label="Updated issue awaiting approval">
+          <h3>The issue changed after your approval</h3>
+          <p className="muted">
+            Fetched {new Date(r.pending_issue.fetched_at).toLocaleString()}. Approving continues with a fresh plan against this text; existing edits are kept. To stop instead, abandon the contribution.
+          </p>
+          <h4>{r.pending_issue.title}</h4>
+          <pre className="issue-body">{r.pending_issue.body || "No description"}</pre>
+          <label className="approval-checkbox">
+            <input
+              type="checkbox"
+              checked={issueApproved}
+              disabled={busy}
+              onChange={(e) => setIssueApproved(e.target.checked)}
+            />
+            I reviewed the updated issue and approve continuing this contribution against it.
+          </label>
+          <Button
+            disabled={busy || !issueApproved}
+            onClick={async () => {
+              if (await act("approve-issue", { approved: true })) setIssueApproved(false);
+            }}
+          >
+            Approve updated issue
+          </Button>
+        </section>
       )}
       <div
         className="execution-tabs"
