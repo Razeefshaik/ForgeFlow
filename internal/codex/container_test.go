@@ -173,7 +173,7 @@ func TestMissingImageNamesTheRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, "\n")
-	for _, want := range []string{"type=volume,source=forgeflow-runtime-", "target=" + ContainerRuntimeDir, "--pids-limit\n4096", "--memory\n4g"} {
+	for _, want := range []string{"type=volume,source=forgeflow-runtime-", "target=" + ContainerRuntimeDir, "--pids-limit\n4096", "--memory\n4096m", "--cpus\n4"} {
 		if !strings.Contains(joined, want) {
 			t.Fatal("missing", want, joined)
 		}

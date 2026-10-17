@@ -32,6 +32,13 @@ const ContainerRuntimeDir = "/workspace/.forgeflow-runtime/linux"
 
 var runtimeSubdirectories = []string{"home", "xdg", "go-cache", "go-mod", "go", "npm", "python", "gradle"}
 
+// Verification container resources. Repository eligibility screening compares
+// documented requirements against these same values.
+const (
+	ContainerMemoryMiB = 4096
+	ContainerCPUs      = 4
+)
+
 // RuntimeVolumeName derives the one volume owned by a workspace. Different
 // workspaces never share a volume, so installed tools cannot leak between
 // contributions, and the name is stable so caches survive fresh containers.
@@ -64,7 +71,7 @@ func containerArguments(image, name, dir string, command domain.VerificationComm
 	}
 	// JVM and Node builds count every thread against the pids limit; 256 tasks
 	// was exhausted by ordinary Gradle test workers. 4096 still bounds fork bombs.
-	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096", "--memory", "4g", "--cpus", "4", "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly", "--mount", "type=volume,source=" + RuntimeVolumeName(dir) + ",target=" + ContainerRuntimeDir}
+	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096", "--memory", fmt.Sprintf("%dm", ContainerMemoryMiB), "--cpus", fmt.Sprint(ContainerCPUs), "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly", "--mount", "type=volume,source=" + RuntimeVolumeName(dir) + ",target=" + ContainerRuntimeDir}
 	for _, env := range []string{"HOME=/workspace/.forgeflow-runtime/linux/home", "XDG_CACHE_HOME=/workspace/.forgeflow-runtime/linux/xdg", "TMPDIR=/tmp", "GOTMPDIR=/tmp", "GOTOOLCHAIN=local", "GOCACHE=/workspace/.forgeflow-runtime/linux/go-cache", "GOMODCACHE=/workspace/.forgeflow-runtime/linux/go-mod", "GOPATH=/workspace/.forgeflow-runtime/linux/go", "npm_config_cache=/workspace/.forgeflow-runtime/linux/npm", "PIP_CACHE_DIR=/workspace/.forgeflow-runtime/linux/python", "GRADLE_USER_HOME=/workspace/.forgeflow-runtime/linux/gradle", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/workspace", "GIT_CONFIG_KEY_1=core.checkStat", "GIT_CONFIG_VALUE_1=minimal"} {
 		args = append(args, "--env", env)
 	}
