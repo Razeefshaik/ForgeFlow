@@ -58,6 +58,13 @@ type Execution = {
   pr_revision?: string;
   submission_token: string;
   pr_url: string;
+  baseline?: {
+    status: string;
+    reason?: string;
+    base_commit: string;
+    commands: { command: { program: string; arguments: string[] }; test_run_id: string; exit_code: number; passed: boolean; failed_tests?: string[]; no_tests?: boolean }[];
+  };
+  preexisting_failures?: { command: { program: string; arguments: string[] }; test_run_id: string; exit_code: number; failed_tests?: string[]; reason: string }[];
 };
 type TestRun = {
   id: string;
@@ -71,6 +78,7 @@ type TestRun = {
   recovery_of?: string;
   executed_command?: { program: string; arguments: string[] };
   error?: string;
+  baseline?: boolean;
 };
 export default function ExecutionPanel({
   contribution: c,
@@ -636,6 +644,41 @@ export default function ExecutionPanel({
               ))}
             {tab === "Tests" && (
               <>
+                {r?.baseline && (
+                  <section className="baseline-summary" aria-label="Baseline on the approved base">
+                    <h4>Baseline on the approved base</h4>
+                    <p className="muted">
+                      {r.baseline.status === "unavailable"
+                        ? r.baseline.reason
+                        : `Required commands ran once on the untouched base ${r.baseline.base_commit.slice(0, 12)} before any edit. ${r.baseline.status === "passed" ? "All passed." : "Failures here already existed before this contribution."}`}
+                    </p>
+                    {r.baseline.commands.length > 0 && (
+                      <ul>
+                        {r.baseline.commands.map((b) => (
+                          <li key={b.test_run_id}>
+                            <code>{b.command.program} {b.command.arguments.join(" ")}</code> · {b.passed ? "passed" : `failed (exit ${b.exit_code})`}
+                            {b.no_tests ? " · no tests collected" : ""}
+                            {b.failed_tests?.length ? ` · ${b.failed_tests.length} failing test${b.failed_tests.length === 1 ? "" : "s"}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!!r.preexisting_failures?.length && (
+                      <>
+                        <h4>Pre-existing failures after the change</h4>
+                        <p className="muted">These commands still fail, exactly as they did on the base. They are disclosed in the report and PR text and are not counted as passes.</p>
+                        <ul>
+                          {r.preexisting_failures.map((p) => (
+                            <li key={p.test_run_id}>
+                              <code>{p.command.program} {p.command.arguments.join(" ")}</code> · exit {p.exit_code} · {p.reason}
+                              {p.failed_tests?.length ? <> Failing tests: <code>{p.failed_tests.slice(0, 10).join(", ")}{p.failed_tests.length > 10 ? ` and ${p.failed_tests.length - 10} more` : ""}</code></> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </section>
+                )}
                 <div className="test-history-heading">
                   <div>
                     <h4>Command history</h4>
@@ -710,6 +753,7 @@ export default function ExecutionPanel({
                         )}
                       </span>
                       <span className="test-run-command">
+                        {t.baseline && <span className="test-baseline-tag">Baseline · </span>}
                         {t.command.program} {t.command.arguments.join(" ")} ·
                         exit {t.finished_at ? t.exit_code : "pending"} ·{" "}
                         {t.finished_at &&
@@ -741,6 +785,16 @@ export default function ExecutionPanel({
                     {t.recovery_of && (
                       <p className="muted">
                         Rerun after a saved recovery attempt.
+                      </p>
+                    )}
+                    {t.baseline && (
+                      <p className="muted">
+                        Baseline run on the untouched approved base, before any edit. It describes the repository, not this change.
+                      </p>
+                    )}
+                    {r?.preexisting_failures?.some((p) => p.test_run_id === t.id) && (
+                      <p className="muted">
+                        Accepted as pre-existing: the same failure occurs on the untouched base. Disclosed, not counted as a pass.
                       </p>
                     )}
                     <pre className="issue-body">{t.output || "No output"}</pre>

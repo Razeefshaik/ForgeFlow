@@ -724,6 +724,30 @@
   color: var(--rose);
   font-size: 12px;
 }
+.baseline-summary {
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--indigo);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 22px;
+}
+.baseline-summary h4 {
+  margin-bottom: 6px;
+}
+.baseline-summary p,
+.baseline-summary li {
+  font-size: 12px;
+}
+.baseline-summary ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.baseline-summary li {
+  overflow-wrap: anywhere;
+}
+.test-baseline-tag {
+  color: var(--indigo);
+}
 .test-history-heading {
   display: flex;
   justify-content: space-between;
