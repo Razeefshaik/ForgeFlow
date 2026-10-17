@@ -27,7 +27,11 @@ func publicText(text string) string {
 }
 
 func publicPR(a domain.WorkspaceApproval, r domain.ExecutionRecord, tests []domain.TestRun) (string, string) {
-	title := fmt.Sprintf("Fix #%d: %s", a.Opportunity.Number, publicText(a.Opportunity.Title))
+	issueTitle := a.Opportunity.Title
+	if r.ApprovedIssue != nil {
+		issueTitle = r.ApprovedIssue.Title
+	}
+	title := fmt.Sprintf("Fix #%d: %s", a.Opportunity.Number, publicText(issueTitle))
 	title = strings.Join(strings.Fields(title), " ")
 	summary := publicText(r.Summary)
 	if summary == "" {

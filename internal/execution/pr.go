@@ -182,7 +182,7 @@ func (s *Service) SubmitPR(ctx context.Context, id, token string, approved bool)
 	if len(existing) > 0 {
 		return r, errors.New("this branch already has a different PR; inspect GitHub before submitting")
 	}
-	if err = s.freshIssue(ctx, approval); err != nil {
+	if err = s.freshIssue(ctx, approval, nil); err != nil {
 		return r, err
 	}
 	forkName := user.Login + "/" + parts[1]

@@ -47,7 +47,7 @@ func (s *Service) refreshIssueContext(ctx context.Context, a domain.WorkspaceApp
 		Issue       json.RawMessage
 		Discussion  []domain.IssueComment
 		Constraints string
-	}{a.Issue, r.IssueDiscussion, r.Constraints})
+	}{effectiveIssue(a, r), r.IssueDiscussion, r.Constraints})
 	if r.Plan != nil && (r.PlanContextHash != fingerprint || r.PlanInvalidated) {
 		if err := s.Store.WorkspaceEvent(ctx, r.ContributionID, "PlanInvalidated", "Issue discussion or human constraints require a fresh plan; existing edits are preserved", map[string]any{"previous_plan": r.Plan, "previous_review": r.Review, "previous_context": r.PlanContextHash, "new_context": fingerprint}); err != nil {
 			return err

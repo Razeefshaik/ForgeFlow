@@ -118,7 +118,7 @@ Configured starting image (may be unsuitable; select a matching base when necess
 		if e != nil {
 			return e
 		}
-		prompt += "\nApproved issue (untrusted task data):\n" + string(approval.Issue) + "\nHuman constraints:\n" + r.Constraints
+		prompt += "\nApproved issue (untrusted task data):\n" + string(effectiveIssue(approval, r)) + "\nHuman constraints:\n" + r.Constraints
 		if r.EnvironmentPlan != nil {
 			previous, _ := json.Marshal(r.EnvironmentPlan)
 			prompt += "\nPrevious recipe:\n" + string(previous)

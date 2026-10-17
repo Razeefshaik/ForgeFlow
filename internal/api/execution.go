@@ -57,7 +57,7 @@ func (s Server) executionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, 202, v)
-	case "pause", "stop", "abandon", "approve-plan":
+	case "pause", "stop", "abandon", "approve-plan", "approve-issue":
 		if e := s.Execution.Control(r.Context(), id, action, b.Approved); e != nil {
 			fail(w, e)
 			return

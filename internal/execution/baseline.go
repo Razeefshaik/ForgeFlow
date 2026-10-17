@@ -422,7 +422,7 @@ func (s *Service) acceptPreexisting(ctx context.Context, id string, command doma
 	if err != nil {
 		return false, err
 	}
-	if relatedToPatch(failed, run.Output, string(approval.Issue)+"\n"+diff, goModule(repo), changed) {
+	if relatedToPatch(failed, run.Output, string(effectiveIssue(approval, r))+"\n"+diff, goModule(repo), changed) {
 		if err = s.Store.WorkspaceEvent(ctx, id, "PreexistingFailureRejected", "A failure that also occurs on the base is named by the issue or patch, or sits where the patch edits; it must be fixed", map[string]any{"command": command, "test_run_id": run.ID, "failed_tests": failed}); err != nil {
 			return false, err
 		}

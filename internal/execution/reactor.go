@@ -349,6 +349,9 @@ func (s *Service) Recover(ctx context.Context, id string, approved, allowDownloa
 	if err != nil {
 		return domain.ExecutionRecord{}, err
 	}
+	if d != nil && d.Kind == "issue_changed" {
+		return domain.ExecutionRecord{}, errors.New("review and approve the updated issue before resuming this contribution")
+	}
 	networkIssue := d != nil && (d.Kind == "dependency_network" || d.Kind == "network_transport" || d.Kind == "dependencies_missing" || d.Kind == "rate_limit")
 	if d == nil || (!d.CanRecover && !inputRequired(d.Kind) && !(allowDownloads && networkIssue)) {
 		return domain.ExecutionRecord{}, errors.New("this issue requires its recommended action before automatic recovery")

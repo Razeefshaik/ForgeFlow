@@ -79,6 +79,15 @@ type BaselineCommand struct {
 	NoTests     bool                `json:"no_tests,omitempty"`
 }
 
+// IssueRevision is a fetched upstream issue title/body. The original approval
+// record is never rewritten; a human-approved revision is stored alongside it.
+type IssueRevision struct {
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	FetchedAt  time.Time  `json:"fetched_at"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+}
+
 // PreexistingFailure is a post-change failure accepted only because the same
 // command failed the same way on the untouched base. It is always disclosed.
 type PreexistingFailure struct {
@@ -125,6 +134,10 @@ type ExecutionRecord struct {
 	EnvironmentPlan    *EnvironmentPlan      `json:"environment_plan,omitempty"`
 	Baseline           *BaselineVerification `json:"baseline,omitempty"`
 	Preexisting        []PreexistingFailure  `json:"preexisting_failures,omitempty"`
+	// PendingIssue is an upstream edit awaiting human review; ApprovedIssue is
+	// the edit a human approved, superseding the original approval's text.
+	PendingIssue  *IssueRevision `json:"pending_issue,omitempty"`
+	ApprovedIssue *IssueRevision `json:"approved_issue,omitempty"`
 	ContributionID     string                `json:"contribution_id"`
 	Status             string                `json:"status"`
 	Phase              string                `json:"phase"`
