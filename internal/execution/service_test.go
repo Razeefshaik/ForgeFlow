@@ -87,6 +87,32 @@ func buildFixtureWithModel(t *testing.T, runner codex.Runner, model string) (*Se
 }
 func buildFixtureWithApproval(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool) (*Service, domain.Contribution) {
 	t.Helper()
+	return buildFixtureWithFiles(t, runner, model, requirePlanApproval, nil)
+}
+
+// buildFixtureWithFiles commits extra repository files into the approved base.
+func buildFixtureWithFiles(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool, extra map[string]string) (*Service, domain.Contribution) {
+	t.Helper()
+	return buildFixtureSpec(t, runner, model, requirePlanApproval, fixtureSpec{Files: extra})
+}
+
+// fixtureSpec describes a disposable repository and its approved issue.
+// Replace drops the default Go module so other ecosystems can be modeled.
+type fixtureSpec struct {
+	Files       map[string]string
+	Replace     bool
+	Title, Body string
+}
+
+func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool, spec fixtureSpec) (*Service, domain.Contribution) {
+	t.Helper()
+	extra := spec.Files
+	if spec.Title == "" {
+		spec.Title = "Correct Add"
+	}
+	if spec.Body == "" {
+		spec.Body = "The Add function subtracts instead of adding. Fix addition and add positive and negative regression coverage."
+	}
 	ctx := context.Background()
 	root := t.TempDir()
 	os.Mkdir(filepath.Join(root, ".cache"), 0700)
@@ -98,8 +124,19 @@ func buildFixtureWithApproval(t *testing.T, runner codex.Runner, model string, r
 			t.Fatal(e)
 		}
 	}
-	for name, body := range map[string]string{"go.mod": "module example.com/fixture\n\ngo 1.26\n", "sum.go": "package fixture\nfunc Add(a,b int) int {return a-b}\n", "sum_test.go": "package fixture\nimport \"testing\"\nfunc TestAdd(t *testing.T){if Add(2,3)!=5 {t.Fatal(\"addition incorrect\")}}\n"} {
-		if e := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); e != nil {
+	files := map[string]string{"go.mod": "module example.com/fixture\n\ngo 1.26\n", "sum.go": "package fixture\nfunc Add(a,b int) int {return a-b}\n", "sum_test.go": "package fixture\nimport \"testing\"\nfunc TestAdd(t *testing.T){if Add(2,3)!=5 {t.Fatal(\"addition incorrect\")}}\n"}
+	if spec.Replace {
+		files = map[string]string{}
+	}
+	for name, body := range extra {
+		files[name] = body
+	}
+	for name, body := range files {
+		path := filepath.Join(repo, filepath.FromSlash(name))
+		if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(path, []byte(body), 0600); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -132,7 +169,7 @@ func buildFixtureWithApproval(t *testing.T, runner codex.Runner, model string, r
 	end := time.Now().UTC()
 	run.Status = "SUCCEEDED"
 	run.FinishedAt = &end
-	o := domain.Opportunity{ID: "fixture-issue", Repository: "example/fixture", Number: 1, Title: "Correct Add", Evidence: &domain.Evidence{RunID: run.ID, ConfigVersion: 1}}
+	o := domain.Opportunity{ID: "fixture-issue", Repository: "example/fixture", Number: 1, Title: spec.Title, Evidence: &domain.Evidence{RunID: run.ID, ConfigVersion: 1}}
 	if e = store.FinishDiscovery(ctx, run, []domain.Opportunity{o}); e != nil {
 		t.Fatal(e)
 	}
@@ -141,7 +178,8 @@ func buildFixtureWithApproval(t *testing.T, runner codex.Runner, model string, r
 	cfg.Config.Codex.MaxFixIterations = 3
 	cfg.Config.Codex.MaxReviewCycles = 2
 	cfg.Config.Contributions.RequirePlanApproval = requirePlanApproval
-	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: o, Issue: json.RawMessage(`{"number":1,"state":"open","title":"Correct Add","body":"The Add function subtracts instead of adding. Fix addition and add positive and negative regression coverage."}`), Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
+	issue, _ := json.Marshal(map[string]any{"number": 1, "state": "open", "title": spec.Title, "body": spec.Body})
+	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: o, Issue: issue, Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
 	if e = store.ApproveWorkspace(ctx, c, a); e != nil {
 		t.Fatal(e)
 	}

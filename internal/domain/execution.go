@@ -55,6 +55,39 @@ type TestRun struct {
 	RecoveryOf      string               `json:"recovery_of,omitempty"`
 	Error           string               `json:"error,omitempty"`
 	ExecutedCommand *VerificationCommand `json:"executed_command,omitempty"`
+	// Baseline marks a run against the untouched approved base, before coding.
+	Baseline bool `json:"baseline,omitempty"`
+}
+
+// BaselineVerification records what the required commands did on the approved
+// base before any edit. It lets the control plane tell a regression from a
+// failure that already existed, using real runs rather than an agent's claim.
+type BaselineVerification struct {
+	Status     string            `json:"status"` // passed, preexisting_failures or unavailable
+	Reason     string            `json:"reason,omitempty"`
+	BaseCommit string            `json:"base_commit"`
+	Commands   []BaselineCommand `json:"commands"`
+	RecordedAt time.Time         `json:"recorded_at"`
+}
+
+type BaselineCommand struct {
+	Command     VerificationCommand `json:"command"`
+	TestRunID   string              `json:"test_run_id"`
+	ExitCode    int                 `json:"exit_code"`
+	Passed      bool                `json:"passed"`
+	FailedTests []string            `json:"failed_tests,omitempty"`
+	NoTests     bool                `json:"no_tests,omitempty"`
+}
+
+// PreexistingFailure is a post-change failure accepted only because the same
+// command failed the same way on the untouched base. It is always disclosed.
+type PreexistingFailure struct {
+	Command     VerificationCommand `json:"command"`
+	TestRunID   string              `json:"test_run_id"`
+	BaselineRun string              `json:"baseline_test_run_id"`
+	ExitCode    int                 `json:"exit_code"`
+	FailedTests []string            `json:"failed_tests,omitempty"`
+	Reason      string              `json:"reason"`
 }
 
 // ExecutionIncident is the current diagnosis. Historical diagnoses and actions
@@ -90,6 +123,8 @@ type ExecutionRecord struct {
 	MutatedTestRetries int                   `json:"mutated_test_retries,omitempty"`
 	Environment        *ExecutionEnvironment `json:"environment,omitempty"`
 	EnvironmentPlan    *EnvironmentPlan      `json:"environment_plan,omitempty"`
+	Baseline           *BaselineVerification `json:"baseline,omitempty"`
+	Preexisting        []PreexistingFailure  `json:"preexisting_failures,omitempty"`
 	ContributionID     string                `json:"contribution_id"`
 	Status             string                `json:"status"`
 	Phase              string                `json:"phase"`

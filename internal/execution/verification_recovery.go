@@ -55,6 +55,7 @@ func (s *Service) recordedCommand(ctx context.Context, id, repo string, command 
 	}
 	cancel()
 	run.ID, run.ContributionID, run.RecoveryOf = storage.ID(), id, recoveryOf
+	run.Baseline = isBaseline(ctx)
 	run.Command, run.Directory = command, repo
 	if run.StartedAt.IsZero() {
 		run.StartedAt = started

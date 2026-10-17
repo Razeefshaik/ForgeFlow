@@ -44,6 +44,9 @@ func publicPR(a domain.WorkspaceApproval, r domain.ExecutionRecord, tests []doma
 	latest := map[string]domain.TestRun{}
 	order := []string{}
 	for _, run := range tests {
+		if run.Baseline {
+			continue // Baseline runs describe the base, not this change.
+		}
 		key := run.Command.Program + "\x00" + strings.Join(run.Command.Arguments, "\x00")
 		if _, found := latest[key]; !found {
 			order = append(order, key)
@@ -58,8 +61,29 @@ func publicPR(a domain.WorkspaceApproval, r domain.ExecutionRecord, tests []doma
 		}
 		fmt.Fprintf(&b, "- `%s`: %s\n", publicText(strings.TrimSpace(run.Command.Program+" "+strings.Join(run.Command.Arguments, " "))), outcome)
 	}
-	if len(tests) == 0 {
+	if len(order) == 0 {
 		b.WriteString("- No verification results recorded.\n")
+	}
+	if len(r.Preexisting) > 0 {
+		base := ""
+		if r.Baseline != nil {
+			base = r.Baseline.BaseCommit
+			if len(base) > 12 {
+				base = base[:12]
+			}
+		}
+		fmt.Fprintf(&b, "\nThe following failures also occur on the unmodified base commit %s in the same environment and are not caused by this change:\n", base)
+		for _, p := range r.Preexisting {
+			fmt.Fprintf(&b, "- `%s`", publicText(displayCommand(p.Command)))
+			if len(p.FailedTests) > 0 {
+				names := p.FailedTests
+				if len(names) > 10 {
+					names = append(append([]string{}, names[:10]...), fmt.Sprintf("and %d more", len(p.FailedTests)-10))
+				}
+				fmt.Fprintf(&b, ": %s", publicText(strings.Join(names, ", ")))
+			}
+			b.WriteString("\n")
+		}
 	}
 	if r.Plan != nil {
 		risks := publicText(strings.Join(append(append([]string{}, r.Plan.Risks...), r.Plan.Unknowns...), "\n"))

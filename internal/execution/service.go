@@ -404,11 +404,18 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 		r.Status = "AWAITING_PLAN_APPROVAL"
 		return s.Store.SaveExecutionCheckpoint(ctx, *r, "PAUSED", "execution", "Plan is ready; waiting for human approval")
 	}
+	if r.Phase == "PLANNING" {
+		// Measure the untouched base once, before the first edit, so environment
+		// problems stop before coding and existing failures are known facts.
+		if err := s.baselineVerification(ctx, c, r, repo); err != nil {
+			return err
+		}
+	}
 	if r.Phase == "PLANNING" || r.Phase == "CODING" {
 		if err := s.phase(ctx, r, "CODING"); err != nil {
 			return err
 		}
-		if err := s.implementationAgent(ctx, c, r, repo, meta, instructions+"Implement the saved plan and meaningful regression tests. The control plane will execute verification independently. Plan:\n"+formatPlan(*r.Plan)); err != nil {
+		if err := s.implementationAgent(ctx, c, r, repo, meta, instructions+"Implement the saved plan and meaningful regression tests. The control plane will execute verification independently. Plan:\n"+formatPlan(*r.Plan)+baselinePrompt(r, false)); err != nil {
 			return err
 		}
 	}
@@ -435,7 +442,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 				return err
 			}
 			review, _ := json.Marshal(r.Review)
-			if err = s.implementationAgent(ctx, c, r, repo, meta, instructions+"Investigate the persisted test failures/reviewer findings. Determine whether each failure predates this patch before changing source. Fix only issue-related behavior; report unrelated baseline failures and unmet fixtures rather than weakening tests or expanding scope. Focused diagnostic passes never replace required full verification. Plan:\n"+formatPlan(*r.Plan)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review)); err != nil {
+			if err = s.implementationAgent(ctx, c, r, repo, meta, instructions+"Investigate the persisted test failures/reviewer findings. Determine whether each failure predates this patch before changing source. Fix only issue-related behavior; report unrelated baseline failures and unmet fixtures rather than weakening tests or expanding scope. Focused diagnostic passes never replace required full verification. Plan:\n"+formatPlan(*r.Plan)+baselinePrompt(r, false)+"\nTest outcomes:\n"+evidence+"\nReview:\n"+string(review)); err != nil {
 				return err
 			}
 		}
@@ -545,7 +552,7 @@ func (s *Service) workflow(ctx context.Context, c domain.Contribution, a domain.
 			}
 			output, err := func() (string, error) {
 				defer release()
-				return s.recoveringAgent(ctx, c, r, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema)
+				return s.recoveringAgent(ctx, c, r, repo, meta, "reviewer", instructions+"You are an independent reviewer in a fresh context. Do not edit files. Inspect original issue, surrounding code, untracked/new files, plan and actual verification. Reject missing tests, incorrect scope or regressions. Do not approve merely because commands passed. Read the relevant saved test records from the workspace evidence snapshot; excerpts alone are not sufficient for approval.\nPlan:\n"+formatPlan(*r.Plan)+baselinePrompt(r, true)+"\nDiff:\n"+diff+"\nActual test runs:\n"+testEvidence, reviewSchema)
 			}()
 			if err != nil {
 				return err
@@ -628,6 +635,8 @@ func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.Ex
 	}
 	passed := true
 	var all strings.Builder
+	// Acceptances describe this pass only; each pass re-proves them.
+	r.Preexisting = nil
 	for _, command := range commands {
 		if err := s.validateCommand(command); err != nil {
 			return false, err
@@ -637,7 +646,13 @@ func (s *Service) tests(ctx context.Context, id, repo, meta string, r *domain.Ex
 			return false, err
 		}
 		if !commandPassed {
-			passed = false
+			accepted, err := s.acceptPreexisting(ctx, id, command, r)
+			if err != nil {
+				return false, err
+			}
+			if !accepted {
+				passed = false
+			}
 		}
 		if ctx.Err() != nil {
 			return false, ctx.Err()
@@ -783,8 +798,13 @@ func (s *Service) report(c domain.Contribution, a domain.WorkspaceApproval, r do
 	}
 	fmt.Fprintf(&b, "# Contribution report\n\nRepository: %s\nIssue: #%d\nContribution: %s\nConfiguration: v%d\nCodex model: %s\nQuality score: %.1f (Codex effort excluded)\nEstimated effort: %s\n\n## Implementation\n%s\n\n## Changed files\n%s\n\n## Verification\n", c.Repository, a.Opportunity.Number, c.ID, a.Config.Version, model, a.Opportunity.Ranking.Score, a.Opportunity.Estimate.Category, r.Summary, strings.Join(r.ChangedFiles, "\n"))
 	for _, t := range tests {
-		fmt.Fprintf(&b, "- `%s %s`: exit %d, duration %s\n", t.Command.Program, strings.Join(t.Command.Arguments, " "), t.ExitCode, t.FinishedAt.Sub(t.StartedAt).Round(time.Millisecond))
+		label := ""
+		if t.Baseline {
+			label = " (baseline, approved base before edits)"
+		}
+		fmt.Fprintf(&b, "- `%s %s`%s: exit %d, duration %s\n", t.Command.Program, strings.Join(t.Command.Arguments, " "), label, t.ExitCode, t.FinishedAt.Sub(t.StartedAt).Round(time.Millisecond))
 	}
+	b.WriteString(baselineReport(r))
 	if r.Review != nil {
 		fmt.Fprintf(&b, "\n## Independent review\n%s: %s\n", r.Review.Verdict, r.Review.Summary)
 	}
