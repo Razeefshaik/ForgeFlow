@@ -72,3 +72,23 @@ test("baseline results and pre-existing failures are labelled, not shown as pass
   await expect(summary).toContainText("Every failing test also failed on the untouched base.");
   await expect(page.getByText("Baseline ·", { exact: false })).toHaveCount(1);
 });
+
+test("an older environment incident offers the recovery ForgeFlow can now perform", async ({ page }) => {
+  const id = "legacy-environment-fixture";
+  await page.route(`**/api/contributions/${id}`, r => r.fulfill({ json: contribution(id) }));
+  await page.route(`**/api/contributions/${id}/tests`, r => r.fulfill({ json: [] }));
+  const saved = { id: "legacy", kind: "environment_blocked", summary: "Repository environment setup is incomplete; coding and tests are paused.", evidence: "context deadline exceeded", status: "needs_input", attempt: 0, detected_at: new Date().toISOString() };
+  await page.route(`**/api/contributions/${id}/execution`, r => r.fulfill({ json: {
+    status: "NEEDS_INPUT", phase: "PLANNING", summary: "verification setup failed", fix_iterations: 0, review_cycles: 0, network: true,
+    incident: { ...saved, next_action: "Supply the listed prerequisites, then recover explicitly.", can_recover: false, diagnosis_version: 5 },
+    diff: "", report: "", pr_title: "", pr_body: "", submission_token: "", pr_url: "",
+  } }));
+  await page.route(`**/api/contributions/${id}/diagnosis`, r => r.fulfill({ json: { ...saved, next_action: "Recovering sends the saved failure and command output to the environment planner for a corrected recipe.", can_recover: true, diagnosis_version: 7 } }));
+  let body: unknown;
+  await page.route(`**/api/contributions/${id}/recover`, r => { body = r.request().postDataJSON(); return r.fulfill({ status: 202, json: {} }); });
+  await page.goto(`/contributions/${id}`);
+  const reactor = page.getByLabel("Issue reactor");
+  await expect(reactor).toContainText("environment planner for a corrected recipe");
+  await reactor.getByRole("button", { name: "Recover environment" }).click();
+  await expect.poll(() => body).toEqual({ approved: true, network: false });
+});
