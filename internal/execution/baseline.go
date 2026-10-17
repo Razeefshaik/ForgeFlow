@@ -201,9 +201,59 @@ func bareTestName(name string) string {
 	return strings.TrimSuffix(strings.TrimSpace(name), "()")
 }
 
+var (
+	javaPackage = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)\s*;?\s*$`)
+	jestFile    = regexp.MustCompile(`(?m)^\s*FAIL\s+(\S+\.(?:js|jsx|ts|tsx|mjs|cjs))\s*$`)
+)
+
+// sourcePackages finds JVM test sources named class (Gradle prints simple
+// class names) and returns their declared packages. The walk is bounded and
+// skips Git metadata, build outputs and dependency trees.
+func sourcePackages(repo, class string) []string {
+	if repo == "" || class == "" || strings.ContainsAny(class, `/\`) {
+		return nil
+	}
+	packages := []string{}
+	visited := 0
+	_ = filepath.WalkDir(repo, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		visited++
+		if visited > 50000 {
+			return filepath.SkipAll
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".forgeflow-runtime", "build", "target", "node_modules", ".gradle", "out":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		base := d.Name()
+		ext := filepath.Ext(base)
+		if strings.TrimSuffix(base, ext) != class || (ext != ".java" && ext != ".kt" && ext != ".groovy" && ext != ".scala") {
+			return nil
+		}
+		if info, e := d.Info(); e != nil || info.Size() > 1<<20 {
+			return nil
+		}
+		if b, e := os.ReadFile(path); e == nil {
+			if m := javaPackage.FindSubmatch(b); m != nil {
+				packages = append(packages, string(m[1]))
+			} else {
+				packages = append(packages, "")
+			}
+		}
+		return nil
+	})
+	return packages
+}
+
 // testLocations returns repository directories that a failing test belongs to,
-// when the runner output identifies them.
-func testLocations(repoModule string, names []string, output string) []string {
+// when the runner output or the repository sources identify them. A "*"
+// prefix marks a package path matched as a directory suffix.
+func testLocations(repo, repoModule string, names []string, output string) []string {
 	dirs := []string{}
 	for _, name := range names {
 		kind, rest, _ := strings.Cut(name, ":")
@@ -217,12 +267,50 @@ func testLocations(repoModule string, names []string, output string) []string {
 				}
 				dirs = append(dirs, dir)
 			}
+		case "unittest":
+			// pkg.tests.test_mod.Class.method lives in pkg/tests.
+			parts := strings.Split(rest, ".")
+			if len(parts) >= 3 {
+				dir := strings.Join(parts[:len(parts)-3], "/")
+				if dir == "" {
+					dir = "."
+				}
+				dirs = append(dirs, dir)
+			}
 		case "junit":
+			// The class is the last segment starting with an upper-case letter:
+			// com.example.FooTest, com.example.FooTest.method or FooTest.
 			class, _, _ := strings.Cut(rest, " > ")
-			if i := strings.LastIndex(class, "."); i > 0 {
-				dirs = append(dirs, "*"+strings.ReplaceAll(class[:i], ".", "/"))
+			parts := strings.Split(class, ".")
+			k := -1
+			for i, part := range parts {
+				if part != "" && part[0] >= 'A' && part[0] <= 'Z' {
+					k = i
+				}
+			}
+			if k > 0 {
+				dirs = append(dirs, "*"+strings.Join(parts[:k], "/"))
+				continue
+			}
+			if k < 0 {
+				continue
+			}
+			// Gradle prints simple class names; read the source's package.
+			for _, pkg := range sourcePackages(repo, parts[0]) {
+				if pkg == "" {
+					dirs = append(dirs, ".")
+				} else {
+					dirs = append(dirs, "*"+strings.ReplaceAll(pkg, ".", "/"))
+				}
 			}
 		}
+	}
+	for _, m := range jestFile.FindAllStringSubmatch(output, -1) {
+		dir := "."
+		if i := strings.LastIndex(m[1], "/"); i >= 0 {
+			dir = m[1][:i]
+		}
+		dirs = append(dirs, dir)
 	}
 	if repoModule != "" {
 		for _, m := range failedGoPackage.FindAllStringSubmatch(output, -1) {
@@ -241,7 +329,7 @@ func testLocations(repoModule string, names []string, output string) []string {
 // very behavior under repair and must go through the normal fix loop. Names
 // match whole words, so an unrelated test_parse is not "named" by a new
 // test_parse_empty.
-func relatedToPatch(names []string, output, context, repoModule string, changed []string) bool {
+func relatedToPatch(names []string, output, context, repo, repoModule string, changed []string) bool {
 	for _, name := range names {
 		bare := bareTestName(name)
 		if len(bare) < 4 {
@@ -251,7 +339,7 @@ func relatedToPatch(names []string, output, context, repoModule string, changed 
 			return true
 		}
 	}
-	for _, dir := range testLocations(repoModule, names, output) {
+	for _, dir := range testLocations(repo, repoModule, names, output) {
 		for _, file := range changed {
 			fileDir := "."
 			if i := strings.LastIndex(file, "/"); i >= 0 {
@@ -367,7 +455,7 @@ func (s *Service) baselineVerification(ctx context.Context, c domain.Contributio
 	baseline.RecordedAt = time.Now().UTC()
 	r.Baseline = baseline
 	// A failure on the untouched base describes the repository, not a patch.
-	if r.Incident != nil && r.Incident.Kind == "code_failure" {
+	if r.Incident != nil && (r.Incident.Kind == "code_failure" || r.Incident.Kind == "test_failure_timeout") {
 		r.Incident = nil
 	}
 	r.Message = summary
@@ -422,7 +510,7 @@ func (s *Service) acceptPreexisting(ctx context.Context, id string, command doma
 	if err != nil {
 		return false, err
 	}
-	if relatedToPatch(failed, run.Output, string(effectiveIssue(approval, r))+"\n"+diff, goModule(repo), changed) {
+	if relatedToPatch(failed, run.Output, string(effectiveIssue(approval, r))+"\n"+diff, repo, goModule(repo), changed) {
 		if err = s.Store.WorkspaceEvent(ctx, id, "PreexistingFailureRejected", "A failure that also occurs on the base is named by the issue or patch, or sits where the patch edits; it must be fixed", map[string]any{"command": command, "test_run_id": run.ID, "failed_tests": failed}); err != nil {
 			return false, err
 		}

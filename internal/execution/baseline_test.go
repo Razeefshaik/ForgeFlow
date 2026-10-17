@@ -3,6 +3,8 @@ package execution
 import (
 	"context"
 	"forgeflow/internal/domain"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -68,23 +70,42 @@ func TestPreexistingReasonRequiresProof(t *testing.T) {
 }
 
 func TestRelatedFailuresAreNeverAccepted(t *testing.T) {
-	if !relatedToPatch([]string{"go:TestParseHeader"}, "", "Issue: TestParseHeader fails on empty input", "", nil) {
+	if !relatedToPatch([]string{"go:TestParseHeader"}, "", "Issue: TestParseHeader fails on empty input", "", "", nil) {
 		t.Fatal("failure named by the issue was treated as unrelated")
 	}
-	if relatedToPatch([]string{"pytest:legacy/test_report.py::test_parse"}, "", "+def test_parse_empty():\n+    assert parse('') == []", "", []string{"calc/parse.py"}) {
+	if relatedToPatch([]string{"pytest:legacy/test_report.py::test_parse"}, "", "+def test_parse_empty():\n+    assert parse('') == []", "", "", []string{"calc/parse.py"}) {
 		t.Fatal("a longer new test name matched an unrelated failing test")
 	}
 	output := "--- FAIL: TestOther (0.00s)\nFAIL\texample.com/m/internal/parse\t0.1s\n"
-	if !relatedToPatch([]string{"go:TestOther"}, output, "", "example.com/m", []string{"internal/parse/header.go"}) {
+	if !relatedToPatch([]string{"go:TestOther"}, output, "", "", "example.com/m", []string{"internal/parse/header.go"}) {
 		t.Fatal("failure in the edited Go package was treated as unrelated")
 	}
-	if relatedToPatch([]string{"go:TestOther"}, output, "", "example.com/m", []string{"cmd/tool/main.go"}) {
+	if relatedToPatch([]string{"go:TestOther"}, output, "", "", "example.com/m", []string{"cmd/tool/main.go"}) {
 		t.Fatal("failure in an untouched package was treated as related")
 	}
-	if !relatedToPatch([]string{"junit:com.example.parse.HeaderTest > rejects()"}, "", "", "", []string{"src/main/java/com/example/parse/Header.java"}) {
+	if !relatedToPatch([]string{"junit:com.example.parse.HeaderTest > rejects()"}, "", "", "", "", []string{"src/main/java/com/example/parse/Header.java"}) {
 		t.Fatal("failure in the edited Java package was treated as unrelated")
 	}
-	if !relatedToPatch([]string{"pytest:pkg/test_header.py::test_empty"}, "", "", "", []string{"pkg/header.py"}) {
+	// Gradle prints simple class names; the package comes from the source.
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, "src", "test", "java", "calc"), 0700)
+	os.WriteFile(filepath.Join(repo, "src", "test", "java", "calc", "ArithTest.java"), []byte("package calc;\n\npublic class ArithTest {}\n"), 0600)
+	if !relatedToPatch([]string{"junit:ArithTest > addsPositiveNumbers"}, "", "", repo, "", []string{"src/main/java/calc/Arith.java"}) {
+		t.Fatal("simple Gradle class name in the edited package was treated as unrelated")
+	}
+	if relatedToPatch([]string{"junit:ArithTest > addsPositiveNumbers"}, "", "", repo, "", []string{"src/main/java/report/Legacy.java"}) {
+		t.Fatal("simple Gradle class name in another package was treated as related")
+	}
+	if !relatedToPatch([]string{"junit:com.example.parse.HeaderTest.rejects"}, "", "", "", "", []string{"src/main/java/com/example/parse/Header.java"}) {
+		t.Fatal("Surefire class.method in the edited package was treated as unrelated")
+	}
+	if !relatedToPatch([]string{"unittest:pkg.tests.test_header.HeaderTest.test_empty"}, "", "", "", "", []string{"pkg/tests/helpers.py"}) {
+		t.Fatal("unittest module in the edited directory was treated as unrelated")
+	}
+	if !relatedToPatch([]string{"jest:Header › rejects"}, "FAIL src/header/header.test.ts\n", "", "", "", []string{"src/header/header.ts"}) {
+		t.Fatal("Jest file in the edited directory was treated as unrelated")
+	}
+	if !relatedToPatch([]string{"pytest:pkg/test_header.py::test_empty"}, "", "", "", "", []string{"pkg/header.py"}) {
 		t.Fatal("failure beside the edited Python module was treated as unrelated")
 	}
 }
