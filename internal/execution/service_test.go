@@ -286,8 +286,25 @@ func TestRealCodexWorkflow(t *testing.T) {
 		t.Setenv("TEMP", base)
 		t.Setenv("TMP", base)
 	}
-	s, c := buildFixture(t, cli)
+	spec, ok := realWorkflowFixtures[os.Getenv("FORGEFLOW_TEST_FIXTURE")]
+	if !ok {
+		t.Fatal("unknown FORGEFLOW_TEST_FIXTURE; use go, python or gradle")
+	}
+	s, c := buildFixtureSpec(t, cli, os.Getenv("FORGEFLOW_TEST_MODEL"), false, spec)
 	ctx := context.Background()
+	if cli.VerificationImage != "" {
+		repo, _, err := s.Paths(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if err := cli.RemoveRuntimeVolume(cleanup, repo); err != nil {
+				t.Error(err)
+			}
+		})
+	}
 	if evidence := os.Getenv("FORGEFLOW_TEST_EVIDENCE"); evidence != "" {
 		if err := os.MkdirAll(evidence, 0700); err != nil {
 			t.Fatal(err)
@@ -306,7 +323,10 @@ func TestRealCodexWorkflow(t *testing.T) {
 			}
 		}()
 	}
-	if _, e := s.Start(ctx, c.ID, true, false); e != nil {
+	// Non-Go fixtures need public toolchains and packages, so they run with
+	// explicit download approval exactly as a human would grant it.
+	network := os.Getenv("FORGEFLOW_TEST_FIXTURE") != "" && os.Getenv("FORGEFLOW_TEST_FIXTURE") != "go"
+	if _, e := s.Start(ctx, c.ID, true, network); e != nil {
 		t.Fatal(e)
 	}
 	s.Wait()
@@ -318,7 +338,51 @@ func TestRealCodexWorkflow(t *testing.T) {
 	if len(tests) == 0 {
 		t.Fatal("no real verification")
 	}
-	t.Logf("actual Codex READY: %d commands, %d fixes, %d reviews", len(tests), r.FixIterations, r.ReviewCycles)
+	if r.Baseline == nil || r.Baseline.Status == "" || r.Baseline.Status == "unavailable" {
+		t.Fatalf("baseline was not measured: %+v", r.Baseline)
+	}
+	if want := os.Getenv("FORGEFLOW_TEST_FIXTURE") == "python"; want != (len(r.Preexisting) > 0) {
+		t.Fatalf("pre-existing failure handling: want disclosure=%v, got %+v", want, r.Preexisting)
+	}
+	agents, _ := s.Store.Agents(ctx)
+	roles := map[string]int{}
+	var input, output int64
+	for _, a := range agents {
+		if a.ContributionID == c.ID {
+			roles[a.Role]++
+			input += a.Usage["input_tokens"]
+			output += a.Usage["output_tokens"]
+		}
+	}
+	t.Logf("actual Codex READY: %d commands, %d fixes, %d reviews, baseline %s, %d pre-existing; sessions %v; observed tokens in/out %d/%d", len(tests), r.FixIterations, r.ReviewCycles, r.Baseline.Status, len(r.Preexisting), roles, input, output)
+}
+
+var realWorkflowFixtures = map[string]fixtureSpec{
+	"":   {},
+	"go": {},
+	// A Python package with a real pytest dependency and an unrelated legacy
+	// test that already fails on the base. The issue must be fixed; the legacy
+	// failure must be disclosed rather than chased or reported as passing.
+	"python": {Replace: true, Title: "add() subtracts its arguments", Body: "calc.arith.add(2, 3) returns -1 instead of 5. Fix add so it returns the sum and add regression tests for positive and negative operands. Tests use pytest (see pyproject.toml).", Files: map[string]string{
+		"pyproject.toml":         "[project]\nname = \"calc\"\nversion = \"0.1.0\"\nrequires-python = \">=3.10\"\n\n[project.optional-dependencies]\ntest = [\"pytest==8.3.3\"]\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\", \"legacy\"]\n",
+		"requirements-test.txt":  "pytest==8.3.3\n",
+		"calc/__init__.py":       "",
+		"calc/arith.py":          "def add(a, b):\n    return a - b\n",
+		"tests/test_arith.py":    "from calc.arith import add\n\n\ndef test_add_positive():\n    assert add(2, 3) == 5\n",
+		"legacy/test_reports.py": "def render_report():\n    return \"v1\"\n\n\ndef test_report_matches_v2_format():\n    # Known upstream failure tracked separately; unrelated to calc.arith.\n    assert render_report() == \"v2\"\n",
+		"CONTRIBUTING.md":        "Install test dependencies with `pip install -r requirements-test.txt` and run `python -m pytest`.\n",
+		".gitignore":             "__pycache__/\n.pytest_cache/\n/.forgeflow-runtime/\n",
+	}},
+	// A Gradle/JUnit project without a wrapper, like repositories that need
+	// the environment to provision a JDK and a pinned Gradle distribution.
+	"gradle": {Replace: true, Title: "Arith.add returns the difference", Body: "calc.Arith.add(2, 3) returns -1 instead of 5. Fix add and add JUnit regression tests. The project builds with Gradle 8.10.2 on Java 17 (see README).", Files: map[string]string{
+		"settings.gradle":                   "rootProject.name = 'calc'\n",
+		"build.gradle":                      "plugins { id 'java' }\n\njava { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }\n\nrepositories { mavenCentral() }\n\ndependencies { testImplementation 'junit:junit:4.13.2' }\n",
+		"src/main/java/calc/Arith.java":     "package calc;\n\npublic final class Arith {\n    private Arith() {}\n\n    public static int add(int a, int b) {\n        return a - b;\n    }\n}\n",
+		"src/test/java/calc/ArithTest.java": "package calc;\n\nimport static org.junit.Assert.assertEquals;\n\nimport org.junit.Test;\n\npublic class ArithTest {\n    @Test\n    public void addsPositiveNumbers() {\n        assertEquals(5, Arith.add(2, 3));\n    }\n}\n",
+		"README.md":                         "Build and test with Gradle 8.10.2 on Java 17: `gradle test`. There is no Gradle wrapper.\n",
+		".gitignore":                        "build/\n.gradle/\n/.forgeflow-runtime/\n",
+	}},
 }
 
 type waitingRunner struct {
