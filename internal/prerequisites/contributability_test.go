@@ -135,3 +135,25 @@ func TestCIScreening(t *testing.T) {
 		t.Fatalf("one recent failure excluded an otherwise passing repository: %+v", f)
 	}
 }
+
+func TestReleaseAndDocsWorkflowsAreNotVerification(t *testing.T) {
+	publish := "name: Publish to maven repo\n\non:\n    release:\n        types: [published]\n\njobs:\n    publish:\n        steps:\n            - run: ./gradlew publish\n              env:\n                  MAVEN_PASSWORD: ${{ secrets.REPO_TOKEN }}\n"
+	tagged := "name: build\non:\n  push:\n    tags: ['v*']\n  workflow_dispatch:\njobs:\n  b:\n    services:\n      db:\n        image: postgres\n"
+	ci := "name: CI\non: [push, pull_request]\njobs:\n  test:\n    services:\n      db:\n        image: postgres\n"
+	if verificationWorkflow(publish) {
+		t.Fatal("release-only publish workflow treated as verification")
+	}
+	if !verificationWorkflow(ci) || !verificationWorkflow("jobs:\n  t:\n") {
+		t.Fatal("code-change CI workflow ignored")
+	}
+	if got := analyze(map[string]string{".github/workflows/repo.yml": publish}, LinuxProfile()); len(got) != 0 {
+		t.Fatalf("publish secrets became contribution requirements: %+v", got)
+	}
+	if got := analyze(map[string]string{".github/workflows/ci.yml": ci}, LinuxProfile()); len(got) == 0 {
+		t.Fatal("CI services were not flagged for assessment")
+	}
+	_ = tagged
+	if selectedFile(".github/workflows/release-docs.yml") || selectedFile(".github/workflows/docs/push-docs/action.yml") || !selectedFile(".github/workflows/ci.yml") {
+		t.Fatal("prerequisite reads still spend budget on docs/release workflows")
+	}
+}

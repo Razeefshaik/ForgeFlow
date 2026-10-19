@@ -47,6 +47,9 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 		script := strings.HasSuffix(file, ".sh") || strings.HasSuffix(file, ".bash") || strings.HasSuffix(file, ".py") || strings.HasSuffix(file, ".js") || strings.HasSuffix(file, ".mjs") || strings.HasSuffix(file, ".ps1")
 		build := strings.EqualFold(path.Base(file), "makefile") || script
 		workflow := strings.HasPrefix(file, ".github/workflows/")
+		if workflow && !verificationWorkflow(text) {
+			continue
+		}
 		verificationDoc := strings.Contains(strings.ToLower(file), "contribut") || strings.Contains(strings.ToLower(file), "develop") || strings.Contains(strings.ToLower(file), "test") || strings.EqualFold(path.Base(file), "AGENTS.md")
 		sectionVerification := verificationDoc
 		releaseJob := false
@@ -128,6 +131,23 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 	}
 	return result
 }
+
+var workflowName = regexp.MustCompile(`(?m)^name:\s*["']?([^"'\n]+)`)
+var codeTrigger = regexp.MustCompile(`(?m)^\s*(?:-\s*)?(?:push|pull_request|pull_request_target|merge_group)\s*:?\s*$|^on:\s*\[?[^\n]*\b(?:push|pull_request|merge_group)\b`)
+
+// verificationWorkflow keeps workflows that check code changes. A workflow
+// named as a release, publish or docs job, or one that never runs on pushes
+// or pull requests (release/tag/schedule/manual triggers only), carries
+// deployment secrets, not contribution requirements.
+func verificationWorkflow(text string) bool {
+	if m := workflowName.FindStringSubmatch(text); m != nil && nonVerificationWorkflow.MatchString(m[1]) {
+		return false
+	}
+	// Without a readable trigger, keep screening the workflow.
+	return codeTrigger.MatchString(text) || !workflowTriggers.MatchString(text)
+}
+
+var workflowTriggers = regexp.MustCompile(`(?m)^["']?on["']?\s*:`)
 
 // Preserve line numbers while following only verification targets and their
 // dependency targets, not unrelated release/deployment Docker recipes.

@@ -201,7 +201,11 @@ func selectedFile(p string) bool {
 	l := strings.ToLower(p)
 	b := path.Base(l)
 	if strings.HasPrefix(l, ".github/workflows/") && (strings.HasSuffix(l, ".yml") || strings.HasSuffix(l, ".yaml")) {
-		return true
+		// Release, deployment, docs-site and housekeeping workflows are not
+		// verification: their deploy secrets are not contribution requirements,
+		// and reading them exhausted the bounded file budget (Skript's six docs
+		// workflows held a passing repository out of ranking).
+		return !nonVerificationWorkflow.MatchString(strings.TrimPrefix(l, ".github/workflows/"))
 	}
 	if strings.Contains(l, "/") {
 		if b == "agents.md" {
