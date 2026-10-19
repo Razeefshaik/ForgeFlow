@@ -33,4 +33,18 @@ type RepositoryAssessment struct {
 	Files        []string              `json:"files"`
 	Findings     []PrerequisiteFinding `json:"findings"`
 	Requirements []PrerequisiteFinding `json:"requirements,omitempty"`
+	CI           *CIEvidence           `json:"ci,omitempty"`
+}
+
+// CIEvidence summarizes recent default-branch GitHub Actions runs of the
+// repository's verification workflows. It is observed timing, never a test
+// result: discovery uses it to skip builds that cannot fit ForgeFlow's budget,
+// and execution uses it to size command deadlines.
+type CIEvidence struct {
+	Workflows        []string  `json:"workflows"`
+	SuccessfulRuns   int       `json:"successful_runs"`
+	MedianSeconds    int       `json:"median_seconds"`
+	SlowestWorkflow  string    `json:"slowest_workflow,omitempty"`
+	LatestConclusion string    `json:"latest_conclusion,omitempty"`
+	ObservedAt       time.Time `json:"observed_at"`
 }
