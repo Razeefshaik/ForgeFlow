@@ -75,3 +75,34 @@ func TestLabelsDriveConservativeExclusionsAndDifficulty(t *testing.T) {
 		t.Fatal("beginner difficulty missed")
 	}
 }
+
+func TestDocumentationOnlyIssues(t *testing.T) {
+	issue := func(title string, labels ...string) github.Issue {
+		i := github.Issue{Title: title}
+		for _, l := range labels {
+			i.Labels = append(i.Labels, github.Label{Name: l})
+		}
+		return i
+	}
+	for _, tc := range []struct {
+		issue github.Issue
+		docs  bool
+	}{
+		// The issue that stalled on 2026-10-17: a handbook labelled enhancement.
+		{issue("Engineer Handbook", "documentation", "enhancement"), true},
+		{issue("Update README installation steps"), true},
+		{issue("Add a tutorial for the plugin API guide"), true},
+		{issue("Document the CLI flags"), true},
+		{issue("Implement docs search"), false},
+		{issue("Docs generator crashes on multiline examples", "documentation", "bug"), false},
+		{issue("Fix parser error on empty input", "enhancement"), false},
+		{issue("Support custom headers in the HTTP client"), false},
+	} {
+		if got := DocumentationOnly(tc.issue); got != tc.docs {
+			t.Errorf("%q %v: documentation-only = %v, want %v", tc.issue.Title, tc.issue.Labels, got, tc.docs)
+		}
+	}
+	if !Excluded(issue("Engineer Handbook", "documentation", "enhancement"), config.Default()) {
+		t.Fatal("documentation-only issue was offered under the default profile")
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"forgeflow/internal/ranking"
 	"math"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -29,14 +30,31 @@ func Difficulty(i github.Issue) string {
 	}
 	return "medium"
 }
+
+var docsTitle = regexp.MustCompile(`(?i)^\s*document\b|\b(docs?|documentation|readme|handbook|guides?|tutorials?|typos?|spelling|wiki|changelog|docstrings?|examples? page)\b`)
+var codeTitle = regexp.MustCompile(`(?i)\b(fix|fixes|crash|panic|error|exception|fails?|failing|failure|bug|incorrect|wrong|regression|broken|leak|race|deadlock|implement)\b`)
+
+// DocumentationOnly recognizes issues whose deliverable is prose. A docs
+// label marks documentation work unless the issue is also a bug; an
+// "enhancement" label does not make a handbook a code change. A title about
+// docs with no code-change wording is documentation even without labels.
+func DocumentationOnly(i github.Issue) bool {
+	if HasLabel(i, "bug") {
+		return false
+	}
+	if HasLabel(i, "documentation") || HasLabel(i, "docs") || HasLabel(i, "type: docs") || HasLabel(i, "kind/documentation") {
+		return true
+	}
+	return docsTitle.MatchString(i.Title) && !codeTitle.MatchString(i.Title)
+}
+
 func Excluded(i github.Issue, c domain.Config) bool {
-	// Conservative label-based exclusion: a backend issue mentioning documentation is not automatically documentation-only.
 	for _, x := range c.Profile.Exclude {
 		x = strings.ToLower(x)
 		if HasLabel(i, x) {
 			return true
 		}
-		if x == "documentation-only" && (HasLabel(i, "documentation") || HasLabel(i, "docs")) && !HasLabel(i, "bug") && !HasLabel(i, "enhancement") {
+		if x == "documentation-only" && DocumentationOnly(i) {
 			return true
 		}
 		if x == "frontend-only" && (HasLabel(i, "frontend") || HasLabel(i, "ui")) {
