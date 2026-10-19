@@ -37,6 +37,34 @@ func TestGradleHomeIsWritableAndIsolatedPerWorkspace(t *testing.T) {
 	}
 }
 
+func TestPythonBytecodeIsNeverWrittenIntoWorkspace(t *testing.T) {
+	t.Setenv("PYTHONDONTWRITEBYTECODE", "")
+	dir := t.TempDir()
+	env, err := workspaceEnvironmentForNetwork(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := []string{}
+	for _, entry := range env {
+		if key, value, _ := strings.Cut(entry, "="); strings.EqualFold(key, "PYTHONDONTWRITEBYTECODE") {
+			values = append(values, value)
+		}
+	}
+	if len(values) != 1 || values[0] != "1" {
+		t.Fatalf("native agent and verification processes can write __pycache__: %v", values)
+	}
+	if err = os.Mkdir(filepath.Join(dir, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	args, err := containerArguments("fixture:1", "fixture", dir, domain.VerificationCommand{Program: "python3", Arguments: []string{"-m", "pytest"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(args, "\n"), "--env\nPYTHONDONTWRITEBYTECODE=1\n") {
+		t.Fatal("verification container can write __pycache__ into the bind-mounted workspace", args)
+	}
+}
+
 func TestWindowsWrapperUsesExplicitLocalPath(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows wrapper resolution")
