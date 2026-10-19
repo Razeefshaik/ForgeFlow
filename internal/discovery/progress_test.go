@@ -56,6 +56,8 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 		}
 		sum := sha1.Sum([]byte(fmt.Sprintf("blob %d\x00%s", len(body), body)))
 		blobSHA := fmt.Sprintf("%x", sum)
+		mod := "module example.com/" + parts[2] + "\n\ngo 1.26\n"
+		modSHA := fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("blob %d\x00%s", len(mod), mod))))
 		if len(parts) == 3 {
 			json.NewEncoder(w).Encode(github.Repository{FullName: repo, Language: "Go", DefaultBranch: "main", PushedAt: time.Now().UTC()})
 			return
@@ -65,12 +67,16 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 			json.NewEncoder(w).Encode([]github.Commit{{SHA: strings.Repeat("a", 40)}})
 		case "git":
 			if parts[4] == "trees" {
-				json.NewEncoder(w).Encode(map[string]any{"tree": []map[string]any{{"path": "CONTRIBUTING.md", "type": "blob", "mode": "100644", "sha": blobSHA, "size": len(body)}}})
+				json.NewEncoder(w).Encode(map[string]any{"tree": []map[string]any{{"path": "CONTRIBUTING.md", "type": "blob", "mode": "100644", "sha": blobSHA, "size": len(body)}, {"path": "go.mod", "type": "blob", "mode": "100644", "sha": modSHA, "size": len(mod)}, {"path": "main_test.go", "type": "blob", "mode": "100644", "sha": strings.Repeat("b", 40), "size": 10}}})
+			} else if len(parts) > 5 && parts[5] == modSHA {
+				json.NewEncoder(w).Encode(github.Blob{SHA: modSHA, Size: len(mod), Encoding: "base64", Content: base64.StdEncoding.EncodeToString([]byte(mod))})
 			} else {
 				json.NewEncoder(w).Encode(github.Blob{SHA: blobSHA, Size: len(body), Encoding: "base64", Content: base64.StdEncoding.EncodeToString([]byte(body))})
 			}
 		case "issues":
 			json.NewEncoder(w).Encode(github.Issue{Number: n, Title: "Fix backend behavior", State: "open", Body: "A reproduction for a backend defect", Labels: []github.Label{{Name: "bug"}}})
+		case "actions":
+			fmt.Fprint(w, ciRuns())
 		case "releases", "pulls":
 			fmt.Fprint(w, "[]")
 		default:

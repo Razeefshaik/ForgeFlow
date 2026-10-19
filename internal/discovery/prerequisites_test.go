@@ -37,7 +37,7 @@ func TestNewRepositoryExcludedBeforeIssueRankingWithNoContributionHistory(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			if calls.Load() != int64(len(cfg.Config.Profile.Languages)+5) {
+			if calls.Load() != int64(len(cfg.Config.Profile.Languages)+6) {
 				t.Fatal("rejected repository consumed issue/release/PR enrichment", calls.Load())
 			}
 			cs, err := store.Contributions(ctx)

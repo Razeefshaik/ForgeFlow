@@ -242,7 +242,7 @@ func preferredLabels(labels []string) string {
 }
 func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.ConfigVersion) {
 	credential := s.Client.Credential()
-	session := &github.Session{Client: s.Client, MaxRequests: 160}
+	session := &github.Session{Client: s.Client, MaxRequests: 220}
 	opps := []domain.Opportunity{}
 	hadError := false
 	warn := func(err error) {
@@ -318,9 +318,11 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			}
 		}
 	}
-	maxRepos, maxPerRepo, maxChecked := 5, 3, 12
+	// Contributability screening rejects most repositories from the tree and CI
+	// timing alone (a few requests each), so more candidates can be screened.
+	maxRepos, maxPerRepo, maxChecked := 5, 3, 20
 	if s.Client.Credential() == "" {
-		maxRepos, maxPerRepo, maxChecked = 2, 2, 6
+		maxRepos, maxPerRepo, maxChecked = 2, 2, 8
 	}
 	run.Warnings = append(run.Warnings, fmt.Sprintf("Scan targets %d eligible repositories, screens at most %d repositories, and accepts at most %d issues per repository. Further candidates continue in the next scan.", maxRepos, maxChecked, maxPerRepo))
 	type snapshot struct {
@@ -432,6 +434,10 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		if !suitable {
 			continue
 		}
+		// Someone is already working on an assigned issue; a parallel PR is rarely merged.
+		if len(issue.Assignees) > 0 {
+			continue
+		}
 		e := snap.e
 		e.Warnings = append([]string{}, snap.e.Warnings...)
 		e.IssueURL = fmt.Sprintf("https://github.com/%s/issues/%d", name, issue.Number)
@@ -487,6 +493,9 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			if !e.CompetitionChecked {
 				e.Warnings = append(e.Warnings, "Competing PR search is incomplete; no-competition conclusions are unavailable.")
 			}
+		}
+		if len(e.CompetingPRs) > 0 {
+			continue
 		}
 		if stopped() {
 			run.NextSearchCursors[positioned.lang] = before
@@ -553,7 +562,7 @@ func (s *Service) repositoryEvidence(ctx context.Context, session *github.Sessio
 			analyzer.InspectTree(tree, &e)
 		}
 	}
-	a := prerequisites.Inspect(ctx, session, r.FullName, e.HeadSHA, tree, s.PrerequisiteProfile, warn)
+	a := prerequisites.InspectRepository(ctx, session, r, e.HeadSHA, tree, s.PrerequisiteProfile, warn)
 	e.Prerequisites = &a
 	if a.Status != "eligible" {
 		return e

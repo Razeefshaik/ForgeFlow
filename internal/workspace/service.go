@@ -106,7 +106,7 @@ func (s *Service) PreviewWithOptions(ctx context.Context, id, requestedModel str
 	if err != nil {
 		return a, err
 	}
-	session := github.Session{Client: s.Client, MaxRequests: 22, Fresh: true}
+	session := github.Session{Client: s.Client, MaxRequests: 24, Fresh: true}
 	endpoint := "/repos/" + o.Repository
 	var repo github.Repository
 	var issue github.Issue
@@ -136,7 +136,7 @@ func (s *Service) PreviewWithOptions(ctx context.Context, id, requestedModel str
 	if err = session.Get(ctx, endpoint+"/git/trees/"+commits[0].SHA+"?recursive=1", &tree); err != nil {
 		return a, err
 	}
-	assessment := prerequisites.Inspect(ctx, &session, o.Repository, commits[0].SHA, tree, s.PrerequisiteProfile)
+	assessment := prerequisites.InspectRepository(ctx, &session, repo, commits[0].SHA, tree, s.PrerequisiteProfile)
 	if err = s.Store.SaveRepositoryAssessment(ctx, assessment); err != nil {
 		return a, err
 	}
@@ -192,6 +192,9 @@ func (s *Service) PreviewWithOptions(ctx context.Context, id, requestedModel str
 		e := *stable.Opportunity.Evidence
 		p := *e.Prerequisites
 		p.CheckedAt = time.Time{}
+		// CI timing changes whenever upstream CI runs; it sizes deadlines but is
+		// not a reviewed input, so it must not invalidate the approval.
+		p.CI = nil
 		e.Prerequisites = &p
 		stable.Opportunity.Evidence = &e
 	}
@@ -275,6 +278,7 @@ func (s *Service) ProceedWithOptions(ctx context.Context, id, token string, appr
 	}()
 	return c, nil
 }
+
 // A full clone's duration scales with repository history and the network.
 // Five minutes aborted ordinary repositories on slower connections and left a
 // contribution that could not be resumed; this bound still stops a stall.

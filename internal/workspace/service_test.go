@@ -79,8 +79,9 @@ func TestFreshPreviewApprovalAndStaleInputs(t *testing.T) {
 	if _, err = manager.Proceed(ctx, "issue", preview.Token, false); err == nil {
 		t.Fatal("missing human approval accepted")
 	}
-	if calls != 6 {
-		t.Fatal("unapproved request fetched or executed work")
+	// repository, issue, commit, tree, two instruction/manifest blobs, CI runs, PR search
+	if calls != 8 {
+		t.Fatal("unapproved request fetched or executed work", calls)
 	}
 	downloads, err := manager.PreviewWithOptions(ctx, "issue", "", true)
 	if err != nil || !downloads.AllowDownloads || downloads.Token == preview.Token {

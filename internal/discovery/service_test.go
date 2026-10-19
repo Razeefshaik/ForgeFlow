@@ -22,7 +22,18 @@ func fixture(t *testing.T) (*httptest.Server, *atomic.Int64) {
 	return fixtureFiles(t, map[string]string{"CONTRIBUTING.md": "Run go test ./... before contributing.\n", "AGENTS.md": "Run required verification: go test ./...\n", "go.mod": "module example/backend\n\ngo 1.27.0\n", ".github/workflows/ci.yml": "name: tests\njobs:\n  test:\n    steps:\n      - run: go test ./...\n"})
 }
 
+// ciRuns is a successful four-minute default-branch verification run, the
+// evidence a contributable repository provides.
+func ciRuns() string {
+	end := time.Now().UTC().Add(-time.Hour)
+	return fmt.Sprintf(`{"workflow_runs":[{"name":"tests","path":".github/workflows/ci.yml","head_branch":"main","event":"push","status":"completed","conclusion":"success","run_started_at":%q,"updated_at":%q}]}`, end.Add(-4*time.Minute).Format(time.RFC3339), end.Format(time.RFC3339))
+}
+
 func fixtureFiles(t *testing.T, files map[string]string) (*httptest.Server, *atomic.Int64) {
+	return fixturePRs(t, files, `{"total_count":2,"items":[{"number":55,"body":"Fixes #123"},{"number":56,"body":"https://github.com/example/backend/issues/123"}]}`)
+}
+
+func fixturePRs(t *testing.T, files map[string]string, prs string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	calls := &atomic.Int64{}
 	head := strings.Repeat("a", 40)
@@ -42,7 +53,7 @@ func fixtureFiles(t *testing.T, files map[string]string) (*httptest.Server, *ato
 		switch r.URL.Path {
 		case "/search/issues":
 			if strings.Contains(r.URL.Query().Get("q"), "is:pr") {
-				fmt.Fprint(w, `{"total_count":2,"items":[{"number":55,"body":"Fixes #12"},{"number":56,"body":"https://github.com/example/backend/issues/123"}]}`)
+				fmt.Fprint(w, prs)
 			} else {
 				fmt.Fprintf(w, `{"total_count":1,"items":[{"number":12,"repository_url":"https://api.github.com/repos/example/backend"}]}`)
 			}
@@ -52,6 +63,8 @@ func fixtureFiles(t *testing.T, files map[string]string) (*httptest.Server, *ato
 			fmt.Fprintf(w, `[{"sha":%q,"commit":{"committer":{"date":%q}}}]`, head, now)
 		case "/repos/example/backend/git/trees/" + head:
 			json.NewEncoder(w).Encode(map[string]any{"tree": nodes})
+		case "/repos/example/backend/actions/runs":
+			fmt.Fprint(w, ciRuns())
 		case "/repos/example/backend/releases":
 			fmt.Fprintf(w, `[{"published_at":%q}]`, now)
 		case "/repos/example/backend/pulls":
@@ -104,8 +117,12 @@ func TestScanPersistsEvidenceAndReusesCacheWithoutErasingHistory(t *testing.T) {
 		t.Fatal(opps, err)
 	}
 	e := opps[0].Evidence
-	if e == nil || e.MaintainerComments == nil || *e.MaintainerComments != 1 || len(e.CompetingPRs) != 1 || e.CompetingPRs[0] != "https://github.com/example/backend/pull/55" || e.Guidelines == nil || !*e.Guidelines {
-		t.Fatal("evidence missing or PR URL prefix matched", e)
+	// PRs referencing #123 or issues/123 must not count as competition for #12.
+	if e == nil || e.MaintainerComments == nil || *e.MaintainerComments != 1 || len(e.CompetingPRs) != 0 || !e.CompetitionChecked || e.Guidelines == nil || !*e.Guidelines {
+		t.Fatal("evidence missing or PR number/URL prefix matched", e)
+	}
+	if e.Prerequisites == nil || e.Prerequisites.CI == nil || e.Prerequisites.CI.MedianSeconds != 240 {
+		t.Fatal("CI timing evidence was not recorded", e.Prerequisites)
 	}
 	runs, _ := store.DiscoveryRuns(ctx)
 	if len(runs) != 1 || runs[0].Status != "SUCCEEDED" || runs[0].Accepted != 1 {
@@ -274,5 +291,20 @@ func TestRecoveredInterruptedRunCannotBeCompletedTwice(t *testing.T) {
 	}
 	if err := store.FinishDiscovery(ctx, runs[0], nil); err == nil {
 		t.Fatal("completed run rewritten")
+	}
+}
+
+// An open PR already solving the issue, or an assignee, means a ForgeFlow PR
+// would race existing work; such issues are not offered.
+func TestCompetingOrAssignedIssuesAreNotOffered(t *testing.T) {
+	server, _ := fixturePRs(t, map[string]string{"CONTRIBUTING.md": "Run go test ./... before contributing.\n", "go.mod": "module example/backend\n\ngo 1.27.0\n"}, `{"total_count":1,"items":[{"number":55,"body":"Fixes #12"}]}`)
+	s, store := setup(t, server, false)
+	if _, err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	opps, err := store.Opportunities(context.Background())
+	if err != nil || len(opps) != 0 {
+		t.Fatal("issue with a competing open PR was offered", opps, err)
 	}
 }
