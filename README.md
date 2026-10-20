@@ -56,7 +56,7 @@ npm --prefix apps/web run dev
 - Editable PR titles/descriptions with stale-draft detection. Changing prepared text invalidates submission approval. Public descriptions contain changes, actual test outcomes and risks; internal reports retain execution/model evidence.
 - Atomic execution checkpoints, interrupted-run reconciliation, isolated worker panic handling, serialized execution/PR controls, and recovery of an accepted GitHub PR after a lost response.
 
-See [reliability and feature research](docs/reliability-and-features.md) for implementation scope, research and remaining opportunities.
+See [reliability and feature research](docs/reliability-and-features.md) for implementation scope, research and remaining opportunities. Discovery offers only repositories ForgeFlow can build, verify and finish, and verification runs on a fast synced copy of each workspace; see [contributable repositories only](docs/contributability-2026-10-20.md).
 
 ## Execution and boundaries
 Inspect a real issue, select **Proceed to Contribute**, review fresh inputs and explicitly approve cloning, coding, verification and independent review. Existing preparation-only contributions require **Start coding** approval. Enabling plan approval pauses before edits; approve the plan, then resume. Dependency network access is off by default and can be explicitly enabled when starting/resuming.
