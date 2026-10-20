@@ -242,7 +242,14 @@ func preferredLabels(labels []string) string {
 }
 func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.ConfigVersion) {
 	credential := s.Client.Credential()
-	session := &github.Session{Client: s.Client, MaxRequests: 220}
+	// Signed-in scans may read more: GitHub allows 5,000 requests an hour, and
+	// each repository that survives cheap screening costs about 20 reads.
+	budget := 160
+	if credential != "" {
+		budget = 400
+	}
+	session := &github.Session{Client: s.Client, MaxRequests: budget}
+	skipped := map[string]int{}
 	opps := []domain.Opportunity{}
 	hadError := false
 	warn := func(err error) {
@@ -417,7 +424,12 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			}
 			continue
 		}
-		if issue.State != "open" || len(issue.PullRequest) > 0 && strings.TrimSpace(string(issue.PullRequest)) != "null" || analyzer.Excluded(issue, cfg.Config) {
+		if issue.State != "open" || len(issue.PullRequest) > 0 && strings.TrimSpace(string(issue.PullRequest)) != "null" {
+			skipped["closed or a pull request"]++
+			continue
+		}
+		if analyzer.Excluded(issue, cfg.Config) {
+			skipped["excluded by profile (for example documentation-only)"]++
 			continue
 		}
 		if issue.Number != candidate.Number {
@@ -432,10 +444,12 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			}
 		}
 		if !suitable {
+			skipped["outside configured difficulty"]++
 			continue
 		}
 		// Someone is already working on an assigned issue; a parallel PR is rarely merged.
 		if len(issue.Assignees) > 0 {
+			skipped["already assigned"]++
 			continue
 		}
 		e := snap.e
@@ -495,6 +509,7 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 			}
 		}
 		if len(e.CompetingPRs) > 0 {
+			skipped["an open PR already references it"]++
 			continue
 		}
 		if stopped() {
@@ -508,6 +523,14 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		}
 		opps = append(opps, o)
 		counts[name]++
+	}
+	if len(skipped) > 0 {
+		reasons := make([]string, 0, len(skipped))
+		for reason, n := range skipped {
+			reasons = append(reasons, fmt.Sprintf("%d %s", n, reason))
+		}
+		sort.Strings(reasons)
+		run.Warnings = append(run.Warnings, "Issues in eligible repositories not offered: "+strings.Join(reasons, "; ")+".")
 	}
 	run.Accepted = len(opps)
 	run.Requests = session.Requests

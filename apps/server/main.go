@@ -201,6 +201,12 @@ func run() error {
 				slog.Error("GitHub account audit event failed", "error", e)
 			}
 		})
+		// A saved token refreshed during startup notified before this
+		// subscription existed; adopt the current source so discovery reports
+		// the credential its client actually uses.
+		if source := account.Status().Source; source != auth {
+			discover.CredentialChanged(source)
+		}
 	}
 	discover.Schedule()
 	if err = s.ExpireConfigs(ctx, time.Now()); err != nil {
