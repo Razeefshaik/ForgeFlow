@@ -136,32 +136,32 @@ type ExecutionRecord struct {
 	Preexisting        []PreexistingFailure  `json:"preexisting_failures,omitempty"`
 	// PendingIssue is an upstream edit awaiting human review; ApprovedIssue is
 	// the edit a human approved, superseding the original approval's text.
-	PendingIssue  *IssueRevision `json:"pending_issue,omitempty"`
-	ApprovedIssue *IssueRevision `json:"approved_issue,omitempty"`
-	ContributionID     string                `json:"contribution_id"`
-	Status             string                `json:"status"`
-	Phase              string                `json:"phase"`
-	Plan               *Plan                 `json:"plan,omitempty"`
-	Review             *Review               `json:"review,omitempty"`
-	Summary            string                `json:"summary"`
-	Message            string                `json:"message,omitempty"`
-	FixIterations      int                   `json:"fix_iterations"`
-	ReviewCycles       int                   `json:"review_cycles"`
-	PlanApproved       bool                  `json:"plan_approved"`
-	Network            bool                  `json:"network"`
-	Incident           *ExecutionIncident    `json:"incident,omitempty"`
-	RecoveryAttempts   int                   `json:"recovery_attempts"`
-	Constraints        string                `json:"constraints"`
-	UpdatedAt          time.Time             `json:"updated_at"`
-	ChangedFiles       []string              `json:"changed_files"`
-	Diff               string                `json:"diff"`
-	Report             string                `json:"report"`
-	PRTitle            string                `json:"pr_title"`
-	PRRevision         string                `json:"pr_revision"`
-	PRBody             string                `json:"pr_body"`
-	PRURL              string                `json:"pr_url"`
-	HeadCommit         string                `json:"head_commit"`
-	SubmissionToken    string                `json:"submission_token"`
+	PendingIssue     *IssueRevision     `json:"pending_issue,omitempty"`
+	ApprovedIssue    *IssueRevision     `json:"approved_issue,omitempty"`
+	ContributionID   string             `json:"contribution_id"`
+	Status           string             `json:"status"`
+	Phase            string             `json:"phase"`
+	Plan             *Plan              `json:"plan,omitempty"`
+	Review           *Review            `json:"review,omitempty"`
+	Summary          string             `json:"summary"`
+	Message          string             `json:"message,omitempty"`
+	FixIterations    int                `json:"fix_iterations"`
+	ReviewCycles     int                `json:"review_cycles"`
+	PlanApproved     bool               `json:"plan_approved"`
+	Network          bool               `json:"network"`
+	Incident         *ExecutionIncident `json:"incident,omitempty"`
+	RecoveryAttempts int                `json:"recovery_attempts"`
+	Constraints      string             `json:"constraints"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+	ChangedFiles     []string           `json:"changed_files"`
+	Diff             string             `json:"diff"`
+	Report           string             `json:"report"`
+	PRTitle          string             `json:"pr_title"`
+	PRRevision       string             `json:"pr_revision"`
+	PRBody           string             `json:"pr_body"`
+	PRURL            string             `json:"pr_url"`
+	HeadCommit       string             `json:"head_commit"`
+	SubmissionToken  string             `json:"submission_token"`
 }
 
 // ExecutionEnvironment is observed control-plane evidence, not an agent's claim.

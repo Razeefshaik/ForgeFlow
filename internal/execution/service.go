@@ -395,6 +395,7 @@ func (s *Service) run(ctx context.Context, c domain.Contribution, a domain.Works
 		_ = s.exportEvents(endCtx, c.ID, meta)
 	}
 }
+
 // freshIssue compares the live issue with the human-approved text. With a
 // record, an edit is saved for review instead of being a dead end; without one
 // (PR submission) it is simply refused.
