@@ -742,7 +742,12 @@ func verificationCommands(repo string, plan *domain.Plan, validators ...func(dom
 	if plan == nil {
 		return nil, errors.New("a saved contribution plan is required before verification")
 	}
-	commands := verification.Detect(repo)
+	commands := []domain.VerificationCommand{}
+	for _, detected := range verification.Detect(repo) {
+		if !subsumedByPlan(detected, plan.Tests) {
+			commands = append(commands, detected)
+		}
+	}
 	for _, extra := range plan.Tests {
 		found := false
 		for _, command := range commands {
@@ -772,6 +777,74 @@ func verificationCommands(repo string, plan *domain.Plan, validators ...func(dom
 	}
 	return commands, nil
 }
+
+// subsumedByPlan reports a detected Gradle or Maven `test` run that a planned
+// build of the same tool already performs; running both repeated a full Gradle
+// build. Planned commands and every other detected command are always kept.
+func subsumedByPlan(detected domain.VerificationCommand, planned []domain.VerificationCommand) bool {
+	family := buildToolFamily(detected.Program)
+	if family == "" || len(detected.Arguments) != 1 || detected.Arguments[0] != "test" {
+		return false
+	}
+	covered := false
+	for _, p := range planned {
+		if p.Program == detected.Program && len(p.Arguments) == 1 && p.Arguments[0] == "test" {
+			return false
+		}
+		if buildToolFamily(p.Program) == family && runsAllTests(p, family) {
+			covered = true
+		}
+	}
+	return covered
+}
+
+// runsAllTests recognizes a Gradle build/check or Maven package/verify/install
+// over the whole project. Excluded or filtered tests, skip properties, project
+// selection and dry runs keep the detected test command.
+func runsAllTests(command domain.VerificationCommand, family string) bool {
+	lifecycle := map[string]bool{"build": true, "check": true}
+	if family == "maven" {
+		lifecycle = map[string]bool{"package": true, "verify": true, "install": true}
+	}
+	covered := false
+	args := command.Arguments
+	for i, arg := range args {
+		next := ""
+		if i+1 < len(args) {
+			next = args[i+1]
+		}
+		property := ""
+		if arg == "-D" || arg == "-P" {
+			property = next
+		} else if strings.HasPrefix(arg, "-D") || (family == "gradle" && strings.HasPrefix(arg, "-P")) {
+			property = arg[2:]
+		}
+		name, value, _ := strings.Cut(property, "=")
+		excluded := ""
+		if family == "gradle" && (arg == "-x" || arg == "--exclude-task") {
+			excluded = next
+		} else if family == "gradle" && strings.HasPrefix(arg, "--exclude-task=") {
+			excluded = strings.TrimPrefix(arg, "--exclude-task=")
+		} else if family == "gradle" && strings.HasPrefix(arg, "-x") {
+			excluded = arg[2:]
+		}
+		task := excluded[strings.LastIndex(excluded, ":")+1:]
+		switch {
+		case task == "test" || task == "check":
+			return false
+		case (strings.Contains(strings.ToLower(name), "skip") && value != "false") || (family == "maven" && name == "test"):
+			return false
+		case family == "gradle" && contains([]string{"--tests", "-m", "--dry-run", "-p", "--project-dir", "-b", "--build-file", "-c", "--settings-file"}, strings.SplitN(arg, "=", 2)[0]):
+			return false
+		case family == "maven" && contains([]string{"-pl", "--projects", "-f", "--file", "-N", "--non-recursive", "-rf", "--resume-from"}, strings.SplitN(arg, "=", 2)[0]):
+			return false
+		case lifecycle[arg]:
+			covered = true
+		}
+	}
+	return covered
+}
+
 func (s *Service) agent(ctx context.Context, id, repo, meta, role, prompt, schema, model string, network bool) (output string, agentErr error) {
 	bounded, snapshot, err := boundedAgentPrompt(repo, prompt)
 	if err != nil {
