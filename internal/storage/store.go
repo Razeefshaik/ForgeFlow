@@ -393,8 +393,34 @@ func (s *Store) Opportunities(ctx context.Context) ([]domain.Opportunity, error)
 			return nil, e
 		}
 	}
+	// An issue that already has a contribution is not a new opportunity (it
+	// resurfaced once its repository was reassessed), and saved evidence of an
+	// assignee or a competing PR means a ForgeFlow PR would race that work.
+	contributed := map[string]bool{}
+	if !s.Demo {
+		rows, e := s.db.QueryContext(ctx, "SELECT opportunity_id FROM contributions")
+		if e != nil {
+			return nil, e
+		}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return nil, e
+			}
+			contributed[id] = true
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return nil, e
+		}
+	}
 	eligible := make([]domain.Opportunity, 0, len(all))
 	for _, o := range all {
+		if contributed[o.ID] || (!s.Demo && o.Evidence != nil && (len(o.Evidence.CompetingPRs) > 0 || len(o.Evidence.Assignees) > 0)) {
+			continue
+		}
 		if repositoryEligibility(o.Repository, exclusions) == nil && (s.Demo || s.AssessmentProfile == "" || assessed[strings.ToLower(o.Repository)]) {
 			eligible = append(eligible, o)
 		}

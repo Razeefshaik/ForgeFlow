@@ -19,12 +19,21 @@ func eligibilityFixture(t *testing.T, s *Store, id, repo string) {
 	if _, err = s.db.Exec("INSERT INTO opportunities VALUES (?,?,?) ON CONFLICT(id) DO NOTHING", id, string(o), 0); err != nil {
 		t.Fatal(err)
 	}
-	c := domain.Contribution{ID: id, OpportunityID: id, Repository: repo, State: "PAUSED"}
+	// The historical contribution is for an earlier issue in the same repository:
+	// its outcome must not decide whether the repository's other issues rank.
+	c := domain.Contribution{ID: id, OpportunityID: id + ":earlier-issue", Repository: repo, State: "PAUSED"}
+	earlier, err := json.Marshal(domain.Opportunity{ID: c.OpportunityID, Repository: repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec("INSERT INTO opportunities VALUES (?,?,?) ON CONFLICT(id) DO NOTHING", c.OpportunityID, string(earlier), 0); err != nil {
+		t.Fatal(err)
+	}
 	b, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("INSERT INTO contributions VALUES (?,?,?)", id, id, string(b)); err != nil {
+	if _, err = s.db.Exec("INSERT INTO contributions VALUES (?,?,?)", id, c.OpportunityID, string(b)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -174,5 +183,36 @@ func TestCurrentRunnerProfileRequiresFreshAssessmentForRanking(t *testing.T) {
 	x, err := s.RepositoryExclusions(ctx)
 	if err != nil || len(x) != 1 || x[0].Status != "needs_assessment" {
 		t.Fatal(x, err)
+	}
+}
+
+func TestOpportunityListHidesContributedAndContestedIssues(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, ":memory:", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, o := range []domain.Opportunity{
+		{ID: "done", Repository: "owner/repo"},
+		{ID: "racing", Repository: "owner/repo", Evidence: &domain.Evidence{CompetingPRs: []string{"https://github.com/owner/repo/pull/9"}}},
+		{ID: "assigned", Repository: "owner/repo", Evidence: &domain.Evidence{Assignees: []string{"someone"}}},
+		{ID: "open", Repository: "owner/repo", Evidence: &domain.Evidence{}},
+	} {
+		b, _ := json.Marshal(o)
+		if _, err = s.db.Exec("INSERT INTO opportunities VALUES (?,?,?)", o.ID, string(b), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, _ := json.Marshal(domain.Contribution{ID: "c", OpportunityID: "done", Repository: "owner/repo", State: "PR_OPENED"})
+	if _, err = s.db.Exec("INSERT INTO contributions VALUES (?,?,?)", "c", "done", string(c)); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.Opportunities(ctx)
+	if err != nil || len(list) != 1 || list[0].ID != "open" {
+		t.Fatal("contributed, competing or assigned issues were offered", list, err)
+	}
+	if _, err = s.Opportunity(ctx, "done"); err != nil {
+		t.Fatal("hidden opportunity history was lost", err)
 	}
 }
