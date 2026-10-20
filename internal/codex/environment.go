@@ -449,7 +449,7 @@ func (c *CLI) PrepareEnvironment(ctx context.Context, dir string, network bool, 
 	if err != nil {
 		return report, err
 	}
-	probe := &CLI{VerificationImage: report.Image}
+	probe := &CLI{VerificationImage: report.Image, SyncImage: c.syncImage()}
 	if err = probe.checkContainer(ctx, dir); err != nil {
 		return report, err
 	}

@@ -373,3 +373,71 @@ func errorText(err error) string {
 	}
 	return ""
 }
+
+func TestRealVerificationRunsOnSyncedCopy(t *testing.T) {
+	if os.Getenv("FORGEFLOW_TEST_PREFLIGHT") != "1" {
+		t.Skip("opt in to real Docker verification copies")
+	}
+	repo := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		p := filepath.Join(repo, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if out, err := exec.Command("git", "init", "--quiet", repo).CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	write(".gitignore", "/build/\n/.forgeflow-runtime/\n")
+	write("a.txt", "one")
+	write("doomed.txt", "delete me on the host")
+	write("tool.sh", "#!/bin/sh\necho tool-ran\n")
+	write("src/deep/file.go", "package deep\n")
+	c := &CLI{VerificationImage: os.Getenv("FORGEFLOW_TEST_CONTAINER_IMAGE")}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := c.RemoveRuntimeVolume(ctx, repo); err != nil {
+			t.Error(err)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	run := func(script string) domain.TestRun {
+		t.Helper()
+		rec, err := c.containerCommand(ctx, repo, domain.VerificationCommand{Program: "sh", Arguments: []string{"-c", script}}, false)
+		t.Log(rec.Output)
+		if err != nil || rec.ExitCode != 0 {
+			t.Fatal("copy command failed", err, rec.Output)
+		}
+		return rec
+	}
+	run(`set -eu; test "$(cat a.txt)" = one; test -f doomed.txt; test -f src/deep/file.go; ./tool.sh | grep -q tool-ran
+mkdir -p build; echo cached > build/out.txt; echo stray > stray.txt
+echo recipe > .forgeflow-runtime/resolver.gradle; test -w "$HOME"
+git rev-parse --is-inside-work-tree | grep -qx true`)
+	for _, leaked := range []string{"build", "stray.txt", ".forgeflow-runtime/resolver.gradle"} {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(leaked))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("container output %s reached the host workspace: %v", leaked, err)
+		}
+	}
+	write("a.txt", "two")
+	write("added.txt", "new on host")
+	if err := os.Remove(filepath.Join(repo, "doomed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	run(`set -eu; test "$(cat a.txt)" = two; test "$(cat added.txt)" = "new on host"; test ! -e doomed.txt
+test "$(cat build/out.txt)" = cached; test ! -e stray.txt; test "$(cat .forgeflow-runtime/resolver.gradle)" = recipe
+echo 'host edits, deletions and additions synced; ignored build output and recipe files kept; stray output removed: PASS'`)
+	started := time.Now()
+	run(`set -eu; mkdir -p build/many; i=0; while [ $i -lt 3000 ]; do echo x > build/many/$i; i=$((i+1)); done`)
+	if elapsed := time.Since(started); elapsed > 30*time.Second {
+		t.Fatalf("3000 writes in the verification copy took %s", elapsed)
+	} else {
+		t.Logf("3000 small writes in /workspace of the verification copy, including sync and container startup: %s", elapsed)
+	}
+}

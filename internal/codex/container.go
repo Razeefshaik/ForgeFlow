@@ -52,6 +52,13 @@ func RuntimeVolumeName(dir string) string {
 // are deliberately absent. Docker is an explicit verification backend, never a
 // fallback for a failed native command or a prerequisite for serving the UI.
 func containerArguments(image, name, dir string, command domain.VerificationCommand, network bool) ([]string, error) {
+	return containerMountArguments(image, name, dir, command, network, false)
+}
+
+// containerMountArguments mounts either the host clone (bind, used to install
+// repository Git hooks) or the workspace's synced verification copy, which
+// leaves the host clone unreachable from the container.
+func containerMountArguments(image, name, dir string, command domain.VerificationCommand, network, copy bool) ([]string, error) {
 	if image == "" || strings.HasPrefix(image, "-") || strings.ContainsAny(image, " \t\r\n\x00") {
 		return nil, errors.New("verification image must be an explicit local Docker image reference")
 	}
@@ -71,7 +78,13 @@ func containerArguments(image, name, dir string, command domain.VerificationComm
 	}
 	// JVM and Node builds count every thread against the pids limit; 256 tasks
 	// was exhausted by ordinary Gradle test workers. 4096 still bounds fork bombs.
-	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096", "--memory", fmt.Sprintf("%dm", ContainerMemoryMiB), "--cpus", fmt.Sprint(ContainerCPUs), "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777", "--mount", "type=bind,source=" + dir + ",target=/workspace", "--mount", "type=bind,source=" + filepath.Join(dir, ".git") + ",target=/workspace/.git,readonly", "--mount", "type=volume,source=" + RuntimeVolumeName(dir) + ",target=" + ContainerRuntimeDir}
+	args := []string{"create", "--pull=never", "--name", name, "--label", "forgeflow.verification=true", "--init", "--user", "1000:1000", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096", "--memory", fmt.Sprintf("%dm", ContainerMemoryMiB), "--cpus", fmt.Sprint(ContainerCPUs), "--network", netMode, "--workdir", "/workspace", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777"}
+	if copy {
+		args = append(args, "--mount", "type=volume,source="+SourceVolumeName(dir)+",target=/workspace")
+	} else {
+		args = append(args, "--mount", "type=bind,source="+dir+",target=/workspace", "--mount", "type=bind,source="+filepath.Join(dir, ".git")+",target=/workspace/.git,readonly")
+	}
+	args = append(args, "--mount", "type=volume,source="+RuntimeVolumeName(dir)+",target="+ContainerRuntimeDir)
 	for _, env := range []string{"HOME=/workspace/.forgeflow-runtime/linux/home", "XDG_CACHE_HOME=/workspace/.forgeflow-runtime/linux/xdg", "TMPDIR=/tmp", "GOTMPDIR=/tmp", "GOTOOLCHAIN=local", "GOCACHE=/workspace/.forgeflow-runtime/linux/go-cache", "GOMODCACHE=/workspace/.forgeflow-runtime/linux/go-mod", "GOPATH=/workspace/.forgeflow-runtime/linux/go", "npm_config_cache=/workspace/.forgeflow-runtime/linux/npm", "PIP_CACHE_DIR=/workspace/.forgeflow-runtime/linux/python", "PYTHONDONTWRITEBYTECODE=1", "GRADLE_USER_HOME=/workspace/.forgeflow-runtime/linux/gradle", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/workspace", "GIT_CONFIG_KEY_1=core.checkStat", "GIT_CONFIG_VALUE_1=minimal"} {
 		args = append(args, "--env", env)
 	}
@@ -124,7 +137,12 @@ func missingImageHint(image, output string) string {
 // and no workspace mount. Initialization is idempotent and non-recursive, so
 // existing caches are never rewritten.
 func (c *CLI) ensureRuntimeVolume(ctx context.Context, image, dir string) error {
-	volume := RuntimeVolumeName(dir)
+	return c.ensureVolume(ctx, image, RuntimeVolumeName(dir), runtimeSubdirectories)
+}
+
+// ensureVolume creates a ForgeFlow volume and gives UID 1000 its root and the
+// listed top-level directories.
+func (c *CLI) ensureVolume(ctx context.Context, image, volume string, subdirectories []string) error {
 	c.environmentMu.Lock()
 	ready := c.volumes[volume+"\x00"+image]
 	c.environmentMu.Unlock()
@@ -147,7 +165,7 @@ func (c *CLI) ensureRuntimeVolume(ctx context.Context, image, dir string) error 
 	name := "forgeflow-volume-init-" + hex.EncodeToString(nonce[:])
 	script := "set -eu\n"
 	owned := []string{"/runtime"}
-	for _, sub := range runtimeSubdirectories {
+	for _, sub := range subdirectories {
 		script += "mkdir -p /runtime/" + sub + "\n"
 		owned = append(owned, "/runtime/"+sub)
 	}
@@ -180,22 +198,26 @@ func (c *CLI) ensureRuntimeVolume(ctx context.Context, image, dir string) error 
 	return nil
 }
 
-// RemoveRuntimeVolume deletes exactly the volume owned by dir. It is used for
-// disposable probe workspaces and abandoned contributions; it never prunes.
+// RemoveRuntimeVolume deletes exactly the volumes owned by dir (runtime caches
+// and the verification copy). It is used for disposable probe workspaces and
+// abandoned contributions; it never prunes.
 func (c *CLI) RemoveRuntimeVolume(ctx context.Context, dir string) error {
-	volume := RuntimeVolumeName(dir)
-	out, err := dockerControl(ctx, "volume", "rm", "--force", volume)
-	c.environmentMu.Lock()
-	for key := range c.volumes {
-		if strings.HasPrefix(key, volume+"\x00") {
-			delete(c.volumes, key)
+	var failures []error
+	for _, volume := range []string{RuntimeVolumeName(dir), SourceVolumeName(dir)} {
+		out, err := dockerControl(ctx, "volume", "rm", "--force", volume)
+		c.environmentMu.Lock()
+		for key := range c.volumes {
+			if strings.HasPrefix(key, volume+"\x00") {
+				delete(c.volumes, key)
+			}
+		}
+		c.environmentMu.Unlock()
+		if err != nil && !strings.Contains(strings.ToLower(out), "no such volume") {
+			failures = append(failures, fmt.Errorf("remove volume %s: %w; %s", volume, err, out))
 		}
 	}
-	c.environmentMu.Unlock()
-	if err != nil && !strings.Contains(strings.ToLower(out), "no such volume") {
-		return fmt.Errorf("remove runtime volume %s: %w; %s", volume, err, out)
-	}
-	return nil
+	syncs.Delete(SourceVolumeName(dir))
+	return errors.Join(failures...)
 }
 
 func dockerControl(ctx context.Context, args ...string) (string, error) {
@@ -231,7 +253,9 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 		return rec, err
 	}
 	name := "forgeflow-verify-" + hex.EncodeToString(nonce[:])
-	args, err := containerArguments(image, name, dir, command, network)
+	// Hook installation must write the host clone's .git/hooks; every other
+	// command runs on the synced verification copy.
+	args, err := containerMountArguments(image, name, dir, command, network, !prepareHooks)
 	if err != nil {
 		return rec, err
 	}
@@ -241,6 +265,12 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 	if err = c.ensureRuntimeVolume(ctx, image, dir); err != nil {
 		rec.Output = err.Error()
 		return rec, err
+	}
+	if !prepareHooks {
+		if err = c.syncWorkspace(ctx, dir); err != nil {
+			rec.Output = err.Error()
+			return rec, err
+		}
 	}
 	if prepareHooks {
 		args, err = hookPreparationArguments(args, dir)
@@ -312,7 +342,7 @@ test -d /workspace/.git
 test ! -e /workspace/.forgeflow-container-probe
 (set -C; echo allowed > /workspace/.forgeflow-container-probe)
 rm /workspace/.forgeflow-container-probe
-for p in /outside-probe /workspace/.git/forgeflow-probe; do
+for p in /outside-probe; do
  if touch "$p" 2>/tmp/forgeflow-denial; then exit 1; fi
  grep -Eq 'Permission denied|Read-only file system' /tmp/forgeflow-denial
 done

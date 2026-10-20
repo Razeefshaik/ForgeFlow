@@ -37,11 +37,14 @@ type CLI struct {
 	// Explicit, optional Linux image for deterministic verification only.
 	// Model sessions continue to use the native sandbox and local authentication.
 	VerificationImage string
-	environmentMu     sync.Mutex
-	environments      map[string]domain.ExecutionEnvironment
-	volumes           map[string]bool
-	modeMu            sync.RWMutex
-	sandboxMode       string
+	// SyncImage copies workspaces into verification volumes; it defaults to
+	// VerificationImage, the bootstrap image that supplies sh, tar and Git.
+	SyncImage     string
+	environmentMu sync.Mutex
+	environments  map[string]domain.ExecutionEnvironment
+	volumes       map[string]bool
+	modeMu        sync.RWMutex
+	sandboxMode   string
 }
 
 // ConfigureProcess makes cancellation terminate the owned process tree.
