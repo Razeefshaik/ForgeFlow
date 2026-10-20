@@ -125,13 +125,13 @@ func TestReactorDoesNotCountRunnerErrorAsPassed(t *testing.T) {
 }
 
 func TestDeclaredGoTimeoutAndRecoveryBudget(t *testing.T) {
-	if d := verificationDeadline(domain.VerificationCommand{Program: "make", Arguments: []string{"verify-all"}, TimeoutSeconds: 3600}); d != time.Hour {
+	if d := verificationDeadline(domain.VerificationCommand{Program: "make", Arguments: []string{"verify-all"}, TimeoutSeconds: 3600}, 0); d != time.Hour {
 		t.Fatal("composite gate ignored its declared budget", d)
 	}
-	if d := verificationDeadline(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-timeout", "20m"}}); d != 22*time.Minute {
+	if d := verificationDeadline(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-timeout", "20m"}}, 0); d != 22*time.Minute {
 		t.Fatal(d)
 	}
-	if d := verificationDeadline(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-timeout=1h"}}); d != 30*time.Minute {
+	if d := verificationDeadline(domain.VerificationCommand{Program: "go", Arguments: []string{"test", "-timeout=1h"}}, 0); d != 30*time.Minute {
 		t.Fatal(d)
 	}
 	runner := &reactorRunner{outputs: []string{"go: download: TLS handshake timeout"}}

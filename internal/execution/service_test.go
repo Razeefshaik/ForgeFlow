@@ -102,6 +102,7 @@ type fixtureSpec struct {
 	Files       map[string]string
 	Replace     bool
 	Title, Body string
+	CI          *domain.CIEvidence
 }
 
 func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool, spec fixtureSpec) (*Service, domain.Contribution) {
@@ -179,7 +180,13 @@ func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePl
 	cfg.Config.Codex.MaxReviewCycles = 2
 	cfg.Config.Contributions.RequirePlanApproval = requirePlanApproval
 	issue, _ := json.Marshal(map[string]any{"number": 1, "state": "open", "title": spec.Title, "body": spec.Body})
-	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: o, Issue: issue, Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
+	approved := o
+	if spec.CI != nil {
+		evidence := *o.Evidence
+		evidence.Prerequisites = &domain.RepositoryAssessment{Repository: o.Repository, HeadSHA: sha, Status: "eligible", CI: spec.CI}
+		approved.Evidence = &evidence
+	}
+	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: approved, Issue: issue, Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
 	if e = store.ApproveWorkspace(ctx, c, a); e != nil {
 		t.Fatal(e)
 	}

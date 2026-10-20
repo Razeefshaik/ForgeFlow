@@ -108,7 +108,7 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 			d.Kind, d.Summary, d.Status, d.CanRecover = "test_failure_timeout", "Repository assertions failed before the remaining verification timed out.", "investigating", true
 			d.SecondaryKinds = []string{"code_failure", "verification_timeout"}
 			d.NextAction = "ForgeFlow will run bounded checks for the named failures, then ask Codex to investigate confirmed assertions. A focused check never replaces the complete required suite."
-		} else if hasAny(text, "downloading", "fetching") {
+		} else if hasAny(lastLines(text, 40), "downloading", "fetching") {
 			d.Kind, d.Summary, d.CanRecover, d.Retryable = "dependency_network", "Dependency downloads did not finish before the runner deadline.", network, network
 			d.NextAction = "Retry the same required check with approved downloads and bounded backoff."
 		}
@@ -190,6 +190,17 @@ func diagnoseCommand(command domain.VerificationCommand, output string, err erro
 		d.Evidence += "\nObserved failure:\n" + promptExcerpt(strings.TrimSpace(observed), 2048)
 	}
 	return d
+}
+
+// lastLines keeps the final n lines. A deadline expiry is a download stall
+// only if downloads were still running at the end: the Gradle wrapper prints
+// "Downloading https://services.gradle.org/..." before every cold build.
+func lastLines(text string, n int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func toolchainMismatch(text string) bool {

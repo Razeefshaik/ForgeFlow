@@ -7,12 +7,31 @@ import (
 	"forgeflow/internal/domain"
 	"forgeflow/internal/storage"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-func verificationDeadline(command domain.VerificationCommand) time.Duration {
+// buildToolFamily names the Gradle or Maven launcher family, including
+// wrappers and provisioned absolute paths such as /opt/gradle-8.10.2/bin/gradle.
+func buildToolFamily(program string) string {
+	switch path.Base(strings.ReplaceAll(program, `\`, "/")) {
+	case "gradle", "gradlew":
+		return "gradle"
+	case "mvn", "mvnw":
+		return "maven"
+	}
+	return ""
+}
+
+// verificationDeadline sizes a command's budget. A declared planner budget
+// wins. Gradle and Maven builds default to 30 minutes. The repository's median
+// successful CI duration, when recorded, can only raise the default: a suite
+// with a 6.4 minute CI median ran over 20 minutes in the verification
+// container, so the evidence budget is four medians plus ten minutes of
+// setup, capped at two hours.
+func verificationDeadline(command domain.VerificationCommand, ciMedian time.Duration) time.Duration {
 	if command.TimeoutSeconds > 0 && command.TimeoutSeconds <= 7200 {
 		return time.Duration(command.TimeoutSeconds) * time.Second
 	}
@@ -40,15 +59,32 @@ func verificationDeadline(command domain.VerificationCommand) time.Duration {
 	if deadline > 30*time.Minute {
 		deadline = 30 * time.Minute
 	}
+	if buildToolFamily(command.Program) != "" {
+		deadline = max(deadline, 30*time.Minute)
+	}
+	if ciMedian > 0 {
+		deadline = max(deadline, min(4*ciMedian+10*time.Minute, 2*time.Hour))
+	}
 	return deadline
+}
+
+// ciMedian is the approved repository's median successful CI duration, or zero
+// when the approval predates CI evidence or no successful run was observed.
+func (s *Service) ciMedian(ctx context.Context, id string) time.Duration {
+	a, err := s.Store.Approval(ctx, id)
+	if err != nil || a.Opportunity.Evidence == nil || a.Opportunity.Evidence.Prerequisites == nil || a.Opportunity.Evidence.Prerequisites.CI == nil {
+		return 0
+	}
+	return time.Duration(a.Opportunity.Evidence.Prerequisites.CI.MedianSeconds) * time.Second
 }
 
 func (s *Service) recordedCommand(ctx context.Context, id, repo string, command domain.VerificationCommand, network bool, recoveryOf string) (domain.TestRun, error) {
 	started := time.Now().UTC()
-	if err := s.Store.WorkspaceEvent(ctx, id, "TestRunStarted", "Executing sandboxed verification", command); err != nil {
+	deadline := verificationDeadline(command, s.ciMedian(ctx, id))
+	if err := s.Store.WorkspaceEvent(ctx, id, "TestRunStarted", "Executing sandboxed verification with a "+deadline.String()+" deadline", command); err != nil {
 		return domain.TestRun{}, err
 	}
-	testCtx, cancel := context.WithTimeout(ctx, verificationDeadline(command))
+	testCtx, cancel := context.WithTimeout(ctx, deadline)
 	run, commandErr := s.Runner.Command(testCtx, repo, command, network)
 	if commandErr == nil && testCtx.Err() != nil {
 		commandErr = testCtx.Err()
