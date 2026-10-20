@@ -300,14 +300,22 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 		}
 		return rec, err
 	}
+	completed := false
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
-		defer cancel()
-		output, cleanupErr := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
-		if cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("container cleanup failed for %s: %s", name, output))
-			rec.Output += "\n" + err.Error()
+		cleanupErr := removeContainer(name)
+		if cleanupErr == nil {
+			return
 		}
+		// A busy Docker Desktop can take longer than the cleanup budget to
+		// remove a container whose process already exited. The result is then
+		// complete and the stopped container is labelled and discoverable, so
+		// record it instead of turning a finished command into a failure.
+		if completed && err == nil {
+			rec.Output += fmt.Sprintf("\nWarning: the finished container %s could not be removed yet (%v); remove it with `docker rm --force %s`.\n", name, cleanupErr, name)
+			return
+		}
+		err = errors.Join(err, cleanupErr)
+		rec.Output += "\n" + cleanupErr.Error()
 	}()
 	rec.Output = fmt.Sprintf("Docker container %s; image %s; working directory /workspace\n", name, image)
 	if err = ctx.Err(); err != nil {
@@ -328,7 +336,28 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 	if ctx.Err() != nil {
 		err = ctx.Err()
 	}
+	completed = ctx.Err() == nil && cmd.ProcessState != nil
 	return rec, err
+}
+
+// removeContainer removes exactly one named container, retrying with backoff
+// because Docker Desktop can be slow under load.
+func removeContainer(name string) error {
+	var last string
+	var lastErr error
+	for attempt, wait := range []time.Duration{0, 2 * time.Second, 5 * time.Second} {
+		if attempt > 0 {
+			time.Sleep(wait)
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*containerCleanupTimeout)
+		out, err := dockerControl(cleanupCtx, "rm", "--force", "--volumes", name)
+		cancel()
+		if err == nil || strings.Contains(out, "No such container") {
+			return nil
+		}
+		last, lastErr = out, err
+	}
+	return fmt.Errorf("container cleanup failed for %s: %v; %s", name, lastErr, strings.TrimSpace(last))
 }
 
 func (c *CLI) checkContainer(ctx context.Context, dir string) error {
