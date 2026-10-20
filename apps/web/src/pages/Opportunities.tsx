@@ -109,17 +109,17 @@ function ExcludedRepositories() {
   const count = new Set(query.data.map((x) => x.repository.toLowerCase())).size;
   return (
     <details>
-      <summary>Excluded repositories ({count}) · prerequisite screening</summary>
-      <p>Discovery inspected these repositories before ranking. Their requirements are unsupported or need further assessment. No contribution was started. An eligible assessment still requires real environment preparation and tests.</p>
+      <summary>Excluded repositories ({count}) · contributability screening</summary>
+      <p>Discovery inspected these repositories before ranking. ForgeFlow offers only repositories it can build, verify and finish: a supported build with a test suite, recent passing CI that fits the verification budget, and no unsupported requirements. No contribution was started. An eligible assessment still requires real environment preparation and tests.</p>
       <ul className="risk-list">
         {query.data.map((x) => (
           <li key={x.repository}>
             <strong>{x.repository}</strong>: {x.reason}
-            <p>{x.status === "needs_assessment" ? "Needs assessment" : "Unsupported prerequisites"}</p>
+            <p>{x.status === "needs_assessment" ? "Needs assessment" : "Not contributable by ForgeFlow"}</p>
             <p>{x.next_action}</p>
             {x.checks?.map((f, i) => <p key={i}>
               {f.source}: {f.reason}{" "}
-              {x.head_sha && f.source !== "runner" && f.source !== "repository tree" && <a className="text-link" href={`https://github.com/${x.repository}/blob/${x.head_sha}/${f.source.split("/").map(encodeURIComponent).join("/")}${f.line > 0 ? `#L${f.line}` : ""}`} target="_blank" rel="noreferrer">Read prerequisite evidence</a>}
+              {x.head_sha && f.source !== "runner" && f.source !== "repository tree" && f.source !== "GitHub Actions" && <a className="text-link" href={`https://github.com/${x.repository}/blob/${x.head_sha}/${f.source.split("/").map(encodeURIComponent).join("/")}${f.line > 0 ? `#L${f.line}` : ""}`} target="_blank" rel="noreferrer">Read prerequisite evidence</a>}
             </p>)}
           </li>
         ))}
