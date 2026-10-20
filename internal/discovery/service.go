@@ -294,7 +294,7 @@ func (s *Service) scan(ctx context.Context, run domain.DiscoveryRun, cfg domain.
 		}
 		run.SearchCursors[lang] = cursor
 		run.NextSearchCursors[lang] = cursor
-		q := `is:issue is:open is:public archived:false language:"` + strings.ReplaceAll(lang, `"`, "") + `"` + preferredLabels(cfg.Config.Issues.PreferredLabels)
+		q := `is:issue is:open is:public archived:false ` + issueFilters + ` language:"` + strings.ReplaceAll(lang, `"`, "") + `"` + preferredLabels(cfg.Config.Issues.PreferredLabels)
 		if err := session.Get(ctx, github.SearchPagePath("issues", q, searchPageSize, cursor.Page), &result); err != nil {
 			warn(err)
 			break

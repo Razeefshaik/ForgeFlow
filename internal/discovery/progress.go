@@ -10,6 +10,11 @@ import (
 const searchPageSize = 25
 const maxSearchPage = 40
 
+// issueFilters asks GitHub to omit issues that are assigned or already linked
+// to a pull request. Discovery skips both anyway; filtering in the search
+// saves the several requests each skipped candidate would otherwise cost.
+const issueFilters = "no:assignee -linked:pr"
+
 func (s *Service) searchScope(cfg domain.Config) string {
 	v := struct {
 		Languages            map[string]float64
@@ -17,7 +22,8 @@ func (s *Service) searchScope(cfg domain.Config) string {
 		MinStars, RecentDays int
 		Difficulty, Exclude  []string
 		Runner               string
-	}{cfg.Profile.Languages, cfg.Issues.PreferredLabels, cfg.Repositories.MinStars, cfg.Repositories.RecentActivityDays, cfg.Issues.Difficulty, cfg.Profile.Exclude, s.PrerequisiteProfile.Fingerprint()}
+		Filters              string
+	}{cfg.Profile.Languages, cfg.Issues.PreferredLabels, cfg.Repositories.MinStars, cfg.Repositories.RecentActivityDays, cfg.Issues.Difficulty, cfg.Profile.Exclude, s.PrerequisiteProfile.Fingerprint(), issueFilters}
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
