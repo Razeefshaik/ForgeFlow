@@ -66,16 +66,23 @@ func screen(texts map[string]string, weak map[string]bool, profile Profile) (blo
 			continue
 		}
 		integrationFile := workflow && (integrationWorkflow.MatchString(path.Base(file)) || integrationWorkflow.MatchString(workflowName.FindString(text)))
-		// add blocks, except that a weak source can only caution.
+		note := func(line int, reason string) { record(&cautions, "caution", file, line, reason) }
+		verificationDoc := strings.Contains(strings.ToLower(file), "contribut") || strings.Contains(strings.ToLower(file), "develop") || strings.Contains(strings.ToLower(file), "test") || strings.EqualFold(path.Base(file), "AGENTS.md")
+		// Contribution instructions and the root README state what a contributor
+		// must do. A nested or linked document (a release guide, a component's
+		// manual) describes something else, and a script named only in prose may
+		// be anything: both can caution but not exclude.
+		authoritative := !isDocument(file) || verificationDoc || !strings.Contains(file, "/")
+		// A README is mostly about using the product. Only its development,
+		// testing and contributing sections state contributor requirements.
+		readme := isDocument(file) && !verificationDoc
 		add := func(kind string, line int, reason string) {
-			if weak[file] {
-				record(&cautions, "caution", file, line, "Unconfirmed: a script mentioned in the documentation suggests this. "+reason)
+			if weak[file] || !authoritative {
+				record(&cautions, "caution", file, line, "Unconfirmed, from a file that is not the contribution instructions: "+reason)
 				return
 			}
 			record(&blockers, kind, file, line, reason)
 		}
-		note := func(line int, reason string) { record(&cautions, "caution", file, line, reason) }
-		verificationDoc := strings.Contains(strings.ToLower(file), "contribut") || strings.Contains(strings.ToLower(file), "develop") || strings.Contains(strings.ToLower(file), "test") || strings.EqualFold(path.Base(file), "AGENTS.md")
 		sectionVerification := verificationDoc
 		releaseJob, integrationJob := false, false
 		for i, line := range strings.Split(text, "\n") {
@@ -102,7 +109,7 @@ func screen(texts map[string]string, weak map[string]bool, profile Profile) (blo
 			if strings.HasPrefix(stripped, "#") {
 				sectionVerification = verificationDoc || strings.Contains(l, "test") || strings.Contains(l, "develop") || strings.Contains(l, "contribut") || strings.Contains(l, "verification") || strings.Contains(l, "local setup")
 			}
-			localRequirement := sectionVerification || strings.Contains(l, "test") || strings.Contains(l, "verif") || strings.Contains(l, "contribut")
+			localRequirement := sectionVerification || !readme && (strings.Contains(l, "test") || strings.Contains(l, "verif") || strings.Contains(l, "contribut"))
 			manifestScript := path.Base(file) == "package.json" && (strings.Contains(l, `"test`) || strings.Contains(l, `"verify`) || strings.Contains(l, `"check`) || strings.Contains(l, `"lint`) || strings.Contains(l, `"integration`))
 			// Workflows are configuration, not instructions: GitHub withholds
 			// secrets from fork pull requests, so a secret named in CI is not
@@ -137,9 +144,11 @@ func screen(texts map[string]string, weak map[string]bool, profile Profile) (blo
 				add("unsupported_platform", i+1, "Required platform, emulator or GPU capability is outside the configured Linux verification boundary.")
 			}
 			if (strings.Contains(l, "sudo ") || strings.Contains(l, "/etc/") || strings.Contains(l, "/usr/local/")) && !workflow && (stated || build) && (strings.Contains(l, "sudo ") || strings.Contains(l, "mkdir ") || strings.Contains(l, "tee ") || strings.Contains(l, " >") || strings.Contains(l, "write")) {
-				if packageInstall.MatchString(line) {
-					// System packages are installed as root while the image is built.
-					note(i+1, "Setup installs system packages; ForgeFlow provisions them in the verification image when downloads are approved.")
+				if packageInstall.MatchString(line) || !build {
+					// Prose asking for sudo describes machine setup, which the
+					// image build performs as root; only a recipe that writes
+					// system paths while tests run cannot work.
+					note(i+1, "Setup installs system packages or needs root; ForgeFlow performs setup while building the verification image when downloads are approved.")
 				} else {
 					add("runtime_privilege", i+1, "Verification requires elevated execution or system-directory writes; runtime containers have an unprivileged user and a read-only root.")
 				}

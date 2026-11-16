@@ -185,13 +185,15 @@ func summarizeRuns(runs []workflowRun, branch string, now time.Time) *domain.CIE
 	// workflows size nothing unless they are the only verification there is.
 	unitWorkflows := false
 	for _, r := range runs {
-		if r.Status == "completed" && r.Event != "schedule" && !nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) && !integrationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) {
+		if r.Status == "completed" && r.Event != "schedule" && strings.HasPrefix(r.Path, ".github/workflows/") && !nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) && !integrationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) {
 			unitWorkflows = true
 			break
 		}
 	}
 	for _, r := range runs {
-		if r.Status != "completed" || nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) || r.Event == "schedule" {
+		// GitHub-managed "dynamic/..." workflows (Copilot review, Dependabot
+		// updates) are not the repository's CI.
+		if r.Status != "completed" || !strings.HasPrefix(r.Path, ".github/workflows/") || nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) || r.Event == "schedule" {
 			continue
 		}
 		if unitWorkflows && integrationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) {
@@ -207,7 +209,8 @@ func summarizeRuns(runs []workflowRun, branch string, now time.Time) *domain.CIE
 		if start.IsZero() {
 			start = r.CreatedAt
 		}
-		if r.Conclusion == "success" && r.UpdatedAt.After(start) {
+		// A re-run long after the first attempt reports the whole gap.
+		if r.Conclusion == "success" && r.UpdatedAt.After(start) && r.UpdatedAt.Sub(start) <= 6*time.Hour {
 			st.durations = append(st.durations, r.UpdatedAt.Sub(start))
 		}
 		if r.HeadBranch == branch && r.Conclusion != "cancelled" && r.Conclusion != "skipped" && r.Conclusion != "neutral" {
@@ -263,14 +266,25 @@ func ScreenCI(ci *domain.CIEvidence, runs map[string][]string, profile Profile) 
 		return []domain.PrerequisiteFinding{treeFinding("needs_assessment", "GitHub Actions", "No successful recent GitHub Actions verification run was found, so ForgeFlow cannot confirm the build passes or estimate how long verification takes.")}
 	}
 	findings := []domain.PrerequisiteFinding{}
+	// One red workflow (often a linter) beside green ones leaves a working
+	// baseline, and baseline verification records the failure. Only when every
+	// verification workflow that ran on the default branch keeps failing is
+	// there nothing to verify against.
+	failing, ran, first := 0, 0, ""
 	for _, p := range ci.Workflows {
-		if integrationWorkflow.MatchString(path.Base(p)) && len(ci.Workflows) > 1 {
+		if len(runs[p]) == 0 {
 			continue
 		}
+		ran++
 		if persistentlyFailing(runs[p]) {
-			findings = append(findings, treeFinding("ci_failing", p, "The repository's own CI has failed on its default branch in each recent run; a contribution could not be verified against a working baseline."))
-			break
+			failing++
+			if first == "" {
+				first = p
+			}
 		}
+	}
+	if ran > 0 && failing == ran {
+		findings = append(findings, treeFinding("ci_failing", first, "The repository's own CI has failed on its default branch in each recent run; a contribution could not be verified against a working baseline."))
 	}
 	if profile.MaxCIMinutes > 0 && ci.MedianSeconds > profile.MaxCIMinutes*60 {
 		findings = append(findings, treeFinding("build_too_slow", ci.SlowestWorkflow, fmt.Sprintf("The repository's build and test CI takes a median of %d minutes. ForgeFlow runs the suite several times in one session (baseline, after the change, after each fix), so it offers repositories whose CI finishes within %d minutes.", (ci.MedianSeconds+59)/60, profile.MaxCIMinutes)))
@@ -312,6 +326,13 @@ func withFindings(a domain.RepositoryAssessment, findings []domain.PrerequisiteF
 		return a.Findings[i].Kind != "needs_assessment" && a.Findings[j].Kind == "needs_assessment"
 	})
 	return a
+}
+
+// Oversized is the assessment of a repository whose tree GitHub truncates or
+// cannot return within the read limit. That is evidence of size, not a failed
+// read, and a build of that size does not fit ForgeFlow's verification.
+func Oversized(repo, head string, profile Profile) domain.RepositoryAssessment {
+	return domain.RepositoryAssessment{Repository: repo, HeadSHA: head, Status: "excluded", Profile: profile.Fingerprint(), CheckedAt: time.Now().UTC(), Files: []string{}, Findings: []domain.PrerequisiteFinding{treeFinding("repository_too_large", "repository tree", fmt.Sprintf("The repository's file tree is too large to list (well over %d files); ForgeFlow does not clone and verify repositories of this size.", profile.MaxTreeFiles))}}
 }
 
 // InspectRepository is the complete eligibility decision used by discovery and

@@ -97,6 +97,30 @@ func saveRepositoryAssessment(ctx context.Context, tx *sql.Tx, a domain.Reposito
 	return err
 }
 
+// RepositoryAssessments returns the saved assessment of every screened
+// repository, keyed by lower-case name, so a scan need not rescreen a
+// repository it excluded days ago.
+func (s *Store) RepositoryAssessments(ctx context.Context) (map[string]domain.RepositoryAssessment, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT data FROM repository_assessments")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	all := map[string]domain.RepositoryAssessment{}
+	for rows.Next() {
+		var raw string
+		var a domain.RepositoryAssessment
+		if err = rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal([]byte(raw), &a); err != nil {
+			return nil, err
+		}
+		all[strings.ToLower(a.Repository)] = a
+	}
+	return all, rows.Err()
+}
+
 // RequireRepositoryEligible guards new selections; existing contributions still
 // use their explicit recovery workflow.
 func (s *Store) RequireRepositoryEligible(ctx context.Context, repo string) error {

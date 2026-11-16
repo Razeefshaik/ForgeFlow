@@ -21,6 +21,10 @@ import (
 
 var ErrBudget = errors.New("GitHub request budget exhausted; scan is bounded")
 
+// ErrTooLarge reports a response over the read limit. For a repository tree it
+// means the repository is too large to screen, not that GitHub failed.
+var ErrTooLarge = errors.New("GitHub response exceeds 4 MiB limit")
+
 type APIError struct {
 	Status  int
 	RetryAt time.Time
@@ -196,7 +200,7 @@ func (s *Session) Get(ctx context.Context, path string, target any) error {
 		return errors.New("GitHub response could not be read")
 	}
 	if len(b) > 4<<20 {
-		return errors.New("GitHub response exceeds 4 MiB limit")
+		return ErrTooLarge
 	}
 	if err = json.Unmarshal(b, target); err != nil {
 		return errors.New("GitHub returned invalid JSON")
@@ -247,9 +251,25 @@ type Issue struct {
 	Labels        []Label         `json:"labels"`
 	Assignees     []User          `json:"assignees"`
 	Comments      int             `json:"comments"`
+	Locked        bool            `json:"locked"`
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 	PullRequest   json.RawMessage `json:"pull_request"`
+}
+
+// TimelineEvent is the part of an issue timeline discovery reads: who
+// commented, and which pull requests mention the issue.
+type TimelineEvent struct {
+	Event             string `json:"event"`
+	AuthorAssociation string `json:"author_association"`
+	Source            *struct {
+		Issue *struct {
+			Number      int             `json:"number"`
+			State       string          `json:"state"`
+			HTMLURL     string          `json:"html_url"`
+			PullRequest json.RawMessage `json:"pull_request"`
+		} `json:"issue"`
+	} `json:"source"`
 }
 type Repository struct {
 	FullName      string    `json:"full_name"`
@@ -319,6 +339,12 @@ type RepoSearch struct {
 
 func SearchPath(kind, query string, limit int) string {
 	return "/search/" + kind + "?" + url.Values{"q": {query}, "per_page": {strconv.Itoa(limit)}, "sort": {"updated"}, "order": {"desc"}}.Encode()
+}
+
+// RepositorySearchPath lists repositories by stars, a stable order that puts
+// established projects first and lets a saved page position mean something.
+func RepositorySearchPath(query string, limit, page int) string {
+	return "/search/repositories?" + url.Values{"q": {query}, "per_page": {strconv.Itoa(limit)}, "sort": {"stars"}, "order": {"desc"}, "page": {strconv.Itoa(page)}}.Encode()
 }
 
 func SearchPagePath(kind, query string, limit, page int) string {
