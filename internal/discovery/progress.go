@@ -10,7 +10,6 @@ import (
 const searchPageSize = 25
 const maxSearchPage = 40
 
-
 func (s *Service) searchScope(cfg domain.Config) string {
 	v := struct {
 		Languages            map[string]float64
