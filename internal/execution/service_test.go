@@ -103,6 +103,10 @@ type fixtureSpec struct {
 	Replace     bool
 	Title, Body string
 	CI          *domain.CIEvidence
+	// Clone makes the workspace a real clone of this URL at Commit (or its
+	// default branch) instead of generated files.
+	Clone, Commit, Repository string
+	Number                    int
 }
 
 func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePlanApproval bool, spec fixtureSpec) (*Service, domain.Contribution) {
@@ -152,9 +156,25 @@ func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePl
 		}
 		return strings.TrimSpace(string(out))
 	}
-	git("init")
-	git("add", ".")
-	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "initial")
+	name, number := "example/fixture", 1
+	if spec.Clone != "" {
+		name, number = spec.Repository, spec.Number
+		if e := os.Remove(repo); e != nil {
+			t.Fatal(e)
+		}
+		cmd := exec.Command("git", "clone", "--no-local", "--", spec.Clone, repo)
+		cmd.Env = gitEnv()
+		if out, e := cmd.CombinedOutput(); e != nil {
+			t.Fatalf("clone %s: %v %s", spec.Clone, e, out)
+		}
+		if spec.Commit != "" {
+			git("checkout", "--detach", spec.Commit)
+		}
+	} else {
+		git("init")
+		git("add", ".")
+		git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "initial")
+	}
 	sha := git("rev-parse", "HEAD")
 	git("checkout", "-b", "autopilot/issue-1")
 	store, e := storage.Open(ctx, filepath.Join(root, "test.db"), false)
@@ -170,7 +190,7 @@ func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePl
 	end := time.Now().UTC()
 	run.Status = "SUCCEEDED"
 	run.FinishedAt = &end
-	o := domain.Opportunity{ID: "fixture-issue", Repository: "example/fixture", Number: 1, Title: spec.Title, Evidence: &domain.Evidence{RunID: run.ID, ConfigVersion: 1}}
+	o := domain.Opportunity{ID: "fixture-issue", Repository: name, Number: number, Title: spec.Title, Evidence: &domain.Evidence{RunID: run.ID, ConfigVersion: 1}}
 	if e = store.FinishDiscovery(ctx, run, []domain.Opportunity{o}); e != nil {
 		t.Fatal(e)
 	}
@@ -179,14 +199,14 @@ func buildFixtureSpec(t *testing.T, runner codex.Runner, model string, requirePl
 	cfg.Config.Codex.MaxFixIterations = 3
 	cfg.Config.Codex.MaxReviewCycles = 2
 	cfg.Config.Contributions.RequirePlanApproval = requirePlanApproval
-	issue, _ := json.Marshal(map[string]any{"number": 1, "state": "open", "title": spec.Title, "body": spec.Body})
+	issue, _ := json.Marshal(map[string]any{"number": number, "state": "open", "title": spec.Title, "body": spec.Body})
 	approved := o
 	if spec.CI != nil {
 		evidence := *o.Evidence
 		evidence.Prerequisites = &domain.RepositoryAssessment{Repository: o.Repository, HeadSHA: sha, Status: "eligible", CI: spec.CI}
 		approved.Evidence = &evidence
 	}
-	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: approved, Issue: issue, Repository: json.RawMessage(`{"full_name":"example/fixture","default_branch":"main"}`)}
+	a := domain.WorkspaceApproval{Token: "fixture-approval", Config: cfg, Opportunity: approved, Issue: issue, Repository: json.RawMessage(`{"full_name":"` + name + `","default_branch":"main"}`)}
 	if e = store.ApproveWorkspace(ctx, c, a); e != nil {
 		t.Fatal(e)
 	}
