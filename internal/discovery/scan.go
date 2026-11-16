@@ -50,7 +50,7 @@ const excludedFor, withheldFor = 7 * 24 * time.Hour, 24 * time.Hour
 const minIssueDetail = 80
 
 // Labels that say an issue is not ready to be worked on, whatever else it has.
-var notActionable = regexp.MustCompile(`(?i)wont ?fix|won't ?fix|invalid|duplicate|question|blocked|on[- ]hold|needs?[- /:]*(info|information|triage|design|discussion|repro|reproduction|decision|investigation)|discussion|not[- ]a[- ]bug|stale|upstream|rfc|proposal|epic|tracking`)
+var notActionable = regexp.MustCompile(`(?i)wont ?fix|won't ?fix|invalid|duplicate|question|blocked|on[- ]hold|needs?[- /:]*(info|information|triage|design|discussion|repro|reproduction|decision|investigation|confirmation|more)|discussion|not[- ]a[- ]bug|stale|upstream|rfc|proposal|epic|tracking|pending|unconfirmed|potential|awaiting|waiting|support|can'?t[- ]reproduce|works[- ]for[- ]me`)
 
 // Labels with which maintainers invite outside contributors. An issue carrying
 // one is offered at any age; a plain bug or enhancement only while it is recent.
@@ -58,8 +58,14 @@ var invitations = []string{"good first issue", "help wanted", "easy", "beginner"
 
 // uninvitedFor is how long a plain bug or enhancement stays worth offering. An
 // old one that maintainers of an active project have neither fixed nor marked
-// for outside help is usually hard, disputed or not reproducible.
-const uninvitedFor = 365 * 24 * time.Hour
+// for outside help is usually hard, disputed or not reproducible. An invited
+// issue lasts longer, but a "good first issue" open for many years has shown
+// that it is not one.
+const uninvitedFor, invitedFor = 365 * 24 * time.Hour, 3 * 365 * 24 * time.Hour
+
+// longDiscussion is the comment count past which an issue is a debate or a
+// standing thread ("who is using this?") rather than a task.
+const longDiscussion = 40
 
 func invited(issue github.Issue) bool {
 	for _, l := range issue.Labels {
@@ -173,8 +179,17 @@ func offerable(issue github.Issue, cfg domain.Config) (ok bool, reason string) {
 	if len(strings.TrimSpace(issue.Body)) < minIssueDetail {
 		return false, "too little description to plan a change from"
 	}
-	if !invited(issue) && !issue.CreatedAt.IsZero() && time.Since(issue.CreatedAt) > uninvitedFor {
-		return false, "older than a year and not marked for outside help"
+	if issue.Comments > longDiscussion {
+		return false, "a long discussion rather than a task"
+	}
+	if !issue.CreatedAt.IsZero() {
+		age := time.Since(issue.CreatedAt)
+		if !invited(issue) && age > uninvitedFor {
+			return false, "older than a year and not marked for outside help"
+		}
+		if age > invitedFor {
+			return false, "open for more than three years"
+		}
 	}
 	return true, ""
 }
@@ -533,6 +548,13 @@ func (s *Service) opportunity(ctx context.Context, session *github.Session, repo
 	}
 	if len(e.CompetingPRs) > 0 {
 		skipped["an open pull request already mentions it"]++
+		return domain.Opportunity{}, false
+	}
+	// Issue templates add "bug" to every report. Without an invitation, a
+	// second label or a maintainer's reply, nobody on the project has yet
+	// agreed that there is something to fix.
+	if !invited(issue) && len(issue.Labels) < 2 && (e.MaintainerComments == nil || *e.MaintainerComments == 0) {
+		skipped["a report no maintainer has confirmed yet"]++
 		return domain.Opportunity{}, false
 	}
 	issue.State = "open"

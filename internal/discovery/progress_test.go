@@ -76,7 +76,7 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 			}
 		case "issues":
 			if len(parts) > 4 {
-				fmt.Fprint(w, "[]") // timeline
+				fmt.Fprint(w, `[{"event":"commented","author_association":"MEMBER"}]`) // timeline
 				return
 			}
 			json.NewEncoder(w).Encode([]github.Issue{{Number: n, Title: "Fix backend behavior", State: "open", Body: issueBody, Labels: []github.Label{{Name: "bug"}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}})
