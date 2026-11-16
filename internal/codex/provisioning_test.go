@@ -65,6 +65,12 @@ func TestEnvironmentInputsAndRecipeBoundaries(t *testing.T) {
 	if !strings.Contains(recipe, "USER 1000:1000") || strings.Contains(recipe, "--mount") {
 		t.Fatal(recipe)
 	}
+	// ForgeFlow's own tools are installed before any planned command runs, so a
+	// base image without Git cannot fail the recipe.
+	baseline, planned := strings.Index(recipe, "apt-get install -y --no-install-recommends git tar"), strings.Index(recipe, "quoted")
+	if baseline < 0 || planned < 0 || baseline > planned {
+		t.Fatal("baseline tools are not installed before planned commands", recipe)
+	}
 }
 
 func TestEnvironmentBlockedPlanAndNativeAllowlist(t *testing.T) {

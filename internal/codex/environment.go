@@ -284,6 +284,37 @@ func localImage(ctx context.Context, ref string) (string, error) {
 	return id, nil
 }
 
+// baselineTools installs what ForgeFlow itself needs in every verification
+// image: Git, tar and CA certificates, used to sync the workspace and run
+// commands. A planner may choose any base image, and one chose a slim Python
+// image without Git, then failed its own check twice. These tools are
+// ForgeFlow's requirement, not the repository's, so ForgeFlow supplies them
+// rather than relying on each generated recipe to remember. When they are
+// already present the step does nothing, so it also works offline.
+const baselineTools = `set -eu
+missing=""
+for tool in git tar; do command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"; done
+[ -z "$missing" ] && exit 0
+echo "ForgeFlow: installing its own required tools:$missing"
+if command -v apt-get >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update && apt-get install -y --no-install-recommends git tar ca-certificates && rm -rf /var/lib/apt/lists/*
+elif command -v apk >/dev/null 2>&1; then
+  apk add --no-cache git tar ca-certificates
+elif command -v microdnf >/dev/null 2>&1; then
+  microdnf install -y git tar ca-certificates && microdnf clean all
+elif command -v dnf >/dev/null 2>&1; then
+  dnf install -y git tar ca-certificates && dnf clean all
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y git tar ca-certificates && yum clean all
+elif command -v zypper >/dev/null 2>&1; then
+  zypper --non-interactive install git tar ca-certificates
+else
+  echo "ForgeFlow needs$missing in the verification image, and this base image has no package manager it knows. Choose a Debian, Alpine or Red Hat based image." >&2
+  exit 1
+fi
+for tool in git tar; do command -v "$tool" >/dev/null 2>&1 || { echo "ForgeFlow could not install $tool (the image build needs approved downloads)." >&2; exit 1; }; done`
+
 func environmentDockerfile(base string, plan domain.EnvironmentPlan) (string, error) {
 	if !immutableImage.MatchString(base) {
 		return "", errors.New("managed image base must be an immutable local ID")
@@ -295,6 +326,8 @@ func environmentDockerfile(base string, plan domain.EnvironmentPlan) (string, er
 	// BuildKit interprets FROM sha256:<config-ID> as a registry repository. Use
 	// a locally pinned, content-addressed tag, verified against the ID by caller.
 	fmt.Fprintf(&recipe, "FROM forgeflow-base:%s\nUSER 0:0\nWORKDIR /opt/forgeflow-inputs\n", strings.TrimPrefix(base, "sha256:"))
+	baseline, _ := json.Marshal([]string{"sh", "-c", baselineTools})
+	fmt.Fprintf(&recipe, "RUN %s\n", baseline)
 	if len(plan.Files) > 0 {
 		recipe.WriteString("COPY inputs/ /opt/forgeflow-inputs/\n")
 	}
@@ -313,7 +346,7 @@ func environmentDockerfile(base string, plan domain.EnvironmentPlan) (string, er
 }
 
 func buildEnvironmentImage(ctx context.Context, base, fingerprint, dir string, network bool, plan domain.EnvironmentPlan, report *domain.ExecutionEnvironment) (string, error) {
-	sum := sha256.Sum256([]byte("environment-v1\x00" + base + "\x00" + fingerprint))
+	sum := sha256.Sum256([]byte("environment-v2\x00" + base + "\x00" + fingerprint))
 	tag := "forgeflow-managed:" + hex.EncodeToString(sum[:16])
 	if id, err := localImage(ctx, tag); err == nil {
 		report.Actions = append(report.Actions, "Reused matching immutable image "+id)
