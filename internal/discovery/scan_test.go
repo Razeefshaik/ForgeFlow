@@ -53,9 +53,13 @@ func TestOnlyActionableIssuesAreOffered(t *testing.T) {
 		ok     bool
 		reason string
 	}{
-		"recent bug":                 {labelled("kind/bug"), true, ""},
-		"good first issue":           {labelled("good-first-issue"), true, ""},
-		"old invited issue":          {func() github.Issue { i := labelled("help wanted", "enhancement"); i.CreatedAt = time.Now().AddDate(-2, 0, 0); return i }(), true, ""},
+		"recent bug":       {labelled("kind/bug"), true, ""},
+		"good first issue": {labelled("good-first-issue"), true, ""},
+		"old invited issue": {func() github.Issue {
+			i := labelled("help wanted", "enhancement")
+			i.CreatedAt = time.Now().AddDate(-2, 0, 0)
+			return i
+		}(), true, ""},
 		"ancient invited issue":      {old(old(labelled("good first issue"))), false, "more than three years"},
 		"standing thread":            {func() github.Issue { i := labelled("help wanted"); i.Comments = 120; return i }(), false, "long discussion"},
 		"pending triage":             {labelled("bug", "pending"), false, "not ready"},
