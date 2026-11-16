@@ -61,10 +61,15 @@ var imageMissing = errors.New("Docker image is not cached")
 
 func (c *CLI) EnvironmentBase() string { return c.VerificationImage }
 
+const inspectionDeadline = 10 * time.Minute
+
 // InspectEnvironment supplies facts the read-only agent cannot obtain through
 // its native editing shell. No repository script or installation runs.
 func (c *CLI) InspectEnvironment(ctx context.Context, dir string) (domain.ExecutionEnvironment, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	// The first inspection also creates the contribution's volumes and copies
+	// the whole repository into the verification copy. Two minutes was not
+	// enough for a real repository (caddy, 2026-11-16) on a busy machine.
+	ctx, cancel := context.WithTimeout(ctx, inspectionDeadline)
 	defer cancel()
 	r := domain.ExecutionEnvironment{Status: "inspected", Capabilities: []string{"The configured image is locally available; below are actual offline tool probes, not inferred versions"}}
 	id, err := localImage(ctx, c.VerificationImage)

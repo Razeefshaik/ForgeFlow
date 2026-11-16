@@ -87,6 +87,15 @@ func (s *Service) prepareEnvironment(ctx context.Context, c domain.Contribution,
 			InspectEnvironment(context.Context, string) (domain.ExecutionEnvironment, error)
 		}); ok && (r.Environment == nil || r.Environment.Image == "") {
 			inventory, err := inspector.InspectEnvironment(ctx, repo)
+			// Running out of time while Docker is busy says nothing about the
+			// repository. Try once more before asking a human, unless the whole
+			// execution was cancelled.
+			if err != nil && ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded")) {
+				if e := s.Store.WorkspaceEvent(ctx, c.ID, "EnvironmentInspectionRetried", "Environment inspection ran out of time; trying once more", map[string]string{"error": err.Error()}); e != nil {
+					return e
+				}
+				inventory, err = inspector.InspectEnvironment(ctx, repo)
+			}
 			// Probes intentionally run offline; this field describes authorization,
 			// not the network mode used for those individual checks.
 			inventory.Network = r.Network
