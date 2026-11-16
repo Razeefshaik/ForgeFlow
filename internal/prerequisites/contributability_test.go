@@ -199,3 +199,16 @@ func TestIntegrationWorkflowsDoNotSizeOrBlock(t *testing.T) {
 		t.Fatalf("15-minute CI was rejected: %+v", f)
 	}
 }
+
+// Workflow names are matched on whole words. "Build Syncthing" was ignored as
+// a "sync" workflow, which left a thirteen-second lint job to size its build.
+func TestNonVerificationWorkflowNamesMatchWholeWords(t *testing.T) {
+	for name, want := range map[string]bool{
+		"build-syncthing.yaml Build Syncthing": false, "ci.yml CI": false, "deadlock-tests.yml Deadlock tests": false, "resize.yml Resize tests": false, "tests.yml Unit tests": false,
+		"release.yml Release": true, "docs.yml Docs": true, "publish-docker.yml Publish": true, "labeler.yml Pull Request Labeler": true, "sync.yml Sync fork": true, "stale.yml Close stale issues": true, "codeql-analysis.yml CodeQL": true, "spellcheck.yml Spell check": true, "auto-assign.yml Assign": true, "lock.yml Lock threads": true, "release-docs.yml x": true, "deploy_site.yml x": true,
+	} {
+		if nonVerificationWorkflow.MatchString(name) != want {
+			t.Errorf("%q: non-verification=%v, want %v", name, !want, want)
+		}
+	}
+}

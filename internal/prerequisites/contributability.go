@@ -171,7 +171,9 @@ type workflowRun struct {
 
 // Workflows that never run the project's checks: releases, deployment,
 // documentation sites, security scanners and repository housekeeping.
-var nonVerificationWorkflow = regexp.MustCompile(`(?i)release|deploy|publish|pages|docs?\b|documentation|website|codeql|scorecard|stale|label|greet|welcome|dependabot|renovate|sync|mirror|nightly|benchmark|docker|image|lock|triage|\bcla\b|backport|cleanup|changelog|semantic|pr-title|size|assign|milestone|issue|discussion|translate|spell`)
+// The words match whole name parts: "sync" must not hide "Build Syncthing",
+// nor "lock" a "Deadlock tests" workflow.
+var nonVerificationWorkflow = regexp.MustCompile(`(?i)(^|[^a-z0-9])(releas\w*|deploy\w*|publish\w*|pages|docs?|document\w*|website|codeql|scorecards?|stale|label\w*|greet\w*|welcome|dependabot|renovate|sync|mirror|nightly|benchmark\w*|docker\w*|images?|lock|triage|cla|backport\w*|cleanup|changelog|semantic|pr-title|size|assign\w*|milestones?|issues?|discussions?|translat\w*|spell\w*)([^a-z0-9]|$)`)
 
 func summarizeRuns(runs []workflowRun, branch string, now time.Time) *domain.CIEvidence {
 	type stats struct {
