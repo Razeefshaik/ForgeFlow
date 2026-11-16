@@ -29,11 +29,17 @@ func ciRuns() string {
 	return fmt.Sprintf(`{"workflow_runs":[{"name":"tests","path":".github/workflows/ci.yml","head_branch":"main","event":"push","status":"completed","conclusion":"success","run_started_at":%q,"updated_at":%q}]}`, end.Add(-4*time.Minute).Format(time.RFC3339), end.Format(time.RFC3339))
 }
 
+// quietTimeline has a maintainer comment, an outside comment, a closed pull
+// request and an open issue that mention the issue: none is competing work.
+const quietTimeline = `[{"event":"commented","author_association":"MEMBER"},{"event":"commented","author_association":"NONE"},{"event":"cross-referenced","source":{"issue":{"number":40,"state":"closed","html_url":"https://github.com/example/backend/pull/40","pull_request":{"url":"x"}}}},{"event":"cross-referenced","source":{"issue":{"number":41,"state":"open","html_url":"https://github.com/example/backend/issues/41"}}}]`
+
+const issueBody = "Reproduction steps for database bug: open two writers on the same key and observe that the second write is lost."
+
 func fixtureFiles(t *testing.T, files map[string]string) (*httptest.Server, *atomic.Int64) {
-	return fixturePRs(t, files, `{"total_count":2,"items":[{"number":55,"body":"Fixes #123"},{"number":56,"body":"https://github.com/example/backend/issues/123"}]}`)
+	return fixtureTimeline(t, files, quietTimeline)
 }
 
-func fixturePRs(t *testing.T, files map[string]string, prs string) (*httptest.Server, *atomic.Int64) {
+func fixtureTimeline(t *testing.T, files map[string]string, timeline string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	calls := &atomic.Int64{}
 	head := strings.Repeat("a", 40)
@@ -51,14 +57,11 @@ func fixturePRs(t *testing.T, files map[string]string, prs string) (*httptest.Se
 		now := time.Now().UTC().Format(time.RFC3339)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/search/issues":
-			if strings.Contains(r.URL.Query().Get("q"), "is:pr") {
-				fmt.Fprint(w, prs)
-			} else {
-				fmt.Fprintf(w, `{"total_count":1,"items":[{"number":12,"repository_url":"https://api.github.com/repos/example/backend"}]}`)
+		case "/search/repositories":
+			if q := r.URL.Query(); q.Get("sort") != "stars" || !strings.Contains(q.Get("q"), "-issues:>0") || !strings.Contains(q.Get("q"), "pushed:>=") {
+				t.Errorf("repository search is not the invited-issues search by stars: %s", r.URL.RawQuery)
 			}
-		case "/repos/example/backend":
-			fmt.Fprintf(w, `{"full_name":"example/backend","language":"Go","description":"database backend","stargazers_count":500,"forks_count":4,"default_branch":"main","pushed_at":%q}`, now)
+			fmt.Fprintf(w, `{"total_count":1,"items":[{"full_name":"example/backend","language":"Go","description":"database backend","stargazers_count":500,"forks_count":4,"default_branch":"main","pushed_at":%q}]}`, now)
 		case "/repos/example/backend/commits":
 			fmt.Fprintf(w, `[{"sha":%q,"commit":{"committer":{"date":%q}}}]`, head, now)
 		case "/repos/example/backend/git/trees/" + head:
@@ -69,10 +72,13 @@ func fixturePRs(t *testing.T, files map[string]string, prs string) (*httptest.Se
 			fmt.Fprintf(w, `[{"published_at":%q}]`, now)
 		case "/repos/example/backend/pulls":
 			fmt.Fprintf(w, `[{"merged_at":%q,"author_association":"CONTRIBUTOR"}]`, now)
-		case "/repos/example/backend/issues/12":
-			fmt.Fprintf(w, `{"number":12,"title":"Fix storage race","body":"Reproduction steps for database bug","state":"open","labels":[{"name":"bug"}],"comments":2,"created_at":%q,"updated_at":%q}`, now, now)
-		case "/repos/example/backend/issues/12/comments":
-			fmt.Fprint(w, `[{"author_association":"MEMBER"},{"author_association":"NONE"}]`)
+		case "/repos/example/backend/issues":
+			if r.URL.Query().Get("assignee") != "none" || r.URL.Query().Get("state") != "open" {
+				t.Errorf("issue list is not limited to open unassigned issues: %s", r.URL.RawQuery)
+			}
+			fmt.Fprintf(w, `[{"number":12,"title":"Fix storage race","body":%q,"state":"open","labels":[{"name":"kind/bug"}],"comments":2,"created_at":%q,"updated_at":%q},{"number":13,"title":"A pull request","body":%q,"state":"open","labels":[{"name":"bug"}],"pull_request":{"url":"x"}}]`, issueBody, now, now, issueBody)
+		case "/repos/example/backend/issues/12/timeline":
+			fmt.Fprint(w, timeline)
 		default:
 			if strings.HasPrefix(r.URL.Path, "/repos/example/backend/git/blobs/") {
 				sha := strings.TrimPrefix(r.URL.Path, "/repos/example/backend/git/blobs/")
@@ -297,7 +303,7 @@ func TestRecoveredInterruptedRunCannotBeCompletedTwice(t *testing.T) {
 // An open PR already solving the issue, or an assignee, means a ForgeFlow PR
 // would race existing work; such issues are not offered.
 func TestCompetingOrAssignedIssuesAreNotOffered(t *testing.T) {
-	server, _ := fixturePRs(t, map[string]string{"CONTRIBUTING.md": "Run go test ./... before contributing.\n", "go.mod": "module example/backend\n\ngo 1.27.0\n"}, `{"total_count":1,"items":[{"number":55,"body":"Fixes #12"}]}`)
+	server, _ := fixtureTimeline(t, map[string]string{"CONTRIBUTING.md": "Run go test ./... before contributing.\n", "go.mod": "module example/backend\n\ngo 1.27.0\n"}, `[{"event":"cross-referenced","source":{"issue":{"number":55,"state":"open","html_url":"https://github.com/example/backend/pull/55","pull_request":{"url":"x"}}}}]`)
 	s, store := setup(t, server, false)
 	if _, err := s.Start(); err != nil {
 		t.Fatal(err)
@@ -306,5 +312,10 @@ func TestCompetingOrAssignedIssuesAreNotOffered(t *testing.T) {
 	opps, err := store.Opportunities(context.Background())
 	if err != nil || len(opps) != 0 {
 		t.Fatal("issue with a competing open PR was offered", opps, err)
+	}
+	// Nothing to offer is a completed scan, not a failed one.
+	runs, err := store.DiscoveryRuns(context.Background())
+	if err != nil || runs[0].Status != "SUCCEEDED" {
+		t.Fatal("a scan that found nothing to offer was not reported as succeeded", runs, err)
 	}
 }

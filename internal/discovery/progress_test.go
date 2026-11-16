@@ -22,9 +22,10 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/search/issues" {
-			if strings.Contains(r.URL.Query().Get("q"), "is:pr") {
-				json.NewEncoder(w).Encode(github.IssueSearch{})
+		if r.URL.Path == "/search/repositories" {
+			// Only the good-first-issues lane has results, so one saved position moves.
+			if strings.Contains(r.URL.Query().Get("q"), "help-wanted-issues") {
+				json.NewEncoder(w).Encode(github.RepoSearch{})
 				return
 			}
 			page, err := strconv.Atoi(r.URL.Query().Get("page"))
@@ -33,14 +34,14 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 				http.Error(w, "invalid page", 400)
 				return
 			}
-			items := []github.Issue{}
+			items := []github.Repository{}
 			if page <= 2 {
 				for i := 1; i <= 25; i++ {
 					n := (page-1)*25 + i
-					items = append(items, github.Issue{Number: n, RepositoryURL: fmt.Sprintf("https://api.github.com/repos/fresh/repo%d", n)})
+					items = append(items, github.Repository{FullName: fmt.Sprintf("fresh/repo%d", n), Language: "Go", DefaultBranch: "main", PushedAt: time.Now().UTC()})
 				}
 			}
-			json.NewEncoder(w).Encode(github.IssueSearch{Total: 50, Items: items})
+			json.NewEncoder(w).Encode(github.RepoSearch{Total: 50, Items: items})
 			return
 		}
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -74,7 +75,11 @@ func progressFixture(t *testing.T, rejected int) *httptest.Server {
 				json.NewEncoder(w).Encode(github.Blob{SHA: blobSHA, Size: len(body), Encoding: "base64", Content: base64.StdEncoding.EncodeToString([]byte(body))})
 			}
 		case "issues":
-			json.NewEncoder(w).Encode(github.Issue{Number: n, Title: "Fix backend behavior", State: "open", Body: "A reproduction for a backend defect", Labels: []github.Label{{Name: "bug"}}})
+			if len(parts) > 4 {
+				fmt.Fprint(w, "[]") // timeline
+				return
+			}
+			json.NewEncoder(w).Encode([]github.Issue{{Number: n, Title: "Fix backend behavior", State: "open", Body: issueBody, Labels: []github.Label{{Name: "bug"}}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}})
 		case "actions":
 			fmt.Fprint(w, ciRuns())
 		case "releases", "pulls":
@@ -203,7 +208,7 @@ func TestCancellationKeepsUnfinishedRepositoryPosition(t *testing.T) {
 	fixture := progressFixture(t, 0)
 	entered := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/fresh/repo1" {
+		if r.URL.Path == "/repos/fresh/repo1/commits" {
 			entered <- struct{}{}
 			<-r.Context().Done()
 			return
