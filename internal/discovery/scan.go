@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 )
 
 // Discovery searches repositories first, then their issues. Searching issues
@@ -97,30 +96,10 @@ func notSoftware(repo github.Repository) bool {
 	return false
 }
 
-func labelTokens(s string) []string {
-	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
-}
-
 // labelMatches reports whether a repository's label means a preferred label:
 // "kind/bug", "type: bug" and "good-first-issue" count; "debug" does not.
 func labelMatches(label, preferred string) bool {
-	have, want := labelTokens(label), labelTokens(preferred)
-	if len(want) == 0 {
-		return false
-	}
-	for i := 0; i+len(want) <= len(have); i++ {
-		ok := true
-		for j := range want {
-			if have[i+j] != want[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return true
-		}
-	}
-	return false
+	return prerequisites.LabelMatches(label, preferred)
 }
 
 // preference is the position of the best preferred label an issue carries, or
@@ -379,7 +358,7 @@ search:
 			}
 			continue
 		}
-		issues := s.repositoryIssues(ctx, session, repo, cfg.Config, maxPerRepo, skipped, warn)
+		issues := s.repositoryIssues(ctx, session, repo, cfg.Config, e.Prerequisites.Policy, maxPerRepo, skipped, warn)
 		accepted := 0
 		for _, issue := range issues {
 			if stopped() {
@@ -451,7 +430,7 @@ search:
 
 // repositoryIssues returns the repository's open, unassigned issues worth
 // offering, best first: by preferred-label order, then most recently updated.
-func (s *Service) repositoryIssues(ctx context.Context, session *github.Session, repo github.Repository, cfg domain.Config, want int, skipped map[string]int, warn func(error)) []github.Issue {
+func (s *Service) repositoryIssues(ctx context.Context, session *github.Session, repo github.Repository, cfg domain.Config, policy *domain.ContributionPolicy, want int, skipped map[string]int, warn func(error)) []github.Issue {
 	base := "/repos/" + repo.FullName + "/issues?state=open&assignee=none&sort=updated&direction=desc"
 	found := map[int]bool{}
 	out := []github.Issue{}
@@ -467,6 +446,12 @@ func (s *Service) repositoryIssues(ctx context.Context, session *github.Session,
 			}
 			found[issue.Number] = true
 			ok, reason := offerable(issue, cfg)
+			if ok {
+				// The project's own rule about which issues outsiders may take.
+				if denied := prerequisites.PolicyAllows(policy, issue); denied != "" {
+					ok, reason = false, "not open to outside contributors under the project's contribution rules"
+				}
+			}
 			if reason != "" {
 				skipped[reason]++
 			}
@@ -480,9 +465,17 @@ func (s *Service) repositoryIssues(ctx context.Context, session *github.Session,
 		return nil
 	}
 	// In a busy repository the hundred most recently updated issues may hold
-	// none of the invited ones; ask for the first two preferred labels by name.
-	for i := 0; i < len(cfg.Issues.PreferredLabels) && i < 2 && len(out) < want; i++ {
-		collect(base + "&per_page=30&labels=" + url.QueryEscape(cfg.Issues.PreferredLabels[i]))
+	// none of the invited ones; ask for the labels the project requires, then
+	// the first two preferred labels, by name.
+	named := []string{}
+	if policy != nil {
+		named = append(named, policy.RequiredLabels...)
+	}
+	for i := 0; i < len(cfg.Issues.PreferredLabels) && i < 2; i++ {
+		named = append(named, cfg.Issues.PreferredLabels[i])
+	}
+	for i := 0; i < len(named) && i < 3 && len(out) < want; i++ {
+		collect(base + "&per_page=30&labels=" + url.QueryEscape(named[i]))
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		// An invitation outranks label order: it is the maintainers saying the

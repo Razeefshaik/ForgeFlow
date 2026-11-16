@@ -186,6 +186,7 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 			}
 		}
 	}
+	a.Policy = contributionPolicy(texts)
 	findings, noted := screen(texts, weak, profile)
 	a.Requirements = append(dependencyRequirements(texts), append(noted, cautions...)...)
 	for _, f := range findings {

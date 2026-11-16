@@ -143,6 +143,11 @@ func (s *Service) PreviewWithOptions(ctx context.Context, id, requestedModel str
 	if assessment.Status != "eligible" {
 		return a, fmt.Errorf("repository excluded by prerequisite screening (%s): %s", assessment.Status, assessment.Findings[0].Reason)
 	}
+	// The project's own rule about which issues outsiders may take is checked
+	// against the issue as it is now; a label can be added or removed.
+	if denied := prerequisites.PolicyAllows(assessment.Policy, issue); denied != "" {
+		return a, fmt.Errorf("this issue is not open to outside contributors: %s (%s)", denied, assessment.Policy.Source)
+	}
 	evidence := *o.Evidence
 	evidence.HeadSHA = commits[0].SHA
 	evidence.Prerequisites = &assessment

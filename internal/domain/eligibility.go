@@ -34,6 +34,18 @@ type RepositoryAssessment struct {
 	Findings     []PrerequisiteFinding `json:"findings"`
 	Requirements []PrerequisiteFinding `json:"requirements,omitempty"`
 	CI           *CIEvidence           `json:"ci,omitempty"`
+	Policy       *ContributionPolicy   `json:"policy,omitempty"`
+}
+
+// ContributionPolicy is a project's stated rule about which issues outside
+// contributors may work on, read from its contribution instructions. It does
+// not exclude the repository; it decides which of its issues are offered.
+type ContributionPolicy struct {
+	RequiredLabels  []string `json:"required_labels,omitempty"`
+	ForbiddenLabels []string `json:"forbidden_labels,omitempty"`
+	RequiredText    []string `json:"required_text,omitempty"`
+	Source          string   `json:"source,omitempty"`
+	Line            int      `json:"line,omitempty"`
 }
 
 // CIEvidence summarizes recent default-branch GitHub Actions runs of the
