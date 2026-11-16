@@ -23,7 +23,11 @@ if (image) {
   const output = `${docker.stdout ?? ''}${docker.stderr ?? ''}`
   if (docker.error || docker.status !== 0) {
     if (/no such image/i.test(output)) {
-      console.warn(`Container verification image ${image} is missing from Docker. Contributions will stop at their first check.\n  Rebuild it: docker build --tag forgeflow-verification:go1.26-node22 scripts/execution-image\n  and set "verification_image": "forgeflow-verification:go1.26-node22" in configs/local.json.`)
+      if (image.startsWith('forgeflow-verification:')) {
+        console.log(`Container verification image ${image} is missing from Docker (a Docker Desktop reset removes it). ForgeFlow is rebuilding it in the background; this takes a few minutes and needs network access.`)
+      } else {
+        console.warn(`Container verification image ${image} is missing from Docker and is not one ForgeFlow can rebuild. Contributions will stop at their first check.\n  Either restore that image, or build the bootstrap image: docker build --tag forgeflow-verification:go1.26-node22 scripts/execution-image\n  and set "verification_image": "forgeflow-verification:go1.26-node22" in configs/local.json.`)
+      }
     } else {
       console.warn(`Docker is not reachable (${(docker.error?.message || output).trim().split('\n')[0]}). Start Docker Desktop before resuming contributions that use container verification.`)
     }

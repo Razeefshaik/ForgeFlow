@@ -68,6 +68,15 @@ func (c *CLI) InspectEnvironment(ctx context.Context, dir string) (domain.Execut
 	defer cancel()
 	r := domain.ExecutionEnvironment{Status: "inspected", Capabilities: []string{"The configured image is locally available; below are actual offline tool probes, not inferred versions"}}
 	id, err := localImage(ctx, c.VerificationImage)
+	if errors.Is(err, imageMissing) {
+		// Rebuilding downloads base images and may take minutes; it must not be
+		// cut off by the short inspection deadline.
+		if _, buildErr := c.EnsureBootstrapImage(context.WithoutCancel(ctx)); buildErr == nil {
+			id, err = localImage(ctx, c.VerificationImage)
+		} else {
+			err = buildErr
+		}
+	}
 	if err != nil {
 		if hint := missingImageHint(c.VerificationImage, err.Error()); hint != "" {
 			err = fmt.Errorf("container creation failed: %w\n%s", err, hint)

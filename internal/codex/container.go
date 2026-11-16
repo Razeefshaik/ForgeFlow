@@ -128,7 +128,7 @@ func missingImageHint(image, output string) string {
 	if !strings.Contains(text, "no such image") && !strings.Contains(text, "unable to find image") && !strings.Contains(text, "not cached") {
 		return ""
 	}
-	return fmt.Sprintf("The verification image %s is not available in Docker (a Docker Desktop reset or image cleanup removes local images). Rebuild the bootstrap image from the ForgeFlow root with `docker build --tag %s scripts/execution-image`, set \"verification_image\": %q in configs/local.json, restart ForgeFlow and recover the contribution.", image, BootstrapImage, BootstrapImage)
+	return fmt.Sprintf("The verification image %s is not available in Docker (a Docker Desktop reset or image cleanup removes local images). ForgeFlow rebuilds its own bootstrap image automatically; this image is not one it can rebuild, or the rebuild failed. Rebuild the bootstrap image from the ForgeFlow root with `docker build --tag %s scripts/execution-image`, set \"verification_image\": %q in configs/local.json, restart ForgeFlow and recover the contribution.", image, BootstrapImage, BootstrapImage)
 }
 
 // ensureRuntimeVolume creates the workspace's runtime volume and gives UID 1000
@@ -262,6 +262,7 @@ func (c *CLI) containerCommandMode(ctx context.Context, image, dir string, comma
 	if err = prepareLinuxContainerCaches(dir); err != nil {
 		return rec, err
 	}
+	c.ensureBase(ctx, image)
 	if err = c.ensureRuntimeVolume(ctx, image, dir); err != nil {
 		rec.Output = err.Error()
 		return rec, err

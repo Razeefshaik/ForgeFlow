@@ -39,7 +39,11 @@ type CLI struct {
 	VerificationImage string
 	// SyncImage copies workspaces into verification volumes; it defaults to
 	// VerificationImage, the bootstrap image that supplies sh, tar and Git.
-	SyncImage     string
+	SyncImage string
+	// BootstrapDir holds the Dockerfile of the bootstrap verification image, so
+	// a missing image can be rebuilt instead of stopping every contribution.
+	BootstrapDir  string
+	baseChecked   time.Time
 	environmentMu sync.Mutex
 	environments  map[string]domain.ExecutionEnvironment
 	volumes       map[string]bool

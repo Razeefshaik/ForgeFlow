@@ -160,6 +160,7 @@ func run() error {
 	workspaces.DefaultModel = settings.CodexModel
 	cli := codex.Resolve(settings.CodexBinary, settings.CodexModel)
 	cli.VerificationImage = settings.VerificationImage
+	cli.BootstrapDir = filepath.Join(root, "scripts", "execution-image")
 	if settings.CodexSandbox != "" {
 		if err = cli.SetSandboxMode(settings.CodexSandbox); err != nil {
 			return err
@@ -172,6 +173,19 @@ func run() error {
 		return err
 	}
 	defer func() { cancel(); environment.Wait() }()
+	if !*demo && cli.VerificationImage != "" {
+		// A Docker Desktop reset removes the verification image. Rebuild it now,
+		// in the background, rather than at a contribution's first check.
+		go func() {
+			built, e := cli.EnsureBootstrapImage(ctx)
+			switch {
+			case e != nil && ctx.Err() == nil:
+				slog.Warn("Verification image is not ready; contributions will retry when they start", "image", cli.VerificationImage, "error", e)
+			case built:
+				slog.Info("Verification image was missing and has been rebuilt", "image", cli.VerificationImage)
+			}
+		}()
+	}
 	var operatorAI codex.Runner
 	if !*demo && cli.Binary != "" {
 		operatorAI = cli
