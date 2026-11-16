@@ -17,9 +17,9 @@ import (
 	"unicode/utf8"
 )
 
-const MaxFiles = 16
-const MaxFileBytes = 48 << 10
-const MaxTotalBytes = 512 << 10
+const MaxFiles = 24
+const MaxFileBytes = 128 << 10
+const MaxTotalBytes = 768 << 10
 
 var shaPattern = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 var markdownLink = regexp.MustCompile(`\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)`)
@@ -31,7 +31,11 @@ type node struct {
 }
 
 // Inspect pins every content read to the tree of the observed default-branch
-// commit. Missing, oversized or uninspectable evidence is held out of ranking.
+// commit. Evidence that could not be read or verified holds the repository out
+// of ranking. Evidence that was merely not reached (the read budget ran out on
+// secondary files, a large README, a broken link) is recorded as a caution: it
+// does not make an assessment incomplete, and treating it so had excluded most
+// ordinary repositories.
 func Inspect(ctx context.Context, session *github.Session, repo, head string, tree github.Tree, profile Profile, onError ...func(error)) domain.RepositoryAssessment {
 	a := domain.RepositoryAssessment{Repository: repo, HeadSHA: head, Status: "eligible", Profile: profile.Fingerprint(), CheckedAt: time.Now().UTC(), Files: []string{}, Findings: []domain.PrerequisiteFinding{}}
 	addUnknown := func(source, reason string) {
@@ -40,6 +44,13 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 			a.Status = "needs_assessment"
 		}
 	}
+	cautions := []domain.PrerequisiteFinding{}
+	caution := func(source, reason string) {
+		cautions = append(cautions, domain.PrerequisiteFinding{Kind: "caution", Source: source, Reason: reason})
+	}
+	// Scripts reached only through a mention in prose; see screen.
+	weak := map[string]bool{}
+	strong := map[string]bool{}
 	if !profile.LinuxProvisioning {
 		addUnknown("runner", "Repository-driven isolated Linux provisioning is not configured; configure a supported verification runner before ranking new repositories.")
 	}
@@ -83,17 +94,22 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 			continue
 		}
 		seen[file] = true
-		if len(seen) > MaxFiles {
-			addUnknown(file, "Prerequisite file count exceeds the bounded screening limit; inspect the remaining requirements before ranking.")
-			break
-		}
 		n, exists := nodes[file]
 		if !exists {
-			addUnknown(file, "Referenced local prerequisite file was not found in the pinned tree.")
+			// References are found by pattern; a broken link or a path built at
+			// run time is not a requirement.
 			continue
 		}
+		if len(a.Files) >= MaxFiles {
+			caution(file, fmt.Sprintf("Screening read the %d highest-priority files (contribution instructions, build recipes, CI, root manifests); this file and any after it were not read.", MaxFiles))
+			break
+		}
 		if n.mode == "120000" || !shaPattern.MatchString(n.sha) || n.size > MaxFileBytes || n.size < 0 {
-			addUnknown(file, "Prerequisite file is linked, oversized or lacks a valid immutable blob identity.")
+			if priority(file) == 0 {
+				addUnknown(file, "Contribution instructions are linked, oversized or lack a valid immutable blob identity.")
+			} else {
+				caution(file, "This file is a link or larger than the per-file screening limit and was not read.")
+			}
 			continue
 		}
 		var blob github.Blob
@@ -118,7 +134,7 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 		}
 		total += len(body)
 		if total > MaxTotalBytes {
-			addUnknown(file, "Prerequisite evidence exceeds the total byte budget.")
+			caution(file, "Screening reached its total size limit; this file and any after it were not read.")
 			break
 		}
 		a.Files = append(a.Files, file)
@@ -140,10 +156,19 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 			if strings.EqualFold(path.Base(file), "makefile") {
 				refs = verificationRecipes(refs, texts)
 			}
+			// A script run by a build recipe or by another verification script
+			// is part of verification. One merely named in prose may be anything.
+			fromRecipe := !isDocument(file) && !weak[file]
 			for _, ref := range scriptReference.FindAllString(refs, -1) {
 				ref = path.Clean(ref)
 				if _, ok := nodes[ref]; !ok {
 					ref = path.Clean(path.Join(path.Dir(file), ref))
+				}
+				if fromRecipe {
+					strong[ref] = true
+					delete(weak, ref)
+				} else if !strong[ref] && !seen[ref] {
+					weak[ref] = true
 				}
 				queue = append(queue, ref)
 			}
@@ -153,14 +178,16 @@ func Inspect(ctx context.Context, session *github.Session, repo, head string, tr
 				l := strings.ToLower(line)
 				if strings.Contains(l, `"test`) || strings.Contains(l, `"verify`) || strings.Contains(l, `"check`) || strings.Contains(l, `"integration`) {
 					for _, ref := range scriptReference.FindAllString(line, -1) {
+						strong[path.Clean(ref)] = true
+						delete(weak, path.Clean(ref))
 						queue = append(queue, path.Clean(ref))
 					}
 				}
 			}
 		}
 	}
-	findings := analyze(texts, profile)
-	a.Requirements = dependencyRequirements(texts)
+	findings, noted := screen(texts, weak, profile)
+	a.Requirements = append(dependencyRequirements(texts), append(noted, cautions...)...)
 	for _, f := range findings {
 		a.Findings = append(a.Findings, f)
 		if f.Kind == "needs_assessment" {
@@ -192,10 +219,18 @@ func priority(p string) int {
 	if b == "makefile" || b == ".standards.yaml" {
 		return 1
 	}
-	if isDocument(p) {
+	// Root CI and manifests state how the project is verified. A README is
+	// general, and nested manifests matter only to the packages they build.
+	if strings.HasPrefix(p, ".github/workflows/") {
 		return 2
 	}
-	return 3
+	if !strings.Contains(p, "/") && !isDocument(p) {
+		return 3
+	}
+	if isDocument(p) {
+		return 4
+	}
+	return 5
 }
 func selectedFile(p string) bool {
 	l := strings.ToLower(p)

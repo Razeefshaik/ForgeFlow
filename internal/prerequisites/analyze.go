@@ -23,21 +23,36 @@ var makeTarget = regexp.MustCompile(`\bmake\s+(?:-[a-zA-Z]+\s+)*([A-Za-z0-9_.-]+
 var makeHeader = regexp.MustCompile(`^([A-Za-z0-9_. -]+):([^=]*)$`)
 var workflowJob = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
 
+// Workflows and jobs that exercise a deployed system rather than the code a
+// contribution changes. Their service, Docker and timing needs are not what a
+// focused change must satisfy, so they are recorded as cautions, not blockers.
+var integrationWorkflow = regexp.MustCompile(`(?i)integration|e2e|end[-_ ]?to[-_ ]?end|smoke|acceptance|k8s|kubernetes|system[-_ ]?tests?|perf|fuzz|stress|soak|conformance|compat`)
+var packageInstall = regexp.MustCompile(`(?i)\b(apt(-get)?|yum|dnf|apk|brew|pip3?|npm|pnpm|yarn|gem|cargo|go)\s+(install|add|get)\b`)
+
 func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFinding {
+	blockers, _ := screen(texts, nil, profile)
+	return blockers
+}
+
+// screen separates evidenced blockers from cautions. A blocker is a stated or
+// directly executed requirement ForgeFlow cannot supply. A caution is a signal
+// whose effect on a focused change is unknown: it is shown at approval, and the
+// real baseline run decides. weak marks scripts reached only through a mention
+// in prose, which says nothing about whether verification runs them.
+func screen(texts map[string]string, weak map[string]bool, profile Profile) (blockers, cautions []domain.PrerequisiteFinding) {
 	files := make([]string, 0, len(texts))
 	for f := range texts {
 		files = append(files, f)
 	}
 	sort.Strings(files)
-	result := []domain.PrerequisiteFinding{}
 	seen := map[string]bool{}
-	add := func(kind, file string, line int, reason string) {
+	record := func(to *[]domain.PrerequisiteFinding, kind, file string, line int, reason string) {
 		key := kind + ":" + file
 		if seen[key] {
 			return
 		}
 		seen[key] = true
-		result = append(result, domain.PrerequisiteFinding{Kind: kind, Source: file, Line: line, Reason: reason})
+		*to = append(*to, domain.PrerequisiteFinding{Kind: kind, Source: file, Line: line, Reason: reason})
 	}
 	for _, file := range files {
 		text := texts[file]
@@ -50,9 +65,19 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 		if workflow && !verificationWorkflow(text) {
 			continue
 		}
+		integrationFile := workflow && (integrationWorkflow.MatchString(path.Base(file)) || integrationWorkflow.MatchString(workflowName.FindString(text)))
+		// add blocks, except that a weak source can only caution.
+		add := func(kind string, line int, reason string) {
+			if weak[file] {
+				record(&cautions, "caution", file, line, "Unconfirmed: a script mentioned in the documentation suggests this. "+reason)
+				return
+			}
+			record(&blockers, kind, file, line, reason)
+		}
+		note := func(line int, reason string) { record(&cautions, "caution", file, line, reason) }
 		verificationDoc := strings.Contains(strings.ToLower(file), "contribut") || strings.Contains(strings.ToLower(file), "develop") || strings.Contains(strings.ToLower(file), "test") || strings.EqualFold(path.Base(file), "AGENTS.md")
 		sectionVerification := verificationDoc
-		releaseJob := false
+		releaseJob, integrationJob := false, false
 		for i, line := range strings.Split(text, "\n") {
 			l := strings.ToLower(line)
 			stripped := strings.TrimSpace(l)
@@ -71,6 +96,7 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 				if m := workflowJob.FindStringSubmatch(line); m != nil {
 					job := strings.ToLower(m[1])
 					releaseJob = strings.Contains(job, "release") || strings.Contains(job, "deploy") || strings.Contains(job, "publish")
+					integrationJob = integrationWorkflow.MatchString(job)
 				}
 			}
 			if strings.HasPrefix(stripped, "#") {
@@ -78,28 +104,47 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 			}
 			localRequirement := sectionVerification || strings.Contains(l, "test") || strings.Contains(l, "verif") || strings.Contains(l, "contribut")
 			manifestScript := path.Base(file) == "package.json" && (strings.Contains(l, `"test`) || strings.Contains(l, `"verify`) || strings.Contains(l, `"check`) || strings.Contains(l, `"lint`) || strings.Contains(l, `"integration`))
+			// Workflows are configuration, not instructions: GitHub withholds
+			// secrets from fork pull requests, so a secret named in CI is not
+			// something an outside contribution needs.
+			stated := required && localRequirement && !workflow
 			if signing.MatchString(line) && (required || strings.Contains(l, "exit-0") || strings.Contains(l, "gate run")) {
-				add("trusted_signing", file, i+1, "Required trusted signing or receipt cannot be supplied by ForgeFlow's contribution runner; the existing trust anchor must not be replaced.")
+				record(&blockers, "trusted_signing", file, i+1, "Required trusted signing or receipt cannot be supplied by ForgeFlow's contribution runner; the existing trust anchor must not be replaced.")
 			}
-			if credentials.MatchString(line) && (required && localRequirement || build || manifestScript) {
-				add("private_credentials", file, i+1, "Required service credentials are not available to contribution processes; repository-driven images cannot receive private credentials.")
+			if credentials.MatchString(line) && !workflow {
+				if stated {
+					add("private_credentials", i+1, "Required service credentials are not available to contribution processes; repository-driven images cannot receive private credentials.")
+				} else if build || manifestScript {
+					// A credential word in a recipe is often a local test default
+					// (POSTGRES_PASSWORD=test) or an optional upload step.
+					note(i+1, "A verification recipe mentions a credential or token. ForgeFlow supplies none; a check that truly needs one fails in the baseline run, before any change is made.")
+				}
 			}
-			if liveService.MatchString(line) && required && localRequirement {
-				add("external_service", file, i+1, "Required live service provisioning is not supported by the current isolated verification runner.")
+			if liveService.MatchString(line) && stated {
+				add("external_service", i+1, "Required live service provisioning is not supported by the current isolated verification runner.")
 			}
-			if dockerCommand.MatchString(line) && (build || manifestScript || required && localRequirement) {
-				add("nested_docker", file, i+1, "Verification requires Docker/Compose execution or privileged containers; the runner exposes neither a Docker socket nor privileged service provisioning.")
+			if dockerCommand.MatchString(line) && !workflow && (build || manifestScript || stated) {
+				add("nested_docker", i+1, "Verification requires Docker/Compose execution or privileged containers; the runner exposes neither a Docker socket nor privileged service provisioning.")
 			}
-			if workflow && !releaseJob && (stripped == "services:" || strings.Contains(l, "secrets.") && !strings.Contains(l, "secrets.github_token")) && !strings.Contains(strings.ToLower(path.Base(file)), "release") && !strings.Contains(strings.ToLower(path.Base(file)), "deploy") && !strings.Contains(strings.ToLower(path.Base(file)), "publish") {
-				add("needs_assessment", file, i+1, "Verification CI uses services or secrets whose availability and local requirement must be established before ranking.")
+			if workflow && !releaseJob && stripped == "services:" {
+				if integrationFile || integrationJob {
+					note(i+1, "An integration job in CI starts service containers. ForgeFlow cannot start services, so integration tests that need them are outside local verification.")
+				} else {
+					record(&blockers, "external_service", file, i+1, "The repository's CI runs its tests against service containers (for example a database). ForgeFlow's verification container cannot start services, so the suite could not be verified locally.")
+				}
 			}
-			if platform.MatchString(line) && (required && localRequirement || build) {
-				add("unsupported_platform", file, i+1, "Required platform, emulator or GPU capability is outside the configured Linux verification boundary.")
+			if platform.MatchString(line) && !workflow && (stated || build) {
+				add("unsupported_platform", i+1, "Required platform, emulator or GPU capability is outside the configured Linux verification boundary.")
 			}
-			if (strings.Contains(l, "sudo ") || strings.Contains(l, "/etc/") || strings.Contains(l, "/usr/local/")) && (required && localRequirement || build) && (strings.Contains(l, "sudo ") || strings.Contains(l, "mkdir ") || strings.Contains(l, "tee ") || strings.Contains(l, " >") || strings.Contains(l, "write")) {
-				add("runtime_privilege", file, i+1, "Verification requires elevated execution or system-directory writes; runtime containers have an unprivileged user and a read-only root.")
+			if (strings.Contains(l, "sudo ") || strings.Contains(l, "/etc/") || strings.Contains(l, "/usr/local/")) && !workflow && (stated || build) && (strings.Contains(l, "sudo ") || strings.Contains(l, "mkdir ") || strings.Contains(l, "tee ") || strings.Contains(l, " >") || strings.Contains(l, "write")) {
+				if packageInstall.MatchString(line) {
+					// System packages are installed as root while the image is built.
+					note(i+1, "Setup installs system packages; ForgeFlow provisions them in the verification image when downloads are approved.")
+				} else {
+					add("runtime_privilege", i+1, "Verification requires elevated execution or system-directory writes; runtime containers have an unprivileged user and a read-only root.")
+				}
 			}
-			if required && localRequirement {
+			if stated {
 				if m := ram.FindStringSubmatch(line); m != nil {
 					n := m[1]
 					if n == "" {
@@ -107,13 +152,13 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 					}
 					gb, _ := strconv.ParseFloat(n, 64)
 					if gb*1024 > float64(profile.MemoryMiB) {
-						add("resource_limit", file, i+1, "Documented minimum verification memory exceeds the configured runner memory limit.")
+						add("resource_limit", i+1, "Documented minimum verification memory exceeds the configured runner memory limit.")
 					}
 				}
 				if m := cores.FindStringSubmatch(line); m != nil {
 					n, _ := strconv.Atoi(m[1])
 					if n > profile.CPUs {
-						add("resource_limit", file, i+1, "Documented minimum CPU count exceeds the configured runner CPU limit.")
+						add("resource_limit", i+1, "Documented minimum CPU count exceeds the configured runner CPU limit.")
 					}
 				}
 			}
@@ -124,12 +169,12 @@ func analyze(texts map[string]string, profile Profile) []domain.PrerequisiteFind
 			for _, policy := range []string{".standards.yaml", ".standards.yml"} {
 				p := strings.ToLower(texts[policy])
 				if strings.Contains(p, "public_key") || strings.Contains(p, "public-key") || strings.Contains(p, "ed25519") {
-					add("trusted_signing", file, 1, "Contribution instructions require a standards gate bound to a trusted signing key; ForgeFlow cannot generate the trusted receipt.")
+					record(&blockers, "trusted_signing", file, 1, "Contribution instructions require a standards gate bound to a trusted signing key; ForgeFlow cannot generate the trusted receipt.")
 				}
 			}
 		}
 	}
-	return result
+	return blockers, cautions
 }
 
 var workflowName = regexp.MustCompile(`(?m)^name:\s*["']?([^"'\n]+)`)
@@ -148,6 +193,27 @@ func verificationWorkflow(text string) bool {
 }
 
 var workflowTriggers = regexp.MustCompile(`(?m)^["']?on["']?\s*:`)
+
+var nonVerificationTarget = regexp.MustCompile(`(?i)release|deploy|publish|integration|e2e|smoke|acceptance|docker|compose|image|container|bench`)
+
+// verificationTarget recognizes the Makefile targets a contributor runs to
+// check a change. Integration, packaging and deployment targets are not.
+func verificationTarget(t string) bool {
+	l := strings.ToLower(t)
+	if nonVerificationTarget.MatchString(l) {
+		return false
+	}
+	switch l {
+	case "test", "tests", "check", "lint", "ci", "verify", "unit", "unittest", "validate":
+		return true
+	}
+	return strings.HasPrefix(l, "test-") || strings.HasPrefix(l, "test_") || strings.HasPrefix(l, "verify") || strings.HasPrefix(l, "unit") || strings.HasSuffix(l, "-test") || strings.HasSuffix(l, "_test") || strings.HasSuffix(l, "-tests") || strings.HasSuffix(l, "-check")
+}
+
+func verificationDocument(p string) bool {
+	l := strings.ToLower(p)
+	return isDocument(p) && (strings.Contains(l, "contribut") || strings.Contains(l, "develop") || strings.Contains(l, "test") || strings.EqualFold(path.Base(p), "AGENTS.md"))
+}
 
 // Preserve line numbers while following only verification targets and their
 // dependency targets, not unrelated release/deployment Docker recipes.
@@ -183,16 +249,16 @@ func verificationRecipes(text string, documents map[string]string) string {
 		}
 	}
 	for t := range targets {
-		l := strings.ToLower(t)
-		if l == "test" || l == "check" || l == "lint" || strings.HasPrefix(l, "test-") || strings.HasPrefix(l, "verify") || strings.HasPrefix(l, "integration") || strings.HasSuffix(l, "-test") || strings.HasSuffix(l, "-check") {
+		if verificationTarget(t) {
 			visit(t)
 		}
 	}
+	// A target named in contribution instructions is part of verification even
+	// when its name is unusual ("make ci"). A README's "make docker-run" is not.
 	for f, doc := range documents {
-		if isDocument(f) {
+		if verificationDocument(f) {
 			for _, m := range makeTarget.FindAllStringSubmatch(doc, -1) {
-				l := strings.ToLower(m[1])
-				if !strings.Contains(l, "release") && !strings.Contains(l, "deploy") {
+				if !nonVerificationTarget.MatchString(m[1]) {
 					visit(m[1])
 				}
 			}

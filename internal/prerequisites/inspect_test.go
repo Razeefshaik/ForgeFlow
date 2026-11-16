@@ -63,7 +63,15 @@ func TestFreshRepositoryRequirementsAcrossLanguages(t *testing.T) {
 		{"system-writes", map[string]string{"CONTRIBUTING.md": "Run make test.", "Makefile": "test:\n\tsudo mkdir /etc/application\n"}, "excluded", "runtime_privilege"},
 		{"gpu-checks", map[string]string{"CONTRIBUTING.md": "Verification requires an NVIDIA GPU."}, "excluded", "unsupported_platform"},
 		{"large-verification", map[string]string{"CONTRIBUTING.md": "Local tests require at least 8 GiB memory."}, "excluded", "resource_limit"},
-		{"ci-service-needs-review", map[string]string{".github/workflows/test.yml": "jobs:\n  integration:\n    services:\n      db:\n        image: postgres:17\n"}, "needs_assessment", "needs_assessment"},
+		{"ci-integration-service-is-a-caution", map[string]string{".github/workflows/test.yml": "jobs:\n  integration:\n    services:\n      db:\n        image: postgres:17\n"}, "eligible", ""},
+		{"ci-test-service", map[string]string{".github/workflows/test.yml": "jobs:\n  test:\n    services:\n      db:\n        image: postgres:17\n"}, "excluded", "external_service"},
+		{"ci-secret-is-not-a-requirement", map[string]string{".github/workflows/ci.yml": "on: [push, pull_request]\njobs:\n  test:\n    steps:\n      - run: go test ./...\n      - uses: codecov/codecov-action@v5\n        with:\n          token: ${{ secrets.CODECOV_TOKEN }}\n"}, "eligible", ""},
+		{"recipe-credential-word-is-a-caution", map[string]string{"CONTRIBUTING.md": "Run make test.", "Makefile": "test:\n\tPOSTGRES_PASSWORD=test go test ./...\n"}, "eligible", ""},
+		{"package-install-is-provisionable", map[string]string{"CONTRIBUTING.md": "Run make test.", "Makefile": "test: deps\n\tgo test ./...\ndeps:\n\tsudo apt-get install -y libpcap-dev\n"}, "eligible", ""},
+		{"readme-docker-target-is-not-verification", map[string]string{"README.md": "Start it with make docker-run or make up.", "Makefile": "test:\n\tgo test ./...\ndocker-run:\n\tdocker run app\nup:\n\tdocker compose up\n"}, "eligible", ""},
+		{"script-named-in-prose-is-a-caution", map[string]string{"README.md": "Deploy with ./scripts/deploy.sh.", "scripts/deploy.sh": "#!/bin/sh\ndocker build -t app .\n", "go.mod": "module new/project"}, "eligible", ""},
+		{"broken-link", map[string]string{"CONTRIBUTING.md": "See [required verification](docs/testing.md)."}, "eligible", ""},
+		{"large-readme", map[string]string{"README.md": strings.Repeat("word ", MaxFileBytes/5+10), "go.mod": "module new/project"}, "eligible", ""},
 		{"optional-product-credential", map[string]string{"README.md": "# Using the API\nThe hosted product requires an access token.\n# Development\nNo signing key is required.\nRun go test ./..."}, "eligible", ""},
 		{"example-dsn-is-not-a-private-credential-requirement", map[string]string{"AGENTS.md": "Example configuration:\nVERA_POSTGRES_DSN=postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require\nRun go test ./..."}, "eligible", ""},
 		{"referenced-script", map[string]string{"CONTRIBUTING.md": "Run make verify.", "Makefile": "verify:\n\t./scripts/check.sh\n", "scripts/check.sh": "#!/bin/sh\ndocker exec service test-command\n"}, "excluded", "nested_docker"},
@@ -90,7 +98,7 @@ func TestFreshRepositoryRequirementsAcrossLanguages(t *testing.T) {
 }
 
 func TestIncompleteOrCorruptedEvidenceNeverRanks(t *testing.T) {
-	for _, mode := range []string{"truncated", "bad-sha", "oversized", "budget", "cancelled", "native-only", "missing-linked-document"} {
+	for _, mode := range []string{"truncated", "bad-sha", "oversized", "budget", "cancelled", "native-only"} {
 		t.Run(mode, func(t *testing.T) {
 			files := map[string]string{"CONTRIBUTING.md": "Run go test ./..."}
 			var mutate func(*github.Blob)
@@ -101,9 +109,6 @@ func TestIncompleteOrCorruptedEvidenceNeverRanks(t *testing.T) {
 			}
 			if mode == "oversized" {
 				files["CONTRIBUTING.md"] = strings.Repeat("x", MaxFileBytes+1)
-			}
-			if mode == "missing-linked-document" {
-				files["CONTRIBUTING.md"] = "See [required verification](docs/testing.md)."
 			}
 			tree, session := inspectFixture(t, files, mutate)
 			if mode == "truncated" {
@@ -126,5 +131,31 @@ func TestIncompleteOrCorruptedEvidenceNeverRanks(t *testing.T) {
 				t.Fatal(a)
 			}
 		})
+	}
+}
+
+// Running out of read budget on secondary files is not an incomplete
+// assessment: the primary evidence is read first, and the rest is disclosed.
+func TestReadBudgetOverflowIsACaution(t *testing.T) {
+	files := map[string]string{"CONTRIBUTING.md": "Run go test ./...", "go.mod": "module new/project", ".github/workflows/ci.yml": "on: [push]\njobs:\n  test:\n    steps:\n      - run: go test ./...\n"}
+	for i := 0; i < MaxFiles+6; i++ {
+		files[fmt.Sprintf("packages/p%02d/package.json", i)] = fmt.Sprintf(`{"name":"p%d","scripts":{"test":"vitest run"}}`, i)
+	}
+	tree, session := inspectFixture(t, files, nil)
+	session.MaxRequests = MaxFiles + 10
+	a := Inspect(context.Background(), session, "new/project", strings.Repeat("a", 40), tree, LinuxProfile())
+	if a.Status != "eligible" || len(a.Findings) != 0 || len(a.Files) != MaxFiles {
+		t.Fatalf("read budget overflow withheld the repository: %s %+v files=%d", a.Status, a.Findings, len(a.Files))
+	}
+	primary := map[string]bool{}
+	caution := false
+	for _, f := range a.Files {
+		primary[f] = true
+	}
+	for _, r := range a.Requirements {
+		caution = caution || r.Kind == "caution"
+	}
+	if !primary["CONTRIBUTING.md"] || !primary["go.mod"] || !primary[".github/workflows/ci.yml"] || !caution {
+		t.Fatalf("primary evidence was not read first or the overflow was not disclosed: %+v %+v", a.Files, a.Requirements)
 	}
 }

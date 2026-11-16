@@ -180,8 +180,21 @@ func summarizeRuns(runs []workflowRun, branch string, now time.Time) *domain.CIE
 	}
 	by := map[string]*stats{}
 	order := []string{}
+	// Integration, end-to-end and similar workflows test a deployed system. A
+	// focused change is verified by the build and unit suites, so those slower
+	// workflows size nothing unless they are the only verification there is.
+	unitWorkflows := false
+	for _, r := range runs {
+		if r.Status == "completed" && r.Event != "schedule" && !nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) && !integrationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) {
+			unitWorkflows = true
+			break
+		}
+	}
 	for _, r := range runs {
 		if r.Status != "completed" || nonVerificationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) || r.Event == "schedule" {
+			continue
+		}
+		if unitWorkflows && integrationWorkflow.MatchString(path.Base(r.Path)+" "+r.Name) {
 			continue
 		}
 		st := by[r.Path]
@@ -251,13 +264,16 @@ func ScreenCI(ci *domain.CIEvidence, runs map[string][]string, profile Profile) 
 	}
 	findings := []domain.PrerequisiteFinding{}
 	for _, p := range ci.Workflows {
+		if integrationWorkflow.MatchString(path.Base(p)) && len(ci.Workflows) > 1 {
+			continue
+		}
 		if persistentlyFailing(runs[p]) {
 			findings = append(findings, treeFinding("ci_failing", p, "The repository's own CI has failed on its default branch in each recent run; a contribution could not be verified against a working baseline."))
 			break
 		}
 	}
 	if profile.MaxCIMinutes > 0 && ci.MedianSeconds > profile.MaxCIMinutes*60 {
-		findings = append(findings, treeFinding("build_too_slow", ci.SlowestWorkflow, fmt.Sprintf("Default CI takes a median of %d minutes; ForgeFlow's container runs suites about 3-5x slower than GitHub's runners, so only repositories whose CI finishes within %d minutes fit the verification budget.", (ci.MedianSeconds+59)/60, profile.MaxCIMinutes)))
+		findings = append(findings, treeFinding("build_too_slow", ci.SlowestWorkflow, fmt.Sprintf("The repository's build and test CI takes a median of %d minutes. ForgeFlow runs the suite several times in one session (baseline, after the change, after each fix), so it offers repositories whose CI finishes within %d minutes.", (ci.MedianSeconds+59)/60, profile.MaxCIMinutes)))
 	}
 	return findings
 }
@@ -314,7 +330,7 @@ func InspectRepository(ctx context.Context, session *github.Session, repo github
 		Runs []workflowRun `json:"workflow_runs"`
 	}
 	ciFindings := []domain.PrerequisiteFinding{}
-	if err := session.Get(ctx, "/repos/"+repo.FullName+"/actions/runs?exclude_pull_requests=true&per_page=60", &page); err != nil {
+	if err := session.Get(ctx, "/repos/"+repo.FullName+"/actions/runs?exclude_pull_requests=true&per_page=100", &page); err != nil {
 		if len(onError) > 0 {
 			onError[0](err)
 		}

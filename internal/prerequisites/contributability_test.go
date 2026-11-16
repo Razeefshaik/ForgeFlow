@@ -54,8 +54,19 @@ func TestStalledRepositoryShapesAreExcluded(t *testing.T) {
 		osh = append(osh, m+"/build.gradle")
 	}
 	got := kinds(t, tree(osh...))
-	if !got["build_too_large"] || !got["heavy_toolchain"] {
+	if !got["heavy_toolchain"] {
 		t.Fatalf("osh-core-shaped build was not excluded: %v", got)
+	}
+	// Seventeen build files alone no longer exclude: CI timing measures cost.
+	if got["build_too_large"] {
+		t.Fatalf("a 17-module build was excluded on its file count: %v", got)
+	}
+	huge := []string{"pom.xml", "core/src/test/java/a/ATest.java"}
+	for i := 0; i < 26; i++ {
+		huge = append(huge, "module"+time.Duration(i).String()+"/pom.xml")
+	}
+	if got = kinds(t, tree(huge...)); !got["build_too_large"] {
+		t.Fatalf("a 27-module build was accepted: %v", got)
 	}
 	template := tree("README.md", "template-crud-api.yaml", "skeleton/", "skeleton/base/catalog-info.yaml", "functions/crud/data/common/${{ values.collection_name }}-data.json", "tests/test_handbooks.py")
 	if got = kinds(t, template); !got["template_repository"] {
@@ -75,7 +86,7 @@ func TestUnverifiableRepositoryShapes(t *testing.T) {
 		"no manifest": {tree("Makefile", "src/a.c", "tests/a_test.c"), "unsupported_build"},
 		"android":     {tree("build.gradle", "app/src/main/AndroidManifest.xml", "app/src/test/java/AppTest.java"), "heavy_toolchain"},
 		"bazel":       {tree("WORKSPACE", "go.mod", "a_test.go"), "heavy_toolchain"},
-		"go monorepo": {tree("go.mod", "a_test.go", "m1/go.mod", "m2/go.mod", "m3/go.mod", "m4/go.mod", "m5/go.mod", "m6/go.mod"), "build_too_large"},
+		"go monorepo": {tree("go.mod", "a_test.go", "m1/go.mod", "m2/go.mod", "m3/go.mod", "m4/go.mod", "m5/go.mod", "m6/go.mod", "m7/go.mod", "m8/go.mod", "m9/go.mod", "m10/go.mod", "m11/go.mod", "m12/go.mod"), "build_too_large"},
 		"huge": {func() github.Tree {
 			p := []string{"go.mod", "a_test.go"}
 			for i := 0; i < 20001; i++ {
@@ -149,11 +160,42 @@ func TestReleaseAndDocsWorkflowsAreNotVerification(t *testing.T) {
 	if got := analyze(map[string]string{".github/workflows/repo.yml": publish}, LinuxProfile()); len(got) != 0 {
 		t.Fatalf("publish secrets became contribution requirements: %+v", got)
 	}
-	if got := analyze(map[string]string{".github/workflows/ci.yml": ci}, LinuxProfile()); len(got) == 0 {
-		t.Fatal("CI services were not flagged for assessment")
+	if got := analyze(map[string]string{".github/workflows/ci.yml": ci}, LinuxProfile()); len(got) != 1 || got[0].Kind != "external_service" {
+		t.Fatalf("a test job that needs service containers was not excluded: %+v", got)
 	}
 	_ = tagged
 	if selectedFile(".github/workflows/release-docs.yml") || selectedFile(".github/workflows/docs/push-docs/action.yml") || !selectedFile(".github/workflows/ci.yml") {
 		t.Fatal("prerequisite reads still spend budget on docs/release workflows")
+	}
+}
+
+// Integration and end-to-end workflows are slower and need services; they do
+// not size or block a focused change when a unit workflow exists.
+func TestIntegrationWorkflowsDoNotSizeOrBlock(t *testing.T) {
+	runs := []workflowRun{
+		run("ci.yml", "main", "push", "success", 6, time.Hour),
+		run("ci.yml", "main", "push", "success", 7, 2*time.Hour),
+		run("test-integration.yml", "main", "push", "success", 45, time.Hour),
+		run("web-e2e.yml", "main", "push", "failure", 30, time.Hour),
+		run("web-e2e.yml", "main", "push", "failure", 30, 2*time.Hour),
+		run("web-e2e.yml", "main", "push", "failure", 30, 3*time.Hour),
+	}
+	ci := summarizeRuns(runs, "main", time.Now())
+	if ci == nil || ci.MedianSeconds != 420 || len(ci.Workflows) != 1 {
+		t.Fatalf("integration workflows sized the build: %+v", ci)
+	}
+	if f := ScreenCI(ci, recentConclusions(runs, "main"), LinuxProfile()); len(f) != 0 {
+		t.Fatalf("integration workflows blocked the repository: %+v", f)
+	}
+	only := []workflowRun{run("integration.yml", "main", "push", "success", 45, time.Hour)}
+	if ci = summarizeRuns(only, "main", time.Now()); ci == nil || ci.MedianSeconds != 2700 {
+		t.Fatalf("the only verification workflow was ignored: %+v", ci)
+	}
+	if f := ScreenCI(ci, recentConclusions(only, "main"), LinuxProfile()); len(f) != 1 || f[0].Kind != "build_too_slow" {
+		t.Fatalf("a 45-minute only workflow was accepted: %+v", f)
+	}
+	mid := []workflowRun{run("ci.yml", "main", "push", "success", 15, time.Hour)}
+	if f := ScreenCI(summarizeRuns(mid, "main", time.Now()), recentConclusions(mid, "main"), LinuxProfile()); len(f) != 0 {
+		t.Fatalf("15-minute CI was rejected: %+v", f)
 	}
 }
