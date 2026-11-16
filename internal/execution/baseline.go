@@ -157,6 +157,35 @@ func subset(items, of []string) bool {
 	return true
 }
 
+var cannotStart = regexp.MustCompile(`(?i)no module named \S+|command not found|: not found|executable file not found|no such file or directory|permission denied|cannot execute`)
+
+// unrunnable returns the error with which a command failed to start at all:
+// a missing module or executable and almost no other output. Such a command
+// verified nothing, on the base or after the change.
+func unrunnable(run domain.TestRun) string {
+	if run.ExitCode == 0 {
+		return ""
+	}
+	lines := []string{}
+	for _, line := range strings.Split(run.Output, "\n") {
+		line = strings.TrimSpace(line)
+		// The first line names the container, which differs on every run.
+		if line == "" || strings.HasPrefix(line, "Docker container ") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 || len(lines) > 3 {
+		return ""
+	}
+	for _, line := range lines {
+		if cannotStart.MatchString(line) {
+			return line
+		}
+	}
+	return ""
+}
+
 // preexistingReason decides, from two real runs, whether a post-change
 // failure already existed on the base. An empty reason means it is not proven.
 func preexistingReason(base domain.BaselineCommand, baseRun, run domain.TestRun) string {
@@ -165,6 +194,9 @@ func preexistingReason(base domain.BaselineCommand, baseRun, run domain.TestRun)
 	}
 	if base.NoTests && noTestsRan(run) && run.ExitCode == base.ExitCode {
 		return "No tests were collected, exactly as on the untouched base."
+	}
+	if reason := unrunnable(run); reason != "" && reason == unrunnable(baseRun) {
+		return "The command could not start in the verification environment (" + reason + "), exactly as on the untouched base. It verified nothing before or after the change; the other required commands did."
 	}
 	post, parsed := failedTestNames(run.Output)
 	if parsed && len(base.FailedTests) > 0 && len(base.FailedTests) <= maxFailureNames {
@@ -492,6 +524,24 @@ func (s *Service) acceptPreexisting(ctx context.Context, id string, command doma
 	reason := preexistingReason(*base, baseRun, run)
 	if reason == "" {
 		return false, nil
+	}
+	// A command that cannot start is set aside only when another required
+	// command really ran the project's checks; otherwise nothing verified the
+	// change and the environment, not the patch, needs repair.
+	if unrunnable(run) != "" {
+		verified := false
+		for _, other := range r.Baseline.Commands {
+			if commandKey(other.Command) == commandKey(command) {
+				continue
+			}
+			otherRun, ok := testRunByID(tests, other.TestRunID)
+			if ok && unrunnable(otherRun) == "" && (other.Passed || len(other.FailedTests) > 0) {
+				verified = true
+			}
+		}
+		if !verified {
+			return false, nil
+		}
 	}
 	failed, _ := failedTestNames(run.Output)
 	c, err := s.Store.Contribution(ctx, id)

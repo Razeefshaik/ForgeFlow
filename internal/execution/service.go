@@ -13,6 +13,7 @@ import (
 	verification "forgeflow/internal/testing"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -783,6 +784,15 @@ func verificationCommands(repo string, plan *domain.Plan, validators ...func(dom
 // build of the same tool already performs; running both repeated a full Gradle
 // build. Planned commands and every other detected command are always kept.
 func subsumedByPlan(detected domain.VerificationCommand, planned []domain.VerificationCommand) bool {
+	// The plan often runs the detected command through the environment it
+	// prepared: "python -m pytest" becomes "<venv>/bin/python -m pytest". The
+	// bare form then runs on an interpreter without the project's dependencies
+	// and can never pass, which exhausted the fix budget on a correct patch.
+	for _, p := range planned {
+		if p.Program != detected.Program && sameTool(p.Program, detected.Program) && strings.Join(p.Arguments, "\x00") == strings.Join(detected.Arguments, "\x00") {
+			return true
+		}
+	}
 	family := buildToolFamily(detected.Program)
 	if family == "" || len(detected.Arguments) != 1 || detected.Arguments[0] != "test" {
 		return false
@@ -797,6 +807,15 @@ func subsumedByPlan(detected domain.VerificationCommand, planned []domain.Verifi
 		}
 	}
 	return covered
+}
+
+var pythonInterpreter = regexp.MustCompile(`^python(\d+(\.\d+)?)?$`)
+
+// sameTool reports whether two programs are the same tool reached by
+// different paths: equal base names, or two Python interpreters.
+func sameTool(a, b string) bool {
+	a, b = path.Base(filepath.ToSlash(a)), path.Base(filepath.ToSlash(b))
+	return a == b || pythonInterpreter.MatchString(a) && pythonInterpreter.MatchString(b)
 }
 
 // runsAllTests recognizes a Gradle build/check or Maven package/verify/install
