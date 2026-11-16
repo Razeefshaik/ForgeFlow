@@ -110,7 +110,7 @@ function ExcludedRepositories() {
   return (
     <details>
       <summary>Excluded repositories ({count}) · contributability screening</summary>
-      <p>Discovery inspected these repositories before ranking. ForgeFlow offers only repositories it can build, verify and finish: a supported build with a test suite, recent passing CI that fits the verification budget, and no unsupported requirements. No contribution was started. An eligible assessment still requires real environment preparation and tests.</p>
+      <p>Discovery inspected these repositories before ranking. ForgeFlow excludes a repository only on evidence that it cannot build, verify and finish work there: no supported build or test suite, CI that is failing or longer than the verification budget, or a stated requirement it cannot supply. Uncertain signals are shown as warnings when you approve a contribution instead. No contribution was started. An eligible assessment still requires real environment preparation and tests.</p>
       <ul className="risk-list">
         {query.data.map((x) => (
           <li key={x.repository}>
