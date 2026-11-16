@@ -35,11 +35,12 @@ func verificationDeadline(command domain.VerificationCommand, ciMedian time.Dura
 	if command.TimeoutSeconds > 0 && command.TimeoutSeconds <= 7200 {
 		return time.Duration(command.TimeoutSeconds) * time.Second
 	}
-	deadline := 10 * time.Minute
+	// A deadline exists to end a hang, not to ration a healthy suite. Ten
+	// minutes ended real suites that were still passing, and repositories with
+	// up to twenty minutes of CI are now offered, so no command gets less than
+	// twenty minutes.
+	deadline := 20 * time.Minute
 	if command.Program == "go" {
-		if len(command.Arguments) > 0 && command.Arguments[0] == "test" {
-			deadline = 12 * time.Minute
-		}
 		for i, arg := range command.Arguments {
 			value := ""
 			if strings.HasPrefix(arg, "-timeout=") {
